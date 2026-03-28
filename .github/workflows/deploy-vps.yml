@@ -8,12 +8,21 @@ on:
 
 jobs:
   deploy:
-    if: ${{ secrets.TELEGRAM_VPS_HOST != '' && secrets.TELEGRAM_VPS_USER != '' && secrets.TELEGRAM_VPS_SSH_KEY != '' }}
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate SSH secrets
+        env:
+          TELEGRAM_VPS_HOST: ${{ secrets.TELEGRAM_VPS_HOST }}
+          TELEGRAM_VPS_USER: ${{ secrets.TELEGRAM_VPS_USER }}
+          TELEGRAM_VPS_SSH_KEY: ${{ secrets.TELEGRAM_VPS_SSH_KEY }}
+        run: |
+          test -n "$TELEGRAM_VPS_HOST"
+          test -n "$TELEGRAM_VPS_USER"
+          test -n "$TELEGRAM_VPS_SSH_KEY"
 
       - name: Deploy On VPS
         uses: appleboy/ssh-action@v1.2.0
