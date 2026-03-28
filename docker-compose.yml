@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: telegram-postgres
+    environment:
+      POSTGRES_DB: telegram_ops
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d telegram_ops"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: telegram-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ./apps/api
+    container_name: telegram-api
+    environment:
+      PORT: 4000
+      JWT_SECRET: local-dev-secret
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-local-dev-settings-key}
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/telegram_ops?schema=public
+      REDIS_URL: redis://redis:6379
+      AI_DEFAULT_BASE_URL: ${AI_DEFAULT_BASE_URL:-https://v98store.com/v1}
+      AI_DEFAULT_MODEL: ${AI_DEFAULT_MODEL:-nexus-guard-mini}
+      AI_DEFAULT_API_TOKEN: ${AI_DEFAULT_API_TOKEN:-}
+      AI_DEFAULT_PROMPT: ${AI_DEFAULT_PROMPT:-Ban la AI moderation assistant. Tra ve JSON ngan gon voi risk_score va action_goi_y.}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+
+  web:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+    container_name: telegram-web
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
+  redis_data:

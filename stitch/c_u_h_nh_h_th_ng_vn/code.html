@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+
+<html class="light" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-primary-container": "#0048bf",
+              "outline": "#717c82",
+              "error-container": "#fe8983",
+              "secondary-fixed-dim": "#c7d5ed",
+              "on-tertiary-fixed-variant": "#006d64",
+              "outline-variant": "#a9b4b9",
+              "tertiary-fixed-dim": "#83efe1",
+              "surface-container-low": "#f0f4f7",
+              "on-secondary-fixed-variant": "#4e5c71",
+              "on-secondary-fixed": "#324053",
+              "on-tertiary": "#e2fff9",
+              "on-background": "#2a3439",
+              "surface-container": "#e8eff3",
+              "background": "#f7f9fb",
+              "secondary-dim": "#465468",
+              "on-secondary": "#f8f8ff",
+              "tertiary-container": "#91feef",
+              "secondary-container": "#d5e3fc",
+              "primary-fixed": "#dbe1ff",
+              "on-tertiary-fixed": "#004e47",
+              "surface-container-lowest": "#ffffff",
+              "surface": "#f7f9fb",
+              "tertiary-dim": "#005e56",
+              "surface-variant": "#d9e4ea",
+              "on-tertiary-container": "#006259",
+              "primary-fixed-dim": "#c7d3ff",
+              "surface-dim": "#cfdce3",
+              "on-primary-fixed-variant": "#0050d4",
+              "on-surface": "#2a3439",
+              "error-dim": "#4e0309",
+              "on-primary-fixed": "#003798",
+              "on-error": "#fff7f6",
+              "on-secondary-container": "#455367",
+              "secondary": "#526074",
+              "secondary-fixed": "#d5e3fc",
+              "inverse-primary": "#618bff",
+              "on-error-container": "#752121",
+              "error": "#9f403d",
+              "inverse-surface": "#0b0f10",
+              "primary-dim": "#0048c1",
+              "surface-tint": "#0053db",
+              "tertiary-fixed": "#91feef",
+              "tertiary": "#006b62",
+              "surface-container-highest": "#d9e4ea",
+              "primary": "#0053db",
+              "surface-bright": "#f7f9fb",
+              "inverse-on-surface": "#9a9d9f",
+              "primary-container": "#dbe1ff",
+              "on-surface-variant": "#566166",
+              "surface-container-high": "#e1e9ee",
+              "on-primary": "#f8f7ff"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface antialiased">
+<!-- Top Navigation Bar -->
+<nav class="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-[0_8px_32px_rgba(42,52,57,0.04)] fixed top-0 w-full z-50 flex justify-between items-center px-8 h-16 w-full font-inter antialiased">
+<div class="flex items-center gap-8">
+<span class="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50">Telegram Command Center</span>
+<div class="hidden md:flex items-center bg-slate-50 dark:bg-slate-800/50 rounded-full px-4 py-1.5 gap-2 border border-outline-variant/10">
+<span class="material-symbols-outlined text-slate-400 text-sm">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-sm w-64 placeholder:text-slate-400" placeholder="Tìm kiếm nhanh..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors rounded-full active:scale-95 duration-200">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<div class="h-8 w-8 rounded-full overflow-hidden bg-primary-container">
+<img alt="Ảnh đại diện quản trị viên" class="h-full w-full object-cover" data-alt="professional portrait of a tech administrator in a clean office environment with soft studio lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDjvjwVzF5CBB3VZmyZkypWPMgAa8KK3aVDc3jjUZg0reuTIrvPOi0nBkCv0sIjOKVPgHkgwnLEDdapBwh9wFckGY5tVsMbAII2TQVY236r2JCSa1eLJBffOL4RWecwGjzLx21_U1zbWV8Y-0PxsBHV2omuvytg1rXK4xjb1vkvHPd0DXx3x2UGFG11mB2r1DHvxxxkUUb7P6dwqa6I-9-pOyLLyaQonEtgJdc0zhoD6_PnrhwNkYROGJ1t9k4lsiyWwPtJR6V4_KE"/>
+</div>
+<button class="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors rounded-full active:scale-95 duration-200">
+<span class="material-symbols-outlined">logout</span>
+</button>
+</div>
+</nav>
+<div class="flex pt-16">
+<!-- Side Navigation Bar -->
+<aside class="h-screen w-64 fixed left-0 top-0 pt-20 bg-slate-50 dark:bg-slate-950 flex flex-col gap-1 z-40">
+<div class="px-6 mb-8">
+<h2 class="text-lg font-black text-slate-900 dark:text-white uppercase tracking-widest">Command Center</h2>
+<p class="text-xs text-slate-500 font-medium">Hệ thống quản trị</p>
+</div>
+<nav class="flex flex-col gap-1">
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-4 py-3 mx-2 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg transition-all duration-200 ease-in-out flex items-center gap-3" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="text-sm font-medium Inter">Tổng quan</span>
+</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-4 py-3 mx-2 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg transition-all duration-200 ease-in-out flex items-center gap-3" href="#">
+<span class="material-symbols-outlined">mail</span>
+<span class="text-sm font-medium Inter">Chiến dịch</span>
+</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-4 py-3 mx-2 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg transition-all duration-200 ease-in-out flex items-center gap-3" href="#">
+<span class="material-symbols-outlined">security</span>
+<span class="text-sm font-medium Inter">Người dùng &amp; Spam</span>
+</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-4 py-3 mx-2 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg transition-all duration-200 ease-in-out flex items-center gap-3" href="#">
+<span class="material-symbols-outlined">schedule</span>
+<span class="text-sm font-medium Inter">Bảng Autopost</span>
+</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-4 py-3 mx-2 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg transition-all duration-200 ease-in-out flex items-center gap-3" href="#">
+<span class="material-symbols-outlined">verified_user</span>
+<span class="text-sm font-medium Inter">Phân quyền</span>
+</a>
+<a class="bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-sm rounded-lg mx-2 px-4 py-3 transition-all duration-200 ease-in-out flex items-center gap-3" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">settings</span>
+<span class="text-sm font-medium Inter">Cài đặt</span>
+</a>
+</nav>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-64 flex-1 p-10 min-h-screen bg-surface">
+<!-- Header Section -->
+<header class="mb-12">
+<h1 class="text-3xl font-extrabold tracking-tight text-on-surface mb-2">Cài đặt hệ thống</h1>
+<p class="text-on-surface-variant max-w-2xl">Quản lý cấu hình toàn cục, bảo mật và trải nghiệm người dùng của Nexus Terminal.</p>
+</header>
+<!-- Settings Bento Grid -->
+<div class="grid grid-cols-12 gap-8">
+<!-- General Configuration Block -->
+<div class="col-span-12 lg:col-span-8 space-y-8">
+<section class="bg-surface-container-lowest rounded-xl p-8 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
+<div class="flex items-center gap-3 mb-8 border-b border-outline-variant/10 pb-4">
+<span class="material-symbols-outlined text-primary text-2xl">tune</span>
+<h2 class="text-xl font-bold tracking-tight">Cấu hình chung</h2>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<div class="space-y-2">
+<label class="text-xs font-bold uppercase tracking-wider text-on-surface-variant block">Tên hệ thống</label>
+<input class="w-full bg-surface-container-low border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary/20 text-on-surface font-medium transition-all" type="text" value="Nexus Command Center"/>
+</div>
+<div class="space-y-2">
+<label class="text-xs font-bold uppercase tracking-wider text-on-surface-variant block">Telegram Bot API Token</label>
+<div class="relative">
+<input class="w-full bg-surface-container-low border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary/20 text-on-surface font-mono transition-all pr-12" type="password" value="7284910234:AAHeJk_98Xj_kM82Lx0_Zp-4"/>
+<button class="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-sm">visibility</span>
+</button>
+</div>
+</div>
+<div class="col-span-full space-y-4 pt-4">
+<label class="text-xs font-bold uppercase tracking-wider text-on-surface-variant block">Logo hệ thống</label>
+<div class="flex items-center gap-6 p-6 bg-surface-container-low rounded-xl border-2 border-dashed border-outline-variant/30">
+<div class="w-16 h-16 bg-white rounded-xl shadow-inner flex items-center justify-center p-2">
+<img alt="System Logo" class="w-full h-full" data-alt="minimalist geometric logo for a tech company in blue and white with clean lines" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAVbEm92O7OCOIO43NsHi648qu9-r42mDTSFSTZmtVV6uOuRSHZ8TOEa8YNmAzWeEvRuV7vV62dwxyJo5Dbmi3vuXuAhTPvvueOGFiEjK7yelvMglXSokiArSfUU2wrXy9W0zOIPYndIFu0QDd-3Fvd9J5ubg7MFAcYPniIx4X2ej-WKHBAULSwIZagzf90USADS-wE1EDXMtrodCRUYOtGNCWPwL0G1y8pO7fA8vUSMZYtns-6Zkw4kzxCgnxEO3Lr217lqCGFoRc"/>
+</div>
+<div class="space-y-1">
+<div class="flex gap-2">
+<button class="bg-primary hover:bg-primary-dim text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all">Tải lên mới</button>
+<button class="text-on-surface-variant hover:bg-surface-container-high px-4 py-2 rounded-lg text-sm font-semibold transition-all">Xóa</button>
+</div>
+<p class="text-xs text-on-surface-variant/70">Định dạng PNG, JPG hoặc SVG. Tối đa 2MB.</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Security Configuration Block -->
+<section class="bg-surface-container-lowest rounded-xl p-8 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
+<div class="flex items-center gap-3 mb-8 border-b border-outline-variant/10 pb-4">
+<span class="material-symbols-outlined text-error text-2xl">shield_person</span>
+<h2 class="text-xl font-bold tracking-tight">Cài đặt bảo mật</h2>
+</div>
+<div class="space-y-8">
+<div class="flex items-center justify-between p-6 bg-surface-container-low rounded-xl">
+<div class="flex gap-4">
+<div class="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-primary">phonelink_lock</span>
+</div>
+<div>
+<h3 class="font-bold text-on-surface">Xác thực 2 lớp (2FA)</h3>
+<p class="text-sm text-on-surface-variant">Yêu cầu mã từ ứng dụng xác thực khi đăng nhập.</p>
+</div>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+</label>
+</div>
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<h3 class="font-bold text-on-surface">IP Whitelist</h3>
+<button class="text-primary text-sm font-bold flex items-center gap-1 hover:underline">
+<span class="material-symbols-outlined text-sm">add</span> Thêm IP
+                                    </button>
+</div>
+<div class="bg-surface-container-low rounded-xl overflow-hidden">
+<table class="w-full text-left">
+<thead class="bg-surface-container-high">
+<tr>
+<th class="px-6 py-3 text-xs font-bold uppercase tracking-wider text-on-surface-variant">Địa chỉ IP</th>
+<th class="px-6 py-3 text-xs font-bold uppercase tracking-wider text-on-surface-variant">Ghi chú</th>
+<th class="px-6 py-3 text-xs font-bold uppercase tracking-wider text-on-surface-variant text-right">Hành động</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/10">
+<tr>
+<td class="px-6 py-4 text-sm font-mono font-medium">192.168.1.1</td>
+<td class="px-6 py-4 text-sm text-on-surface-variant">Văn phòng chính</td>
+<td class="px-6 py-4 text-right">
+<button class="text-error-dim hover:bg-error-container/20 p-1.5 rounded-lg transition-colors">
+<span class="material-symbols-outlined text-sm">delete</span>
+</button>
+</td>
+</tr>
+<tr class="bg-surface-container/30">
+<td class="px-6 py-4 text-sm font-mono font-medium">42.115.32.11</td>
+<td class="px-6 py-4 text-sm text-on-surface-variant">Home Network</td>
+<td class="px-6 py-4 text-right">
+<button class="text-error-dim hover:bg-error-container/20 p-1.5 rounded-lg transition-colors">
+<span class="material-symbols-outlined text-sm">delete</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Right Sidebar Settings -->
+<div class="col-span-12 lg:col-span-4 space-y-8">
+<!-- Theme & Appearance -->
+<section class="bg-surface-container-lowest rounded-xl p-8 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
+<div class="flex items-center gap-3 mb-8 border-b border-outline-variant/10 pb-4">
+<span class="material-symbols-outlined text-tertiary text-2xl">palette</span>
+<h2 class="text-xl font-bold tracking-tight">Giao diện</h2>
+</div>
+<div class="space-y-6">
+<div class="grid grid-cols-2 gap-4">
+<button class="p-4 rounded-xl border-2 border-primary bg-surface-container-low flex flex-col items-center gap-3 transition-all ring-4 ring-primary/5">
+<span class="material-symbols-outlined text-3xl text-primary">light_mode</span>
+<span class="text-sm font-bold">Chế độ Sáng</span>
+</button>
+<button class="p-4 rounded-xl border-2 border-transparent bg-slate-900 flex flex-col items-center gap-3 transition-all hover:bg-slate-800">
+<span class="material-symbols-outlined text-3xl text-slate-400">dark_mode</span>
+<span class="text-sm font-bold text-slate-400">Chế độ Tối</span>
+</button>
+</div>
+<div class="space-y-2">
+<label class="text-xs font-bold uppercase tracking-wider text-on-surface-variant block">Ngôn ngữ hệ thống</label>
+<select class="w-full bg-surface-container-low border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary/20 text-on-surface font-medium appearance-none">
+<option>Tiếng Việt</option>
+<option>English</option>
+<option>日本語</option>
+</select>
+</div>
+</div>
+</section>
+<!-- Notifications Block -->
+<section class="bg-surface-container-lowest rounded-xl p-8 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
+<div class="flex items-center gap-3 mb-8 border-b border-outline-variant/10 pb-4">
+<span class="material-symbols-outlined text-on-primary-fixed-variant text-2xl">notifications_active</span>
+<h2 class="text-xl font-bold tracking-tight">Thông báo</h2>
+</div>
+<div class="space-y-4">
+<div class="flex items-center justify-between p-3 hover:bg-surface-container-low rounded-lg transition-colors">
+<span class="text-sm font-medium">Cảnh báo Spam</span>
+<input checked="" class="rounded-md border-none bg-surface-variant text-primary focus:ring-primary/20" type="checkbox"/>
+</div>
+<div class="flex items-center justify-between p-3 hover:bg-surface-container-low rounded-lg transition-colors">
+<span class="text-sm font-medium">Báo cáo chiến dịch</span>
+<input checked="" class="rounded-md border-none bg-surface-variant text-primary focus:ring-primary/20" type="checkbox"/>
+</div>
+<div class="flex items-center justify-between p-3 hover:bg-surface-container-low rounded-lg transition-colors">
+<span class="text-sm font-medium">Đăng nhập từ IP lạ</span>
+<input checked="" class="rounded-md border-none bg-surface-variant text-primary focus:ring-primary/20" type="checkbox"/>
+</div>
+<div class="flex items-center justify-between p-3 hover:bg-surface-container-low rounded-lg transition-colors">
+<span class="text-sm font-medium">Lỗi hệ thống (Critical)</span>
+<input checked="" class="rounded-md border-none bg-surface-variant text-primary focus:ring-primary/20" type="checkbox"/>
+</div>
+</div>
+</section>
+<!-- System Info Card -->
+<div class="p-8 rounded-xl bg-gradient-to-br from-primary to-primary-dim text-white shadow-lg overflow-hidden relative group">
+<div class="relative z-10">
+<h3 class="text-lg font-black mb-1">Nexus v4.2.0-stable</h3>
+<p class="text-white/80 text-sm mb-6">Mọi thay đổi sẽ được ghi lại trong nhật ký hệ thống để phục vụ đối soát.</p>
+<div class="flex justify-between items-center pt-4 border-t border-white/20">
+<span class="text-xs font-bold uppercase opacity-60">Database Status</span>
+<span class="flex items-center gap-1.5 text-xs font-bold">
+<span class="w-2 h-2 bg-tertiary-fixed rounded-full animate-pulse"></span>
+                                    CONNECTED
+                                </span>
+</div>
+</div>
+<div class="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-110 transition-transform duration-700">
+<span class="material-symbols-outlined text-[120px]">terminal</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Global Actions Footer -->
+<div class="sticky bottom-8 mt-12 flex justify-end gap-4">
+<button class="px-8 py-3 rounded-xl bg-surface-container-highest text-on-surface-variant font-bold hover:bg-surface-variant transition-all active:scale-95">Hủy bỏ</button>
+<button class="px-10 py-3 rounded-xl bg-gradient-to-r from-primary to-primary-dim text-white font-bold shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all active:scale-95 flex items-center gap-2">
+<span class="material-symbols-outlined text-xl">save</span>
+                    Lưu cấu hình
+                </button>
+</div>
+</main>
+</div>
+</body></html>

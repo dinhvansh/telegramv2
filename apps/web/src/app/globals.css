@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+:root {
+  --font-inter: "Segoe UI", Inter, system-ui, -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", sans-serif;
+  --surface: #f7f9fb;
+  --surface-low: #f0f4f7;
+  --surface-card: #ffffff;
+  --surface-high: #e1e9ee;
+  --primary: #0053db;
+  --primary-dim: #0048c1;
+  --primary-soft: rgba(0, 83, 219, 0.12);
+  --success: #006b62;
+  --success-soft: rgba(0, 107, 98, 0.12);
+  --warning: #6a5600;
+  --warning-soft: rgba(210, 167, 0, 0.18);
+  --danger: #9f403d;
+  --danger-soft: rgba(159, 64, 61, 0.12);
+  --on-surface: #2a3439;
+  --on-surface-variant: #566166;
+  --outline-ghost: rgba(169, 180, 185, 0.15);
+}
+
+@theme inline {
+  --color-background: var(--surface);
+  --color-foreground: var(--on-surface);
+  --font-sans: var(--font-inter);
+}
+
+body {
+  background: var(--surface);
+  color: var(--on-surface);
+  font-family: var(--font-inter), sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::selection {
+  background: rgba(0, 83, 219, 0.14);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(86, 97, 102, 0.2);
+  border-radius: 999px;
+}

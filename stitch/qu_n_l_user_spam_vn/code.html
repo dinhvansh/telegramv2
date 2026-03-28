@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+
+<html class="light" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Telegram Command - Quản lý người dùng</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "error-dim": "#4e0309",
+                        "on-error": "#fff7f6",
+                        "secondary-fixed": "#d5e3fc",
+                        "on-tertiary": "#e2fff9",
+                        "on-tertiary-fixed-variant": "#006d64",
+                        "on-secondary-container": "#455367",
+                        "outline-variant": "#a9b4b9",
+                        "on-primary-container": "#0048bf",
+                        "tertiary-container": "#91feef",
+                        "on-tertiary-fixed": "#004e47",
+                        "primary": "#0053db",
+                        "tertiary-fixed-dim": "#83efe1",
+                        "on-primary-fixed-variant": "#0050d4",
+                        "secondary-dim": "#465468",
+                        "on-error-container": "#752121",
+                        "on-primary": "#f8f7ff",
+                        "surface-container-high": "#e1e9ee",
+                        "inverse-on-surface": "#9a9d9f",
+                        "surface-container-low": "#f0f4f7",
+                        "secondary-fixed-dim": "#c7d5ed",
+                        "primary-dim": "#0048c1",
+                        "on-primary-fixed": "#003798",
+                        "on-background": "#2a3439",
+                        "surface-variant": "#d9e4ea",
+                        "secondary": "#526074",
+                        "surface-container": "#e8eff3",
+                        "outline": "#717c82",
+                        "on-tertiary-container": "#006259",
+                        "secondary-container": "#d5e3fc",
+                        "tertiary": "#006b62",
+                        "primary-container": "#dbe1ff",
+                        "surface-container-highest": "#d9e4ea",
+                        "surface": "#f7f9fb",
+                        "on-secondary-fixed-variant": "#4e5c71",
+                        "tertiary-dim": "#005e56",
+                        "inverse-primary": "#618bff",
+                        "surface-dim": "#cfdce3",
+                        "tertiary-fixed": "#91feef",
+                        "background": "#f7f9fb",
+                        "inverse-surface": "#0b0f10",
+                        "error": "#9f403d",
+                        "primary-fixed-dim": "#c7d3ff",
+                        "surface-bright": "#f7f9fb",
+                        "on-surface": "#2a3439",
+                        "surface-tint": "#0053db",
+                        "surface-container-lowest": "#ffffff",
+                        "on-secondary-fixed": "#324053",
+                        "on-surface-variant": "#566166",
+                        "primary-fixed": "#dbe1ff",
+                        "error-container": "#fe8983",
+                        "on-secondary": "#f8f8ff"
+                    },
+                    fontFamily: {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface antialiased overflow-x-hidden">
+<!-- TopNavBar (Shared Component) -->
+<nav class="fixed top-0 w-full z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-[0_8px_32px_rgba(42,52,57,0.04)] flex justify-between items-center px-8 h-16 w-full font-inter antialiased">
+<div class="flex items-center gap-8">
+<span class="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50">Telegram Command Center</span>
+<div class="hidden md:flex items-center bg-slate-50 dark:bg-slate-800/50 rounded-full px-4 py-1.5 gap-3">
+<span class="material-symbols-outlined text-slate-400 text-sm">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-sm w-64 placeholder-slate-400" placeholder="Tìm kiếm người dùng hoặc chiến dịch..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 duration-200 rounded-full">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 duration-200 rounded-full">
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+</button>
+<img alt="Ảnh đại diện quản trị viên" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCgfCr9BGzlHJ6MFEo9kXE6Fczh8kk2Oid8-Hu6k_xBdzRjOAHoNUYacGByUX0e1Vi5CH_SW8FpOGjgilBkSL7mtvoRYu__UPydTwwtB9rEyQrachaWAnGVEgT4jrVu0hLPy5PlABsAXMHpXNw3PIaXIC-kJHLHBir0wowbMecC0W33lghDckNiiQsCKav_IB7VspJGCTx2f1cKs6UH825Y8eVlEjhT6V52yAbgwjbMLd4YN3D3KlMh5houAStL37qTLHoUFXGBvD8"/>
+</div>
+</nav>
+<!-- SideNavBar (Shared Component) -->
+<aside class="h-screen w-64 fixed left-0 top-0 pt-20 bg-slate-50 dark:bg-slate-950 flex flex-col gap-1 hidden md:flex">
+<div class="px-6 mb-8">
+<h2 class="text-lg font-black text-slate-900 dark:text-white uppercase tracking-widest">Command Center</h2>
+<p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Hệ thống quản trị</p>
+</div>
+<nav class="flex flex-col gap-1">
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-4 py-3 mx-2 flex items-center gap-3 transition-all duration-200 ease-in-out hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg text-sm font-medium" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+            Tổng quan
+        </a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-4 py-3 mx-2 flex items-center gap-3 transition-all duration-200 ease-in-out hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg text-sm font-medium" href="#">
+<span class="material-symbols-outlined" data-icon="mail">mail</span>
+            Chiến dịch
+        </a>
+<a class="bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-sm rounded-lg mx-2 px-4 py-3 flex items-center gap-3 transition-all duration-200 ease-in-out text-sm font-semibold" href="#">
+<span class="material-symbols-outlined" data-icon="security" style="font-variation-settings: 'FILL' 1;">security</span>
+            Người dùng &amp; Spam
+        </a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-4 py-3 mx-2 flex items-center gap-3 transition-all duration-200 ease-in-out hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg text-sm font-medium" href="#">
+<span class="material-symbols-outlined" data-icon="schedule">schedule</span>
+            Bảng Autopost
+        </a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-4 py-3 mx-2 flex items-center gap-3 transition-all duration-200 ease-in-out hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg text-sm font-medium" href="#">
+<span class="material-symbols-outlined" data-icon="verified_user">verified_user</span>
+            Phân quyền
+        </a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-4 py-3 mx-2 flex items-center gap-3 transition-all duration-200 ease-in-out hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg text-sm font-medium" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+            Cài đặt
+        </a>
+</nav>
+</aside>
+<!-- Main Content Canvas -->
+<main class="md:ml-64 pt-20 px-4 md:px-10 pb-12 min-h-screen">
+<!-- Header Section -->
+<header class="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
+<div>
+<h1 class="text-4xl font-extrabold tracking-tight text-on-surface mb-2">Quản lý người dùng</h1>
+<p class="text-on-surface-variant font-medium">Theo dõi sự tăng trưởng của cộng đồng và thiết lập các lớp bảo vệ chống spam.</p>
+</div>
+<!-- Bento Filter Section -->
+<div class="bg-surface-container-low p-2 rounded-full flex items-center gap-2">
+<span class="text-xs font-bold uppercase tracking-wider text-on-surface-variant ml-4 mr-2">Lọc theo:</span>
+<select class="bg-surface-container-lowest border-none rounded-full text-xs font-semibold px-4 py-2 focus:ring-2 focus:ring-primary shadow-sm cursor-pointer">
+<option>Tất cả liên kết mời</option>
+<option>Chiến dịch: Winter Growth</option>
+<option>Chiến dịch: Tech Founders</option>
+<option>Tìm kiếm trực tiếp</option>
+</select>
+<button class="bg-primary text-on-primary px-6 py-2 rounded-full text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">filter_alt</span>
+                Áp dụng bộ lọc
+            </button>
+</div>
+</header>
+<!-- Dashboard Layout: Asymmetric Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+<!-- Middle Section: Table Container (8 Cols) -->
+<section class="lg:col-span-8 bg-surface-container-lowest rounded-xl shadow-[0_8px_32px_rgba(42,52,57,0.04)] overflow-hidden">
+<div class="px-8 py-6 flex items-center justify-between">
+<h3 class="text-lg font-bold text-on-surface uppercase tracking-wide">Thành viên mới gia nhập</h3>
+<div class="flex gap-2">
+<button class="p-2 text-on-surface-variant hover:bg-surface-container-low rounded-lg transition-colors">
+<span class="material-symbols-outlined">download</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:bg-surface-container-low rounded-lg transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low/50">
+<th class="px-8 py-4 text-[10px] font-black uppercase tracking-[0.1em] text-on-surface-variant">Hồ sơ người dùng</th>
+<th class="px-4 py-4 text-[10px] font-black uppercase tracking-[0.1em] text-on-surface-variant">Chiến dịch</th>
+<th class="px-4 py-4 text-[10px] font-black uppercase tracking-[0.1em] text-on-surface-variant">Nhóm</th>
+<th class="px-4 py-4 text-[10px] font-black uppercase tracking-[0.1em] text-on-surface-variant">ID / Username</th>
+<th class="px-8 py-4 text-[10px] font-black uppercase tracking-[0.1em] text-on-surface-variant">Thời gian tham gia</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-surface-container-low">
+<!-- Row 1 -->
+<tr class="hover:bg-surface-container-low/30 transition-colors group">
+<td class="px-8 py-5">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-primary-container flex items-center justify-center text-primary font-bold">JD</div>
+<span class="font-bold text-sm text-on-surface">Julianne Doe</span>
+</div>
+</td>
+<td class="px-4 py-5">
+<span class="text-xs font-semibold px-2 py-1 bg-secondary-container text-on-secondary-container rounded-lg">Winter_24</span>
+</td>
+<td class="px-4 py-5 text-sm font-medium text-on-surface-variant">Dev_Ops_Global</td>
+<td class="px-4 py-5">
+<div class="text-xs text-on-surface font-mono">5029112</div>
+<div class="text-[10px] text-primary font-bold">@juli_dev</div>
+</td>
+<td class="px-8 py-5 text-xs font-medium text-on-surface-variant">2 phút trước</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-surface-container-low/30 transition-colors group">
+<td class="px-8 py-5">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-tertiary-container flex items-center justify-center text-tertiary font-bold">MK</div>
+<span class="font-bold text-sm text-on-surface">Mark Kovalski</span>
+</div>
+</td>
+<td class="px-4 py-5">
+<span class="text-xs font-semibold px-2 py-1 bg-secondary-container text-on-secondary-container rounded-lg">Trực tiếp</span>
+</td>
+<td class="px-4 py-5 text-sm font-medium text-on-surface-variant">Support_QA</td>
+<td class="px-4 py-5">
+<div class="text-xs text-on-surface font-mono">1129384</div>
+<div class="text-[10px] text-primary font-bold">@marko_k</div>
+</td>
+<td class="px-8 py-5 text-xs font-medium text-on-surface-variant">14 phút trước</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-surface-container-low/30 transition-colors group">
+<td class="px-8 py-5">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center text-on-surface-variant font-bold">SL</div>
+<span class="font-bold text-sm text-on-surface">Sasha Lee</span>
+</div>
+</td>
+<td class="px-4 py-5">
+<span class="text-xs font-semibold px-2 py-1 bg-secondary-container text-on-secondary-container rounded-lg">Winter_24</span>
+</td>
+<td class="px-4 py-5 text-sm font-medium text-on-surface-variant">Dev_Ops_Global</td>
+<td class="px-4 py-5">
+<div class="text-xs text-on-surface font-mono">9928374</div>
+<div class="text-[10px] text-primary font-bold">@slee_crypto</div>
+</td>
+<td class="px-8 py-5 text-xs font-medium text-on-surface-variant">1 giờ trước</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="p-6 bg-surface-container-low/20 flex justify-center">
+<button class="text-xs font-bold text-primary hover:underline uppercase tracking-widest">Xem thêm 482 thành viên</button>
+</div>
+</section>
+<!-- Side Panel: Spam Protection (4 Cols) -->
+<aside class="lg:col-span-4 flex flex-col gap-6">
+<!-- Protection Settings Card -->
+<div class="bg-surface-container-lowest p-8 rounded-xl shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
+<div class="flex items-center gap-3 mb-8">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">security</span>
+<h3 class="text-lg font-black uppercase tracking-tight">Chống Spam</h3>
+</div>
+<div class="space-y-8">
+<!-- Toggle Item 1 -->
+<div class="flex items-center justify-between group">
+<div class="flex-1 pr-4">
+<label class="block text-sm font-bold text-on-surface mb-1">Tự động ban spam</label>
+<p class="text-[11px] text-on-surface-variant font-medium leading-relaxed">Sử dụng AI để khớp mẫu và cấm các tài khoản gửi liên kết lặp lại hoặc độc hại.</p>
+</div>
+<div class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container-high rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-primary after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+</div>
+</div>
+<!-- Toggle Item 2 -->
+<div class="flex items-center justify-between group">
+<div class="flex-1 pr-4">
+<label class="block text-sm font-bold text-on-surface mb-1">Tắt tiếng thành viên mới</label>
+<p class="text-[11px] text-on-surface-variant font-medium leading-relaxed">Hạn chế gửi phương tiện và liên kết trong 24 giờ cho tất cả người mới để ngăn chặn bot spam nhanh.</p>
+</div>
+<div class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container-high rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-primary after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+</div>
+</div>
+<!-- Keyword Filtering Block -->
+<div>
+<label class="block text-sm font-bold text-on-surface mb-3">Lọc từ khóa</label>
+<div class="relative">
+<textarea class="w-full bg-surface-container-low border-none rounded-xl text-xs font-medium p-4 focus:ring-2 focus:ring-primary placeholder:text-on-surface-variant/50" placeholder="Nhập các từ khóa cách nhau bằng dấu phẩy..." rows="3"></textarea>
+<div class="absolute bottom-2 right-2 text-[10px] font-bold text-on-surface-variant/40">QUÉT TRỰC TIẾP</div>
+</div>
+<div class="mt-3 flex flex-wrap gap-2">
+<span class="bg-error-container/20 text-error text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1">
+                                crypto_bot
+                                <span class="material-symbols-outlined text-[10px]">close</span>
+</span>
+<span class="bg-error-container/20 text-error text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1">
+                                airdrop
+                                <span class="material-symbols-outlined text-[10px]">close</span>
+</span>
+<button class="text-[10px] font-bold text-primary px-2 py-1">+ Thêm mới</button>
+</div>
+</div>
+</div>
+<button class="w-full mt-10 bg-gradient-to-br from-primary to-primary-dim text-on-primary py-3 rounded-lg font-bold text-sm shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all">
+                    Cập nhật giao thức bảo mật
+                </button>
+</div>
+<!-- Live Monitoring Stat Card -->
+<div class="bg-primary text-on-primary p-6 rounded-xl overflow-hidden relative group">
+<div class="absolute -right-8 -bottom-8 opacity-10 group-hover:scale-110 transition-transform duration-700">
+<span class="material-symbols-outlined text-9xl">gpp_maybe</span>
+</div>
+<p class="text-[10px] font-black uppercase tracking-[0.2em] opacity-80 mb-1">Mức độ đe dọa</p>
+<div class="text-3xl font-black mb-4">Ổn định</div>
+<div class="flex items-center gap-2 mb-6">
+<span class="w-2 h-2 bg-tertiary-fixed rounded-full animate-pulse"></span>
+<span class="text-xs font-bold opacity-90">12 nỗ lực spam bị chặn hôm nay</span>
+</div>
+<button class="bg-white/20 hover:bg-white/30 backdrop-blur-md px-4 py-2 rounded-lg text-xs font-bold transition-colors">
+                    Xem nhật ký chi tiết
+                </button>
+</div>
+</aside>
+</div>
+</main>
+<!-- Bottom Navigation (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl flex justify-around items-center h-16 px-4 z-50">
+<a class="flex flex-col items-center gap-1 text-slate-400" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="text-[10px] font-bold">Tổng quan</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-primary" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">security</span>
+<span class="text-[10px] font-bold">Bảo mật</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-slate-400" href="#">
+<span class="material-symbols-outlined">campaign</span>
+<span class="text-[10px] font-bold">Tăng trưởng</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-slate-400" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="text-[10px] font-bold">Cài đặt</span>
+</a>
+</nav>
+</body></html>

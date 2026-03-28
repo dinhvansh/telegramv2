@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+
+<html class="light" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Telegram Command Center - Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-primary-container": "#0048bf",
+              "outline": "#717c82",
+              "error-container": "#fe8983",
+              "secondary-fixed-dim": "#c7d5ed",
+              "on-tertiary-fixed-variant": "#006d64",
+              "outline-variant": "#a9b4b9",
+              "tertiary-fixed-dim": "#83efe1",
+              "surface-container-low": "#f0f4f7",
+              "on-secondary-fixed-variant": "#4e5c71",
+              "on-secondary-fixed": "#324053",
+              "on-tertiary": "#e2fff9",
+              "on-background": "#2a3439",
+              "surface-container": "#e8eff3",
+              "background": "#f7f9fb",
+              "secondary-dim": "#465468",
+              "on-secondary": "#f8f8ff",
+              "tertiary-container": "#91feef",
+              "secondary-container": "#d5e3fc",
+              "primary-fixed": "#dbe1ff",
+              "on-tertiary-fixed": "#004e47",
+              "surface-container-lowest": "#ffffff",
+              "surface": "#f7f9fb",
+              "tertiary-dim": "#005e56",
+              "surface-variant": "#d9e4ea",
+              "on-tertiary-container": "#006259",
+              "primary-fixed-dim": "#c7d3ff",
+              "surface-dim": "#cfdce3",
+              "on-primary-fixed-variant": "#0050d4",
+              "on-surface": "#2a3439",
+              "error-dim": "#4e0309",
+              "on-primary-fixed": "#003798",
+              "on-error": "#fff7f6",
+              "on-secondary-container": "#455367",
+              "secondary": "#526074",
+              "secondary-fixed": "#d5e3fc",
+              "inverse-primary": "#618bff",
+              "on-error-container": "#752121",
+              "error": "#9f403d",
+              "inverse-surface": "#0b0f10",
+              "primary-dim": "#0048c1",
+              "surface-tint": "#0053db",
+              "tertiary-fixed": "#91feef",
+              "tertiary": "#006b62",
+              "surface-container-highest": "#d9e4ea",
+              "primary": "#0053db",
+              "surface-bright": "#f7f9fb",
+              "inverse-on-surface": "#9a9d9f",
+              "primary-container": "#dbe1ff",
+              "on-surface-variant": "#566166",
+              "surface-container-high": "#e1e9ee",
+              "on-primary": "#f8f7ff"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+      body { font-family: 'Inter', sans-serif; }
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .glass-header {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(20px);
+      }
+      .nexus-gradient-btn {
+        background: linear-gradient(135deg, #0053db 0%, #0048c1 100%);
+      }
+    </style>
+</head>
+<body class="bg-surface text-on-surface antialiased">
+<nav class="fixed top-0 w-full z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-[0_8px_32px_rgba(42,52,57,0.04)] flex justify-between items-center px-8 h-16 w-full font-inter antialiased">
+<div class="flex items-center gap-8">
+<span class="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50">Telegram Command Center</span>
+<div class="hidden md:flex items-center bg-slate-50 dark:bg-slate-800/50 rounded-full px-4 py-1.5 gap-2">
+<span class="material-symbols-outlined text-slate-400 text-sm">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-sm w-64" placeholder="Tìm kiếm hệ thống..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 duration-200 rounded-full relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full border-2 border-white"></span>
+</button>
+<div class="flex items-center gap-3 pl-4 border-l border-outline-variant/30">
+<img alt="Ảnh đại diện quản trị viên" class="w-8 h-8 rounded-full object-cover" data-alt="Professional portrait of a tech administrator in a clean minimalist environment with soft cinematic lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB52cZAtbvwLt4nU3Sm9dalcxftMzKA3Y4ocfOACdQG8Yjh7ZMzKcAcZCn1HoAUacXFc7-vu-Jo-3HgKC8gIDPFuB4ff9yUOfZW7670sI9j31Tv_6AE9JjTZAK65SwOUh593Bji-ilTjupkoEjknBw_-ItxdJvCV3YodzfN0e0TsOdakyyZXQkpB5FLi_p5eu5wciJlzPNNTzZ4g1rD9_IqmGUEhdoRjrgA3VjoK5dClRYOySJw-yBYB_TvalKq1LI4u1fMwONWvzg"/>
+<button class="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 duration-200 rounded-full">
+<span class="material-symbols-outlined">logout</span>
+</button>
+</div>
+</div>
+</nav>
+<aside class="h-screen w-64 fixed left-0 top-0 pt-20 bg-slate-50 dark:bg-slate-950 flex flex-col gap-1 z-40">
+<div class="px-6 mb-6">
+<h2 class="text-lg font-black text-slate-900 dark:text-white">Command Center</h2>
+<p class="text-xs text-slate-500 font-medium uppercase tracking-widest">Hệ thống quản trị</p>
+</div>
+<nav class="flex flex-col gap-1">
+<a class="bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-sm rounded-lg mx-2 flex items-center px-4 py-3 gap-3 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="text-sm font-medium Inter">Tổng quan</span>
+</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-4 py-3 mx-2 flex items-center gap-3 transition-all duration-200 ease-in-out hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg" href="#">
+<span class="material-symbols-outlined">mail</span>
+<span class="text-sm font-medium Inter">Chiến dịch</span>
+</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-4 py-3 mx-2 flex items-center gap-3 transition-all duration-200 ease-in-out hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg" href="#">
+<span class="material-symbols-outlined">security</span>
+<span class="text-sm font-medium Inter">Người dùng &amp; Spam</span>
+</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-4 py-3 mx-2 flex items-center gap-3 transition-all duration-200 ease-in-out hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg" href="#">
+<span class="material-symbols-outlined">schedule</span>
+<span class="text-sm font-medium Inter">Bảng Autopost</span>
+</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-4 py-3 mx-2 flex items-center gap-3 transition-all duration-200 ease-in-out hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg" href="#">
+<span class="material-symbols-outlined">verified_user</span>
+<span class="text-sm font-medium Inter">Phân quyền</span>
+</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-4 py-3 mx-2 flex items-center gap-3 transition-all duration-200 ease-in-out hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="text-sm font-medium Inter">Cài đặt</span>
+</a>
+</nav>
+<div class="mt-auto p-4 mx-4 mb-4 bg-primary-container/30 rounded-xl">
+<div class="flex items-center gap-3 mb-2">
+<div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white">
+<span class="material-symbols-outlined text-sm">bolt</span>
+</div>
+<span class="text-xs font-bold text-on-primary-container">Nexus Pro</span>
+</div>
+<p class="text-[10px] text-on-surface-variant leading-relaxed">Hệ thống đang hoạt động tối ưu với 99.9% uptime.</p>
+</div>
+</aside>
+<main class="ml-64 pt-24 px-10 pb-12">
+<header class="mb-10 flex justify-between items-end">
+<div>
+<h1 class="text-3xl font-extrabold tracking-tight text-on-surface mb-1">Tổng quan hệ thống</h1>
+<p class="text-on-surface-variant">Chào mừng trở lại, quản trị viên Nexus. Đây là tình trạng vận hành hiện tại.</p>
+</div>
+<div class="flex gap-3">
+<button class="px-5 py-2.5 bg-surface-container-low text-on-surface font-semibold text-sm rounded-xl hover:bg-surface-container transition-all flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">calendar_today</span>
+                    Hôm nay: 24 Tháng 5
+                </button>
+<button class="px-5 py-2.5 nexus-gradient-btn text-white font-bold text-sm rounded-xl shadow-lg shadow-primary/20 flex items-center gap-2 active:scale-95 transition-all">
+<span class="material-symbols-outlined text-sm">add</span>
+                    Tạo chiến dịch mới
+                </button>
+</div>
+</header>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm border border-outline-variant/5">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 bg-primary/10 rounded-lg text-primary">
+<span class="material-symbols-outlined">person_add</span>
+</div>
+<span class="px-2 py-1 bg-tertiary/10 text-tertiary text-[10px] font-bold rounded-full flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">trending_up</span> +12%
+                    </span>
+</div>
+<p class="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Tổng người dùng mới</p>
+<h3 class="text-2xl font-black text-on-surface">12,482</h3>
+</div>
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm border border-outline-variant/5">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 bg-secondary/10 rounded-lg text-secondary">
+<span class="material-symbols-outlined">link</span>
+</div>
+<span class="px-2 py-1 bg-tertiary/10 text-tertiary text-[10px] font-bold rounded-full flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">check</span> 85%
+                    </span>
+</div>
+<p class="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Link mời hoạt động</p>
+<h3 class="text-2xl font-black text-on-surface">156</h3>
+</div>
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm border border-outline-variant/5">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 bg-tertiary/10 rounded-lg text-tertiary">
+<span class="material-symbols-outlined">send</span>
+</div>
+<span class="px-2 py-1 bg-on-surface-variant/10 text-on-surface-variant text-[10px] font-bold rounded-full flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">schedule</span> Hàng ngày
+                    </span>
+</div>
+<p class="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Tin nhắn Autopost</p>
+<h3 class="text-2xl font-black text-on-surface">45,102</h3>
+</div>
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm border border-outline-variant/5">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 bg-error/10 rounded-lg text-error">
+<span class="material-symbols-outlined">block</span>
+</div>
+<span class="px-2 py-1 bg-error/10 text-error text-[10px] font-bold rounded-full flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">warning</span> Cao
+                    </span>
+</div>
+<p class="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Vụ spam đã chặn</p>
+<h3 class="text-2xl font-black text-on-surface">3,209</h3>
+</div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
+<div class="lg:col-span-2 bg-surface-container-lowest p-8 rounded-xl shadow-sm">
+<div class="flex justify-between items-center mb-8">
+<h3 class="text-lg font-bold text-on-surface">Tăng trưởng người dùng</h3>
+<div class="flex gap-2">
+<button class="px-3 py-1 text-xs font-medium text-primary bg-primary/10 rounded-md">Tuần này</button>
+<button class="px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-container rounded-md">Tháng này</button>
+</div>
+</div>
+<div class="relative h-64 w-full flex items-end gap-2 group">
+<div class="flex-1 bg-primary/5 hover:bg-primary/20 transition-all rounded-t-lg relative" style="height: 40%;"></div>
+<div class="flex-1 bg-primary/10 hover:bg-primary/20 transition-all rounded-t-lg relative" style="height: 60%;"></div>
+<div class="flex-1 bg-primary/5 hover:bg-primary/20 transition-all rounded-t-lg relative" style="height: 35%;"></div>
+<div class="flex-1 bg-primary/20 hover:bg-primary/30 transition-all rounded-t-lg relative" style="height: 80%;">
+<div class="absolute -top-10 left-1/2 -translate-x-1/2 bg-on-surface text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">8.4k</div>
+</div>
+<div class="flex-1 bg-primary/15 hover:bg-primary/25 transition-all rounded-t-lg relative" style="height: 55%;"></div>
+<div class="flex-1 bg-primary/40 hover:bg-primary/50 transition-all rounded-t-lg relative" style="height: 95%;"></div>
+<div class="flex-1 bg-primary/30 hover:bg-primary/40 transition-all rounded-t-lg relative" style="height: 70%;"></div>
+</div>
+<div class="flex justify-between mt-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest px-1">
+<span>Thứ 2</span>
+<span>Thứ 3</span>
+<span>Thứ 4</span>
+<span>Thứ 5</span>
+<span>Thứ 6</span>
+<span>Thứ 7</span>
+<span>Chủ Nhật</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-8 rounded-xl shadow-sm">
+<h3 class="text-lg font-bold text-on-surface mb-6">Hiệu quả Link mời</h3>
+<div class="space-y-6">
+<div class="space-y-2">
+<div class="flex justify-between text-xs font-bold">
+<span class="text-on-surface">Chiến dịch Mùa Hè</span>
+<span class="text-primary">2,401 joins</span>
+</div>
+<div class="w-full bg-surface-container-high h-2 rounded-full overflow-hidden">
+<div class="bg-primary h-full rounded-full" style="width: 85%;"></div>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between text-xs font-bold">
+<span class="text-on-surface">Kênh Đối tác A</span>
+<span class="text-primary">1,120 joins</span>
+</div>
+<div class="w-full bg-surface-container-high h-2 rounded-full overflow-hidden">
+<div class="bg-primary/60 h-full rounded-full" style="width: 45%;"></div>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between text-xs font-bold">
+<span class="text-on-surface">Link Bio Instagram</span>
+<span class="text-primary">892 joins</span>
+</div>
+<div class="w-full bg-surface-container-high h-2 rounded-full overflow-hidden">
+<div class="bg-primary/40 h-full rounded-full" style="width: 35%;"></div>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between text-xs font-bold">
+<span class="text-on-surface">Quảng cáo Facebook</span>
+<span class="text-primary">450 joins</span>
+</div>
+<div class="w-full bg-surface-container-high h-2 rounded-full overflow-hidden">
+<div class="bg-primary/20 h-full rounded-full" style="width: 15%;"></div>
+</div>
+</div>
+</div>
+<button class="w-full mt-8 py-3 text-xs font-bold text-primary hover:bg-primary/5 transition-all rounded-xl border border-dashed border-primary/30">
+                    Xem chi tiết tất cả link
+                </button>
+</div>
+</div>
+<section>
+<div class="flex justify-between items-center mb-6">
+<h3 class="text-lg font-bold text-on-surface">Hoạt động gần đây</h3>
+<button class="text-sm font-semibold text-primary">Xem tất cả</button>
+</div>
+<div class="bg-surface-container-lowest rounded-2xl overflow-hidden shadow-sm">
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-low">
+<tr>
+<th class="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Thời gian</th>
+<th class="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Hoạt động</th>
+<th class="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Đối tượng</th>
+<th class="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Trạng thái</th>
+<th class="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Hành động</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/10">
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="px-6 py-5 text-sm text-on-surface-variant">14:20:05</td>
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-error/10 text-error flex items-center justify-center">
+<span class="material-symbols-outlined text-sm">security</span>
+</div>
+<span class="text-sm font-semibold text-on-surface">Chặn spam tự động</span>
+</div>
+</td>
+<td class="px-6 py-5 text-sm text-on-surface">User @crypto_bot_99</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-tertiary/10 text-tertiary">Hoàn tất</span>
+</td>
+<td class="px-6 py-5">
+<button class="p-2 hover:bg-surface-container rounded-lg text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">more_horiz</span>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="px-6 py-5 text-sm text-on-surface-variant">14:15:22</td>
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-sm">schedule</span>
+</div>
+<span class="text-sm font-semibold text-on-surface">Đã đăng Autopost</span>
+</div>
+</td>
+<td class="px-6 py-5 text-sm text-on-surface">Nhóm Tin Tức Crypto</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-tertiary/10 text-tertiary">Hoàn tất</span>
+</td>
+<td class="px-6 py-5">
+<button class="p-2 hover:bg-surface-container rounded-lg text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">more_horiz</span>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="px-6 py-5 text-sm text-on-surface-variant">14:02:10</td>
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-secondary/10 text-secondary flex items-center justify-center">
+<span class="material-symbols-outlined text-sm">link</span>
+</div>
+<span class="text-sm font-semibold text-on-surface">Tạo link mời mới</span>
+</div>
+</td>
+<td class="px-6 py-5 text-sm text-on-surface">Admin Nexus</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-tertiary/10 text-tertiary">Hoàn tất</span>
+</td>
+<td class="px-6 py-5">
+<button class="p-2 hover:bg-surface-container rounded-lg text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">more_horiz</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+</main>
+<div class="fixed bottom-8 right-8 z-50">
+<button class="w-14 h-14 nexus-gradient-btn text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-all group overflow-hidden relative">
+<span class="material-symbols-outlined text-3xl z-10">smart_toy</span>
+<div class="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+</button>
+<div class="absolute bottom-full right-0 mb-4 bg-white p-4 rounded-2xl shadow-xl border border-outline-variant/10 w-64 opacity-0 pointer-events-none group-hover:opacity-100 transition-all transform translate-y-2">
+<p class="text-xs font-bold text-on-surface mb-1">Nexus AI Assistant</p>
+<p class="text-[10px] text-on-surface-variant leading-relaxed">Hệ thống đang hoạt động tốt. Tôi đã tự động chặn 5 người dùng nghi vấn trong 1 giờ qua.</p>
+</div>
+</div>
+</body></html>

@@ -1,0 +1,269 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CampaignStatus {
+  ACTIVE
+  PAUSED
+  REVIEW
+}
+
+enum EventTone {
+  PRIMARY
+  SUCCESS
+  WARNING
+  DANGER
+}
+
+enum SpamDecision {
+  ALLOW
+  REVIEW
+  WARN
+  RESTRICT
+  BAN
+}
+
+enum ModerationScopeType {
+  GLOBAL
+  GROUP
+}
+
+enum ModerationListMode {
+  BLOCK
+  ALLOW
+}
+
+enum UserStatus {
+  ACTIVE
+  AWAY
+  DISABLED
+}
+
+enum SystemLogLevel {
+  INFO
+  WARN
+  ERROR
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  username     String?    @unique
+  name         String
+  department   String?
+  status       UserStatus @default(ACTIVE)
+  passwordHash String
+  createdAt    DateTime   @default(now())
+  userRoles    UserRole[]
+}
+
+model Role {
+  id              String           @id @default(cuid())
+  name            String           @unique
+  description     String
+  createdAt       DateTime         @default(now())
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+}
+
+model Permission {
+  id              String           @id @default(cuid())
+  code            String           @unique
+  description     String
+  createdAt       DateTime         @default(now())
+  rolePermissions RolePermission[]
+}
+
+model UserRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime @default(now())
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  assignedAt   DateTime   @default(now())
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model TelegramGroup {
+  id                 String              @id @default(cuid())
+  title              String
+  slug               String              @unique
+  externalId         String              @unique
+  campaigns          Campaign[]
+  moderationPolicies ModerationPolicy[]
+  createdAt          DateTime            @default(now())
+}
+
+model Campaign {
+  id             String          @id @default(cuid())
+  name           String
+  channel        String
+  joinRate       String
+  status         CampaignStatus
+  inviteCode     String          @unique
+  conversionRate Float           @default(0)
+  createdAt      DateTime        @default(now())
+  telegramGroup  TelegramGroup?  @relation(fields: [telegramGroupId], references: [id])
+  telegramGroupId String?
+}
+
+model CommunityMember {
+  id            String   @id @default(cuid())
+  displayName   String
+  avatarInitials String
+  externalId    String
+  username      String?
+  campaignLabel String
+  groupTitle    String
+  joinedAt      DateTime
+  leftAt        DateTime?
+  createdAt     DateTime @default(now())
+}
+
+model MetricCard {
+  id        String    @id @default(cuid())
+  label     String    @unique
+  value     String
+  trend     String
+  tone      EventTone
+  createdAt DateTime  @default(now())
+}
+
+model EventFeedItem {
+  id        String    @id @default(cuid())
+  title     String
+  detail    String
+  timeLabel String
+  tone      EventTone
+  createdAt DateTime  @default(now())
+}
+
+model ModerationRule {
+  id        String    @id @default(cuid())
+  sortOrder Int       @default(0)
+  content   String
+  createdAt DateTime  @default(now())
+}
+
+model ModerationPolicy {
+  id                String              @id @default(cuid())
+  scopeKey          String              @unique
+  scopeType         ModerationScopeType
+  scopeLabel        String
+  autoBanSpam       Boolean             @default(true)
+  muteNewMembers    Boolean             @default(false)
+  muteDurationHours Int                 @default(24)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  telegramGroupId   String?
+  telegramGroup     TelegramGroup?      @relation(fields: [telegramGroupId], references: [id], onDelete: Cascade)
+  domains           ModerationDomain[]
+  keywords          ModerationKeyword[]
+}
+
+model ModerationKeyword {
+  id                 String           @id @default(cuid())
+  value              String
+  normalizedValue    String
+  createdAt          DateTime         @default(now())
+  moderationPolicyId String
+  moderationPolicy   ModerationPolicy @relation(fields: [moderationPolicyId], references: [id], onDelete: Cascade)
+
+  @@unique([moderationPolicyId, normalizedValue])
+}
+
+model ModerationDomain {
+  id                 String             @id @default(cuid())
+  value              String
+  normalizedValue    String
+  mode               ModerationListMode @default(BLOCK)
+  createdAt          DateTime           @default(now())
+  moderationPolicyId String
+  moderationPolicy   ModerationPolicy   @relation(fields: [moderationPolicyId], references: [id], onDelete: Cascade)
+
+  @@unique([moderationPolicyId, normalizedValue, mode])
+}
+
+model SpamEvent {
+  id              String       @id @default(cuid())
+  source          String
+  eventType       String
+  actorUsername   String?
+  actorExternalId String?
+  groupTitle      String
+  groupExternalId String?
+  campaignLabel   String?
+  messageText     String?
+  messageExternalId String?
+  matchedRules    Json
+  ruleScore       Int
+  aiScore         Int?
+  finalScore      Int
+  aiLabel         String?
+  aiReason        String?
+  decision        SpamDecision
+  manualDecision  SpamDecision?
+  manualNote      String?
+  reviewedAt      DateTime?
+  actionLogs      Json?
+  lastActionAt    DateTime?
+  createdAt       DateTime     @default(now())
+}
+
+model RoadmapPhase {
+  id        String         @id @default(cuid())
+  name      String         @unique
+  outcome   String
+  sortOrder Int            @default(0)
+  tasks     RoadmapTask[]
+  createdAt DateTime       @default(now())
+}
+
+model RoadmapTask {
+  id             String       @id @default(cuid())
+  content        String
+  sortOrder      Int          @default(0)
+  roadmapPhase   RoadmapPhase @relation(fields: [roadmapPhaseId], references: [id], onDelete: Cascade)
+  roadmapPhaseId String
+  createdAt      DateTime     @default(now())
+}
+
+model AutopostCapability {
+  id        String   @id @default(cuid())
+  title     String   @unique
+  detail    String
+  createdAt DateTime @default(now())
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+}
+
+model SystemLog {
+  id        String         @id @default(cuid())
+  level     SystemLogLevel @default(INFO)
+  scope     String
+  action    String
+  message   String
+  detail    String?
+  payload   Json?
+  createdAt DateTime       @default(now())
+}
