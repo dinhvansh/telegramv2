@@ -1,0 +1,35 @@
+name: Deploy VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    if: ${{ secrets.TELEGRAM_VPS_HOST != '' && secrets.TELEGRAM_VPS_USER != '' && secrets.TELEGRAM_VPS_SSH_KEY != '' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy On VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.TELEGRAM_VPS_HOST }}
+          username: ${{ secrets.TELEGRAM_VPS_USER }}
+          key: ${{ secrets.TELEGRAM_VPS_SSH_KEY }}
+          script: |
+            set -e
+            mkdir -p /opt/telegramv2
+            if [ ! -d /opt/telegramv2/app/.git ]; then
+              rm -rf /opt/telegramv2/app
+              git clone --depth 1 https://github.com/dinhvansh/telegramv2.git /opt/telegramv2/app
+            fi
+            cd /opt/telegramv2/app
+            git fetch origin main
+            git reset --hard origin/main
+            chmod +x infra/deploy/deploy-vps.sh
+            APP_ROOT=/opt/telegramv2 APP_DIR=/opt/telegramv2/app SHARED_DIR=/opt/telegramv2/shared ./infra/deploy/deploy-vps.sh

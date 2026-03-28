@@ -13,6 +13,33 @@ enum CampaignStatus {
   REVIEW
 }
 
+enum AutopostTargetPlatform {
+  TELEGRAM
+  DISCORD
+  TWITTER
+}
+
+enum AutopostScheduleStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum AutopostDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum InviteEventType {
+  LINK_CREATED
+  USER_JOINED
+  USER_LEFT
+  JOIN_REQUEST
+}
+
 enum EventTone {
   PRIMARY
   SUCCESS
@@ -105,21 +132,23 @@ model TelegramGroup {
   slug               String              @unique
   externalId         String              @unique
   campaigns          Campaign[]
+  inviteLinks        CampaignInviteLink[]
   moderationPolicies ModerationPolicy[]
   createdAt          DateTime            @default(now())
 }
 
 model Campaign {
-  id             String          @id @default(cuid())
-  name           String
-  channel        String
-  joinRate       String
-  status         CampaignStatus
-  inviteCode     String          @unique
-  conversionRate Float           @default(0)
-  createdAt      DateTime        @default(now())
-  telegramGroup  TelegramGroup?  @relation(fields: [telegramGroupId], references: [id])
+  id              String               @id @default(cuid())
+  name            String
+  channel         String
+  joinRate        String
+  status          CampaignStatus
+  inviteCode      String               @unique
+  conversionRate  Float                @default(0)
+  createdAt       DateTime             @default(now())
+  telegramGroup   TelegramGroup?       @relation(fields: [telegramGroupId], references: [id])
   telegramGroupId String?
+  inviteLinks     CampaignInviteLink[]
 }
 
 model CommunityMember {
@@ -250,6 +279,44 @@ model AutopostCapability {
   createdAt DateTime @default(now())
 }
 
+model AutopostTarget {
+  id          String                 @id @default(cuid())
+  platform    AutopostTargetPlatform
+  externalId  String
+  displayName String
+  status      String                 @default("CONNECTED")
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  schedules   AutopostSchedule[]
+
+  @@unique([platform, externalId])
+}
+
+model AutopostSchedule {
+  id                String                 @id @default(cuid())
+  title             String
+  message           String
+  frequency         String
+  scheduledFor      DateTime?
+  status            AutopostScheduleStatus @default(DRAFT)
+  mediaUrl          String?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  targetId          String
+  target            AutopostTarget         @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  logs              AutopostLog[]
+}
+
+model AutopostLog {
+  id             String                 @id @default(cuid())
+  scheduleId     String
+  schedule       AutopostSchedule       @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  status         AutopostDeliveryStatus @default(PENDING)
+  detail         String?
+  externalPostId String?
+  createdAt      DateTime               @default(now())
+}
+
 model SystemSetting {
   id        String   @id @default(cuid())
   key       String   @unique
@@ -266,4 +333,34 @@ model SystemLog {
   detail    String?
   payload   Json?
   createdAt DateTime       @default(now())
+}
+
+model CampaignInviteLink {
+  id               String            @id @default(cuid())
+  campaignId       String
+  campaign         Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  telegramGroupId  String?
+  telegramGroup    TelegramGroup?    @relation(fields: [telegramGroupId], references: [id], onDelete: SetNull)
+  externalInviteId String?
+  inviteUrl        String            @unique
+  label            String
+  memberLimit      Int?
+  createsJoinRequest Boolean         @default(false)
+  status           String            @default("ACTIVE")
+  expireAt         DateTime?
+  createdAt        DateTime          @default(now())
+  events           InviteLinkEvent[]
+}
+
+model InviteLinkEvent {
+  id              String          @id @default(cuid())
+  inviteLinkId    String?
+  inviteLink      CampaignInviteLink? @relation(fields: [inviteLinkId], references: [id], onDelete: SetNull)
+  eventType       InviteEventType
+  actorExternalId String?
+  actorUsername   String?
+  groupTitle      String
+  groupExternalId String?
+  detail          String?
+  createdAt       DateTime        @default(now())
 }

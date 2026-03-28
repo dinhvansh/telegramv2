@@ -92,20 +92,20 @@
 - [x] CÃ³ model campaign cÆ¡ báº£n
 - [x] CÃ³ API list/create campaign cÆ¡ báº£n
 - [-] CRUD campaign Ä‘áº§y Ä‘á»§
-- [ ] Generate invite link tháº­t
-- [ ] Map user join vÃ o campaign
-- [ ] Ghi invite_link_events
+- [x] Generate invite link tháº­t
+- [-] Map user join vÃ o campaign
+- [x] Ghi invite_link_events
 - [ ] Cáº­p nháº­t campaign metrics tháº­t
 
 ## 8. Autopost
 
 - [x] CÃ³ capability model cÆ¡ báº£n
 - [ ] Táº¡o message template model
-- [ ] Táº¡o schedule model
-- [ ] Táº¡o job dispatch flow
-- [ ] Táº¡o send log
-- [ ] UI quáº£n lÃ½ schedule
-- [ ] Retry / fail / success state
+- [x] Táº¡o schedule model
+- [x] Táº¡o job dispatch flow
+- [x] Táº¡o send log
+- [x] UI quáº£n lÃ½ schedule
+- [-] Retry / fail / success state
 
 ## 9. Moderation And Anti-Spam
 

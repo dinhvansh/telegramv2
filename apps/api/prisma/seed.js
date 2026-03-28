@@ -23,6 +23,11 @@ async function main() {
   await prisma.permission.deleteMany();
   await prisma.role.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.autopostLog.deleteMany();
+  await prisma.autopostSchedule.deleteMany();
+  await prisma.autopostTarget.deleteMany();
+  await prisma.inviteLinkEvent.deleteMany();
+  await prisma.campaignInviteLink.deleteMany();
   await prisma.eventFeedItem.deleteMany();
   await prisma.communityMember.deleteMany();
   await prisma.metricCard.deleteMany();
@@ -191,6 +196,77 @@ async function main() {
         status: CampaignStatus.PAUSED,
         conversionRate: 12,
         telegramGroupId: alphaGroup.id,
+      },
+    ],
+  });
+
+  const campaigns = await prisma.campaign.findMany({
+    orderBy: { createdAt: 'asc' },
+  });
+  const [summerCampaign, partnerCampaign, vipCampaign] = campaigns;
+
+  const inviteLinks = await Promise.all([
+    prisma.campaignInviteLink.create({
+      data: {
+        campaignId: summerCampaign.id,
+        telegramGroupId: globalGroup.id,
+        externalInviteId: 'summer-growth-2026-a',
+        inviteUrl: 'https://t.me/+AbX92Nexus',
+        label: 'Summer Growth 2026 / Direct',
+        memberLimit: 500,
+        createsJoinRequest: false,
+      },
+    }),
+    prisma.campaignInviteLink.create({
+      data: {
+        campaignId: partnerCampaign.id,
+        telegramGroupId: partnerGroup.id,
+        externalInviteId: 'partner-east-review',
+        inviteUrl: 'https://t.me/+KqP11Orbit',
+        label: 'Partner Referral East / Review',
+        memberLimit: 250,
+        createsJoinRequest: true,
+      },
+    }),
+    prisma.campaignInviteLink.create({
+      data: {
+        campaignId: vipCampaign.id,
+        telegramGroupId: vipGroup.id,
+        externalInviteId: 'vip-reengagement',
+        inviteUrl: 'https://t.me/+R9s11Pulse',
+        label: 'VIP Re-engagement',
+        memberLimit: 100,
+        createsJoinRequest: true,
+      },
+    }),
+  ]);
+
+  await prisma.inviteLinkEvent.createMany({
+    data: [
+      {
+        inviteLinkId: inviteLinks[0].id,
+        eventType: 'LINK_CREATED',
+        groupTitle: globalGroup.title,
+        groupExternalId: globalGroup.externalId,
+        detail: 'Seed invite link created for Summer Growth 2026.',
+      },
+      {
+        inviteLinkId: inviteLinks[0].id,
+        eventType: 'USER_JOINED',
+        actorExternalId: '5029112',
+        actorUsername: 'juli_dev',
+        groupTitle: globalGroup.title,
+        groupExternalId: globalGroup.externalId,
+        detail: 'Joined through Summer Growth 2026 / Direct.',
+      },
+      {
+        inviteLinkId: inviteLinks[1].id,
+        eventType: 'JOIN_REQUEST',
+        actorExternalId: '9911002',
+        actorUsername: 'support_wallet',
+        groupTitle: partnerGroup.title,
+        groupExternalId: partnerGroup.externalId,
+        detail: 'Join request captured via Partner Referral East / Review.',
       },
     ],
   });
@@ -451,6 +527,75 @@ async function main() {
       {
         title: 'Logs',
         detail: 'Sent, failed, retried và thời gian phản hồi từng kênh.',
+      },
+    ],
+  });
+
+  const autopostTargets = await Promise.all([
+    prisma.autopostTarget.create({
+      data: {
+        platform: 'TELEGRAM',
+        externalId: globalGroup.externalId,
+        displayName: 'Thông báo Toàn cầu',
+        status: 'CONNECTED',
+      },
+    }),
+    prisma.autopostTarget.create({
+      data: {
+        platform: 'DISCORD',
+        externalId: 'discord-dev-logs',
+        displayName: 'Discord Dev Logs',
+        status: 'CONNECTED',
+      },
+    }),
+    prisma.autopostTarget.create({
+      data: {
+        platform: 'TELEGRAM',
+        externalId: alphaGroup.externalId,
+        displayName: 'Nhóm Người dùng Thử nghiệm',
+        status: 'ERROR',
+      },
+    }),
+  ]);
+
+  const autopostSchedules = await Promise.all([
+    prisma.autopostSchedule.create({
+      data: {
+        title: 'Bản phát hành v2.4',
+        message:
+          'Bản phát hành v2.4 đã sẵn sàng. Vui lòng xem changelog và xác nhận rollout.',
+        frequency: 'IMMEDIATE',
+        scheduledFor: new Date(now + 15 * 60 * 1000),
+        status: 'SCHEDULED',
+        targetId: autopostTargets[0].id,
+      },
+    }),
+    prisma.autopostSchedule.create({
+      data: {
+        title: 'Daily Ops Digest',
+        message:
+          'Tóm tắt daily ops: campaign growth, spam score và trạng thái worker.',
+        frequency: 'DAILY',
+        scheduledFor: new Date(now + 2 * 60 * 60 * 1000),
+        status: 'SCHEDULED',
+        targetId: autopostTargets[1].id,
+      },
+    }),
+  ]);
+
+  await prisma.autopostLog.createMany({
+    data: [
+      {
+        scheduleId: autopostSchedules[0].id,
+        status: 'SENT',
+        detail: 'Telegram target seeded as sent for local preview.',
+        externalPostId: 'seed-tele-1',
+      },
+      {
+        scheduleId: autopostSchedules[1].id,
+        status: 'FAILED',
+        detail: 'Discord webhook placeholder failed in seed preview.',
+        externalPostId: null,
       },
     ],
   });

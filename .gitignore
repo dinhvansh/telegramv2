@@ -21,6 +21,9 @@ pnpm-debug.log*
 .env
 apps/api/.env
 apps/web/.env
+.env.production
+.env.production.local
+.secrets/
 
 # Playwright and local artifacts
 .playwright-cli/

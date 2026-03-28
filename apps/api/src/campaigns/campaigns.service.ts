@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
 import { Injectable } from '@nestjs/common';
 import { CampaignStatus } from '@prisma/client';
 import { fallbackSnapshot } from '../platform/fallback-snapshot';
@@ -38,18 +39,47 @@ export class CampaignsService {
       }));
     }
 
-    const campaigns = await this.prisma.campaign.findMany({
+    const campaigns = (await this.prisma.campaign.findMany({
+      include: {
+        inviteLinks: {
+          include: {
+            events: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
       orderBy: { createdAt: 'asc' },
-    });
+    })) as any[];
 
-    return campaigns.map((campaign) => ({
+    return campaigns.map((campaign: any) => ({
       id: campaign.id,
+      telegramGroupId: campaign.telegramGroupId,
       name: campaign.name,
       channel: campaign.channel,
-      inviteCode: campaign.inviteCode,
-      joinRate: campaign.joinRate,
-      status: statusFromDb[campaign.status],
-      conversionRate: campaign.conversionRate,
+      inviteCode: campaign.inviteLinks[0]?.inviteUrl || campaign.inviteCode,
+      joinRate: campaign.inviteLinks[0]?.memberLimit
+        ? `${campaign.inviteLinks[0].events.filter((event: any) => event.eventType === 'USER_JOINED').length} / ${campaign.inviteLinks[0].memberLimit}`
+        : campaign.joinRate,
+      status: statusFromDb[campaign.status as CampaignStatus],
+      conversionRate: campaign.inviteLinks[0]?.memberLimit
+        ? Math.round(
+            (campaign.inviteLinks[0].events.filter(
+              (event: any) => event.eventType === 'USER_JOINED',
+            ).length /
+              campaign.inviteLinks[0].memberLimit) *
+              100,
+          )
+        : campaign.conversionRate,
+      inviteLinks: campaign.inviteLinks.map((inviteLink: any) => ({
+        id: inviteLink.id,
+        label: inviteLink.label,
+        inviteUrl: inviteLink.inviteUrl,
+        memberLimit: inviteLink.memberLimit,
+        createsJoinRequest: inviteLink.createsJoinRequest,
+        joins: inviteLink.events.filter(
+          (event: any) => event.eventType === 'USER_JOINED',
+        ).length,
+      })),
     }));
   }
 
@@ -70,6 +100,9 @@ export class CampaignsService {
     const status = input.status
       ? statusToDb[input.status]
       : CampaignStatus.ACTIVE;
+    const telegramGroup = await this.prisma.telegramGroup.findFirst({
+      where: { title: input.channel },
+    });
 
     const campaign = await this.prisma.campaign.create({
       data: {
@@ -79,6 +112,7 @@ export class CampaignsService {
         inviteCode,
         status,
         conversionRate: 0,
+        telegramGroupId: telegramGroup?.id || null,
       },
     });
 
@@ -91,5 +125,38 @@ export class CampaignsService {
       status: statusFromDb[campaign.status],
       conversionRate: campaign.conversionRate,
     };
+  }
+
+  async findInviteLinks(campaignId: string) {
+    if (!process.env.DATABASE_URL) {
+      return [];
+    }
+
+    const inviteLinks = (await this.prisma.campaignInviteLink.findMany({
+      where: { campaignId },
+      include: {
+        events: {
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    })) as any[];
+
+    return inviteLinks.map((inviteLink: any) => ({
+      id: inviteLink.id,
+      label: inviteLink.label,
+      inviteUrl: inviteLink.inviteUrl,
+      memberLimit: inviteLink.memberLimit,
+      createsJoinRequest: inviteLink.createsJoinRequest,
+      status: inviteLink.status,
+      expireAt: inviteLink.expireAt?.toISOString() || null,
+      events: inviteLink.events.map((event: any) => ({
+        id: event.id,
+        eventType: event.eventType,
+        actorUsername: event.actorUsername,
+        createdAt: event.createdAt.toISOString(),
+        detail: event.detail,
+      })),
+    }));
   }
 }

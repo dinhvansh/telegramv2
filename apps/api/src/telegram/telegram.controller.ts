@@ -30,6 +30,7 @@ type TelegramMockBody = {
 };
 
 type TelegramInviteLinkBody = {
+  campaignId?: string;
   groupExternalId?: string;
   groupTitle?: string;
   name?: string;
@@ -51,7 +52,7 @@ export class TelegramController {
 
   @Get('groups')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('settings.manage')
+  @Permissions('campaign.manage')
   getGroups() {
     return this.telegramService.getGroups();
   }
@@ -82,6 +83,7 @@ export class TelegramController {
   @Permissions('campaign.manage')
   createInviteLink(@Body() body: TelegramInviteLinkBody) {
     return this.telegramService.createInviteLink({
+      campaignId: body.campaignId,
       groupExternalId: body.groupExternalId,
       groupTitle: body.groupTitle,
       name: body.name,

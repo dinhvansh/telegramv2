@@ -67,6 +67,7 @@ type TelegramMockEventInput = {
 };
 
 type TelegramInviteLinkInput = {
+  campaignId?: string;
   groupExternalId?: string;
   groupTitle?: string;
   name?: string;
@@ -479,6 +480,73 @@ export class TelegramService {
         memberLimit: memberLimit || null,
       },
     });
+
+    if (
+      process.env.DATABASE_URL &&
+      response.ok &&
+      response.result?.invite_link
+    ) {
+      const resolvedCampaignId = await this.resolveCampaignForInviteLink(
+        input.campaignId,
+        targetGroup.title,
+      );
+      if (resolvedCampaignId) {
+        const inviteLink = await this.prisma.campaignInviteLink.upsert({
+          where: {
+            inviteUrl: response.result.invite_link,
+          },
+          update: {
+            campaignId: resolvedCampaignId,
+            telegramGroupId:
+              'id' in targetGroup && typeof targetGroup.id === 'string'
+                ? targetGroup.id
+                : null,
+            externalInviteId: input.name?.trim() || null,
+            label:
+              input.name?.trim() ||
+              response.result.name ||
+              `Invite ${targetGroup.title}`,
+            memberLimit:
+              response.result.member_limit || input.memberLimit || null,
+            createsJoinRequest: Boolean(response.result.creates_join_request),
+            expireAt: response.result.expire_date
+              ? new Date(response.result.expire_date * 1000)
+              : null,
+            status: 'ACTIVE',
+          },
+          create: {
+            campaignId: resolvedCampaignId,
+            telegramGroupId:
+              'id' in targetGroup && typeof targetGroup.id === 'string'
+                ? targetGroup.id
+                : null,
+            externalInviteId: input.name?.trim() || null,
+            inviteUrl: response.result.invite_link,
+            label:
+              input.name?.trim() ||
+              response.result.name ||
+              `Invite ${targetGroup.title}`,
+            memberLimit:
+              response.result.member_limit || input.memberLimit || null,
+            createsJoinRequest: Boolean(response.result.creates_join_request),
+            expireAt: response.result.expire_date
+              ? new Date(response.result.expire_date * 1000)
+              : null,
+            status: 'ACTIVE',
+          },
+        });
+
+        await this.prisma.inviteLinkEvent.create({
+          data: {
+            inviteLinkId: inviteLink.id,
+            eventType: 'LINK_CREATED',
+            groupTitle: targetGroup.title,
+            groupExternalId: targetGroup.externalId,
+            detail: `Invite link created for ${targetGroup.title}`,
+          },
+        });
+      }
+    }
 
     return {
       ok: Boolean(response.ok),
@@ -895,23 +963,36 @@ export class TelegramService {
     processed: {
       eventType: string;
       groupTitle: string;
+      groupExternalId?: string | null;
       campaignLabel?: string | null;
     },
   ) {
     const inviteLabel = processed.campaignLabel || 'direct invite';
+    const inviteRecord = await this.resolveInviteLinkFromWebhook(payload);
+    const resolvedCampaignLabel =
+      inviteRecord?.label || inviteLabel || 'direct invite';
 
     if (payload.message?.new_chat_members?.length) {
       for (const member of payload.message.new_chat_members) {
         await this.persistCommunityMemberEvent({
           eventType: 'user_joined',
           groupTitle: processed.groupTitle,
-          campaignLabel: inviteLabel,
+          campaignLabel: resolvedCampaignLabel,
           actorUsername: member.username ?? null,
           actorExternalId: member.id ? String(member.id) : null,
           displayName: [member.first_name, member.last_name]
             .filter(Boolean)
             .join(' ')
             .trim(),
+        });
+        await this.persistInviteLinkEvent({
+          inviteLinkId: inviteRecord?.id || null,
+          eventType: 'USER_JOINED',
+          actorExternalId: member.id ? String(member.id) : null,
+          actorUsername: member.username ?? null,
+          groupTitle: processed.groupTitle,
+          groupExternalId: processed.groupExternalId || null,
+          detail: `Joined via ${resolvedCampaignLabel}`,
         });
       }
       return;
@@ -922,7 +1003,7 @@ export class TelegramService {
       await this.persistCommunityMemberEvent({
         eventType: 'user_left',
         groupTitle: processed.groupTitle,
-        campaignLabel: inviteLabel,
+        campaignLabel: resolvedCampaignLabel,
         actorUsername: member.username ?? null,
         actorExternalId: member.id ? String(member.id) : null,
         displayName: [member.first_name, member.last_name]
@@ -930,7 +1011,118 @@ export class TelegramService {
           .join(' ')
           .trim(),
       });
+      await this.persistInviteLinkEvent({
+        inviteLinkId: inviteRecord?.id || null,
+        eventType: 'USER_LEFT',
+        actorExternalId: member.id ? String(member.id) : null,
+        actorUsername: member.username ?? null,
+        groupTitle: processed.groupTitle,
+        groupExternalId: processed.groupExternalId || null,
+        detail: `Left group previously tied to ${resolvedCampaignLabel}`,
+      });
     }
+
+    if (payload.chat_join_request) {
+      await this.persistInviteLinkEvent({
+        inviteLinkId: inviteRecord?.id || null,
+        eventType: 'JOIN_REQUEST',
+        actorExternalId: payload.chat_join_request.from?.id
+          ? String(payload.chat_join_request.from.id)
+          : null,
+        actorUsername: payload.chat_join_request.from?.username ?? null,
+        groupTitle: processed.groupTitle,
+        groupExternalId: processed.groupExternalId || null,
+        detail: `Join request via ${resolvedCampaignLabel}`,
+      });
+    }
+  }
+
+  private async resolveCampaignForInviteLink(
+    campaignId: string | undefined,
+    groupTitle: string,
+  ) {
+    if (!process.env.DATABASE_URL) {
+      return null;
+    }
+
+    if (campaignId) {
+      const byId = await this.prisma.campaign.findUnique({
+        where: { id: campaignId },
+      });
+      if (byId) {
+        return byId.id;
+      }
+    }
+
+    const byChannel = await this.prisma.campaign.findFirst({
+      where: {
+        channel: groupTitle,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return byChannel?.id || null;
+  }
+
+  private async resolveInviteLinkFromWebhook(payload: WebhookPayload) {
+    if (!process.env.DATABASE_URL) {
+      return null;
+    }
+
+    const inviteUrl =
+      payload.message?.invite_link?.invite_link ||
+      payload.chat_join_request?.invite_link?.invite_link ||
+      null;
+    const inviteName =
+      payload.message?.invite_link?.name ||
+      payload.chat_join_request?.invite_link?.name ||
+      null;
+
+    if (inviteUrl) {
+      const byUrl = await this.prisma.campaignInviteLink.findUnique({
+        where: { inviteUrl },
+      });
+      if (byUrl) {
+        return byUrl;
+      }
+    }
+
+    if (inviteName) {
+      return this.prisma.campaignInviteLink.findFirst({
+        where: {
+          OR: [{ label: inviteName }, { externalInviteId: inviteName }],
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
+    return null;
+  }
+
+  private async persistInviteLinkEvent(input: {
+    inviteLinkId?: string | null;
+    eventType: 'USER_JOINED' | 'USER_LEFT' | 'JOIN_REQUEST';
+    actorExternalId?: string | null;
+    actorUsername?: string | null;
+    groupTitle: string;
+    groupExternalId?: string | null;
+    detail?: string | null;
+  }) {
+    if (!process.env.DATABASE_URL) {
+      return;
+    }
+
+    await this.prisma.inviteLinkEvent.create({
+      data: {
+        inviteLinkId: input.inviteLinkId || null,
+        eventType: input.eventType,
+        actorExternalId: input.actorExternalId || null,
+        actorUsername: input.actorUsername || null,
+        groupTitle: input.groupTitle,
+        groupExternalId: input.groupExternalId || null,
+        detail: input.detail || null,
+      },
+    });
   }
 
   private async persistCommunityMemberEvent(input: {

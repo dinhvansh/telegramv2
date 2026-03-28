@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
+import { AutopostModule } from './autopost/autopost.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
 import { ModerationModule } from './moderation/moderation.module';
 import { PlatformModule } from './platform/platform.module';
@@ -17,6 +18,7 @@ import { UsersModule } from './users/users.module';
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     AuthModule,
+    AutopostModule,
     PlatformModule,
     CampaignsModule,
     ModerationModule,

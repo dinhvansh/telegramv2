@@ -14,19 +14,28 @@ async function hydrateCampaigns() {
   const searchInput = tableCard && tableCard.querySelector('input[type="text"]');
   const tableBody = tableCard && tableCard.querySelector('tbody');
   const footerRow = tableCard && Array.from(tableCard.querySelectorAll('.px-8.py-6')).find(function(section) {
-    return /Äang hiá»ƒn thá»‹|Đang hiển thị/i.test(String(section.textContent || ''));
+    return /Äang hiá»ƒn thá»‹|Dang hien thi/i.test(String(section.textContent || ''));
   });
   const tableFooter = footerRow && footerRow.querySelector('span');
   const tableHeader = tableCard && tableCard.querySelector('.px-8.py-6.border-b');
   const tableHeaderActions = tableHeader && tableHeader.querySelector('.flex.items-center.gap-3');
   const form = formSection && formSection.querySelector('form');
 
-  const results = await Promise.all([fetchJson('/campaigns'), fetchJson('/platform')]);
+  const results = await Promise.all([
+    fetchJson('/campaigns'),
+    fetchJson('/platform'),
+    fetchJson('/telegram/groups').catch(function() {
+      return { items: [] };
+    }),
+  ]);
   const liveCampaigns = Array.isArray(results[0]) ? results[0].slice() : [];
   const snapshot = results[1];
+  const telegramGroups = Array.isArray(results[2] && results[2].items)
+    ? results[2].items
+    : [];
   const joinMetric = Array.isArray(snapshot.metrics)
     ? snapshot.metrics.find(function(metric) {
-        return /join|user|người/i.test(String(metric.label || ''));
+        return /join|user|ngÆ°á»i/i.test(String(metric.label || ''));
       })
     : null;
 
@@ -42,7 +51,7 @@ async function hydrateCampaigns() {
     setText(statsCard.querySelector('h3'), joinMetric.value || '--');
     const note = statsCard.querySelector('p');
     if (note) {
-      note.textContent = 'Nguồn dữ liệu live từ API campaigns và snapshot tổng hợp.';
+      note.textContent = 'Nguá»“n dá»¯ liá»‡u live tá»« API campaigns, Telegram groups vÃ  tracking invite link.';
     }
     const trend = statsCard.querySelector('span.text-tertiary');
     if (trend) {
@@ -52,15 +61,19 @@ async function hydrateCampaigns() {
 
   const groupSelect = form && form.querySelector('select');
   if (groupSelect) {
-    const channels = uniqueValues(
-      liveCampaigns.map(function(campaign) {
-        return String(campaign.channel || '').trim();
-      }).filter(Boolean),
-    );
+    const groups = telegramGroups.length
+      ? telegramGroups
+      : uniqueValues(
+          liveCampaigns.map(function(campaign) {
+            return String(campaign.channel || '').trim();
+          }).filter(Boolean),
+        ).map(function(channel) {
+          return { title: channel, externalId: channel };
+        });
 
-    groupSelect.innerHTML = ['<option>Chọn một kênh hoặc nhóm</option>']
-      .concat(channels.map(function(channel) {
-        return '<option>' + escapeHtml(channel) + '</option>';
+    groupSelect.innerHTML = ['<option value="">Chá»n má»™t kÃªnh hoáº·c nhÃ³m</option>']
+      .concat(groups.map(function(group) {
+        return '<option value="' + escapeHtml(group.externalId || '') + '" data-group-title="' + escapeHtml(group.title || '') + '">' + escapeHtml(group.title || '') + '</option>';
       }))
       .join('');
   }
@@ -77,10 +90,10 @@ async function hydrateCampaigns() {
         const statusShell = campaignStatusShellMap[statusKey] || campaignStatusShellMap.Active;
         const joinMode =
           statusKey === 'Review'
-            ? 'Cần Duyệt'
+            ? 'Cáº§n Duyá»‡t'
             : statusKey === 'Paused'
-              ? 'Đã dừng'
-              : 'Tham gia Trực tiếp';
+              ? 'ÄÃ£ dá»«ng'
+              : 'Tham gia Trá»±c tiáº¿p';
 
         return \`
           <tr class="group hover:bg-surface-container-low transition-colors \${index % 2 === 1 ? 'bg-surface-container-low/20' : ''}" data-campaign-id="\${escapeHtml(campaign.id || '')}">
@@ -111,7 +124,7 @@ async function hydrateCampaigns() {
             <td class="px-6 py-5">
               <span class="inline-flex items-center gap-1.5 text-xs font-semibold \${statusShell.status}">
                 <span class="w-1.5 h-1.5 rounded-full \${statusShell.dot}"></span>
-                \${escapeHtml(statusKey === 'Review' ? 'Cần duyệt' : statusKey === 'Paused' ? 'Tạm dừng' : 'Hoạt động')}
+                \${escapeHtml(statusKey === 'Review' ? 'Cáº§n duyá»‡t' : statusKey === 'Paused' ? 'Táº¡m dá»«ng' : 'Hoáº¡t Ä‘á»™ng')}
               </span>
             </td>
             <td class="px-8 py-5 text-right">
@@ -125,7 +138,7 @@ async function hydrateCampaigns() {
       .join('');
 
     if (tableFooter) {
-      tableFooter.textContent = 'Đang hiển thị ' + String(items.length) + ' chiến dịch live từ API.';
+      tableFooter.textContent = 'Äang hiá»ƒn thá»‹ ' + String(items.length) + ' chiáº¿n dá»‹ch live tá»« API.';
     }
 
     if (secondaryGrid) {
@@ -152,7 +165,7 @@ async function hydrateCampaigns() {
                   </div>
                 </div>
                 <button class="text-[10px] font-bold text-primary hover:underline" type="button" data-open-campaign="\${escapeHtml(campaign.id || '')}">
-                  Mở
+                  Má»Ÿ
                 </button>
               </div>
             \`;
@@ -168,11 +181,11 @@ async function hydrateCampaigns() {
         }).length;
         if (body) {
           body.innerHTML =
-            'Hiện có <strong class="text-on-secondary-container">' +
+            'Hiá»‡n cÃ³ <strong class="text-on-secondary-container">' +
             String(activeCount) +
-            ' chiến dịch đang hoạt động</strong> và ' +
+            ' chiáº¿n dá»‹ch Ä‘ang hoáº¡t Ä‘á»™ng</strong> vÃ  ' +
             String(reviewItems.length) +
-            ' chiến dịch chờ duyệt.';
+            ' chiáº¿n dá»‹ch chá» duyá»‡t.';
         }
         if (button) {
           button.textContent = 'Xem dashboard live';
@@ -233,13 +246,15 @@ async function hydrateCampaigns() {
       event.preventDefault();
 
       const name = nameInput ? String(nameInput.value || '').trim() : '';
-      const channel = groupSelect ? String(groupSelect.value || '').trim() : '';
+      const selectedOption = groupSelect ? groupSelect.options[groupSelect.selectedIndex] : null;
+      const channel = selectedOption ? String(selectedOption.getAttribute('data-group-title') || '').trim() : '';
+      const groupExternalId = selectedOption ? String(selectedOption.value || '').trim() : '';
       const limit = limitInput ? String(limitInput.value || '').trim() : '';
       const note = noteInput ? String(noteInput.value || '').trim() : '';
       const requiresApproval = Boolean(approvalInput && approvalInput.checked);
 
-      if (!name || !channel || channel === 'Chọn một kênh hoặc nhóm') {
-        showInlineStatus(statusBox, 'Vui lòng nhập tên chiến dịch và chọn nhóm Telegram.', 'warning');
+      if (!name || !channel) {
+        showInlineStatus(statusBox, 'Vui lÃ²ng nháº­p tÃªn chiáº¿n dá»‹ch vÃ  chá»n nhÃ³m Telegram.', 'warning');
         return;
       }
 
@@ -252,25 +267,49 @@ async function hydrateCampaigns() {
         const created = await fetchJson('/campaigns', {
           method: 'POST',
           body: JSON.stringify({
-            name: note ? name + ' • ' + note.slice(0, 24) : name,
+            name: note ? name + ' â€¢ ' + note.slice(0, 24) : name,
             channel: channel,
-            joinRate: limit ? 'Giới hạn ' + limit + ' thành viên' : '0% conversion',
+            joinRate: limit ? 'Giá»›i háº¡n ' + limit + ' thÃ nh viÃªn' : '0% conversion',
             status: requiresApproval ? 'Review' : 'Active',
           }),
         });
 
-        liveCampaigns.unshift(created);
+        if (groupExternalId) {
+          try {
+            await fetchJson('/telegram/invite-links', {
+              method: 'POST',
+              body: JSON.stringify({
+                campaignId: created.id,
+                groupExternalId: groupExternalId,
+                groupTitle: channel,
+                name: name,
+                memberLimit: limit ? Number(limit) : undefined,
+                createsJoinRequest: requiresApproval,
+                expireHours: 24 * 7,
+              }),
+            });
+          } catch (inviteError) {
+            console.error(inviteError);
+          }
+        }
+
+        const refreshedCampaigns = await fetchJson('/campaigns');
+        liveCampaigns.splice(0, liveCampaigns.length);
+        refreshedCampaigns.forEach(function(item) {
+          liveCampaigns.push(item);
+        });
+
         renderCampaignTable(liveCampaigns);
         form.reset();
-        if (groupSelect.options.length > 0) {
+        if (groupSelect && groupSelect.options.length > 0) {
           groupSelect.selectedIndex = 0;
         }
-        showInlineStatus(statusBox, 'Đã tạo chiến dịch và sinh invite code mới từ API.', 'success');
+        showInlineStatus(statusBox, 'ÄÃ£ táº¡o chiáº¿n dá»‹ch. Náº¿u bot cÃ³ quyá»n trÃªn nhÃ³m, link má»i Ä‘Ã£ Ä‘Æ°á»£c táº¡o vÃ  gáº¯n tracking.', 'success');
       } catch (error) {
         if (error && error.status === 403) {
-          showInlineStatus(statusBox, 'Tài khoản hiện tại không có quyền tạo campaign.', 'danger');
+          showInlineStatus(statusBox, 'TÃ i khoáº£n hiá»‡n táº¡i khÃ´ng cÃ³ quyá»n táº¡o campaign.', 'danger');
         } else {
-          showInlineStatus(statusBox, 'Không tạo được campaign. Kiểm tra API hoặc dữ liệu nhập.', 'danger');
+          showInlineStatus(statusBox, 'KhÃ´ng táº¡o Ä‘Æ°á»£c campaign. Kiá»ƒm tra API hoáº·c dá»¯ liá»‡u nháº­p.', 'danger');
         }
       } finally {
         if (submitButton) {

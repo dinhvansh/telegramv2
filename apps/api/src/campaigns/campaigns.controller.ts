@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -18,6 +18,11 @@ export class CampaignsController {
   @Get()
   getCampaigns() {
     return this.campaignsService.findAll();
+  }
+
+  @Get(':campaignId/invite-links')
+  getInviteLinks(@Param('campaignId') campaignId: string) {
+    return this.campaignsService.findInviteLinks(campaignId);
   }
 
   @Post()

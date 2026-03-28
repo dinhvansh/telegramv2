@@ -54,7 +54,7 @@
 - [x] Add Telegram bot configuration storage.
 - [x] Add Telegram service wrapper.
 - [x] Add webhook receiver.
-- [-] Add invite-link generation against Telegram API.
+- [x] Add invite-link generation against Telegram API.
 
 ## Phase 6. Campaigns and tracking
 
@@ -62,13 +62,13 @@
 - [x] Add dedicated campaign API routes.
 - [-] Add campaign create/update/delete flow in the UI.
 - [x] Add campaign create flow directly inside the stitched campaigns page.
-- [-] Add invite link event tracking pipeline.
+- [-] Add invite link event tracking pipeline with webhook persistence and campaign attribution.
 
 ## Phase 7. Autopost and moderation
 
 - [x] Add autopost capability domain model and seed data.
 - [x] Add moderation rule domain model and seed data.
-- [ ] Add autopost schedule/job entities and API routes.
+- [x] Add autopost schedule/job entities and API routes.
 - [x] Add live moderation member tracking with current `active/left` state.
 - [x] Add moderation CSV export from the stitched UI.
 - [x] Add manual moderation actions from the stitched `/spam` UI.
