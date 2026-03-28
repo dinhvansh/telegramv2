@@ -6,7 +6,7 @@ import { DashboardShell } from "@/components/dashboard-shell";
 import { fallbackPlatformSnapshot, PlatformSnapshot } from "@/lib/platform-data";
 
 const apiBaseUrl =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:4000/api";
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "/api";
 
 const authStorageKey = "telegram-ops-access-token";
 

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 const apiBaseUrl =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:4000/api";
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "/api";
 
 const authStorageKey = "telegram-ops-access-token";
 
