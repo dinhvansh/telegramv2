@@ -1,4 +1,4 @@
-name: Deploy VPS
+name: CI And Deploy VPS
 
 on:
   push:
@@ -6,9 +6,77 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: deploy-main
+  cancel-in-progress: true
+
 jobs:
-  deploy:
+  ci-api:
+    name: CI API
     runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+
+      - name: Install API dependencies
+        working-directory: apps/api
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: npm run prisma:generate
+
+      - name: Lint API
+        working-directory: apps/api
+        run: npm run lint
+
+      - name: Build API
+        working-directory: apps/api
+        run: npm run build
+
+  ci-web:
+    name: CI Web
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install Web dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Lint Web
+        working-directory: apps/web
+        run: npm run lint
+
+      - name: Build Web
+        working-directory: apps/web
+        env:
+          API_PROXY_TARGET: http://api:4000/api
+        run: npm run build
+
+  deploy:
+    name: Deploy VPS
+    runs-on: ubuntu-latest
+    needs:
+      - ci-api
+      - ci-web
 
     steps:
       - name: Checkout
@@ -38,7 +106,6 @@ jobs:
               git clone --depth 1 https://github.com/dinhvansh/telegramv2.git /opt/telegramv2/app
             fi
             cd /opt/telegramv2/app
-            git fetch origin main
             git checkout main
             git pull --ff-only origin main
             chmod +x infra/deploy/deploy-vps.sh
