@@ -1,11 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CampaignStatus } from '@prisma/client';
 import { fallbackSnapshot } from '../platform/fallback-snapshot';
 import { PrismaService } from '../prisma/prisma.service';
+import { TelegramService } from '../telegram/telegram.service';
 
 type CreateCampaignInput = {
   name: string;
-  channel: string;
+  telegramGroupId: string;
   joinRate?: string;
   status?: 'Active' | 'Paused' | 'Review';
 };
@@ -68,7 +73,10 @@ function mapMember(member: {
 
 @Injectable()
 export class CampaignsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly telegramService: TelegramService,
+  ) {}
 
   async findAll() {
     if (!process.env.DATABASE_URL) {
@@ -258,7 +266,8 @@ export class CampaignsService {
       return {
         id: 'fallback-created',
         name: input.name,
-        channel: input.channel,
+        telegramGroupId: input.telegramGroupId,
+        channel: 'Telegram Group',
         inviteCode: `t.me/+${Math.random().toString(36).slice(2, 10)}`,
         joinRate: input.joinRate ?? '0% conversion',
         status: input.status ?? 'Active',
@@ -273,30 +282,99 @@ export class CampaignsService {
     const status = input.status
       ? statusToDb[input.status]
       : CampaignStatus.ACTIVE;
-    const telegramGroup = await this.prisma.telegramGroup.findFirst({
-      where: { title: input.channel },
+    const telegramGroup = await this.prisma.telegramGroup.findUnique({
+      where: { id: input.telegramGroupId },
     });
+    if (!telegramGroup) {
+      throw new BadRequestException(
+        'Campaign phải gắn với một group Telegram đã được đồng bộ trong CRM.',
+      );
+    }
 
     const campaign = await this.prisma.campaign.create({
       data: {
         name: input.name,
-        channel: input.channel,
+        channel: telegramGroup.title,
         joinRate: input.joinRate ?? '0% conversion',
         inviteCode,
         status,
         conversionRate: 0,
-        telegramGroupId: telegramGroup?.id || null,
+        telegramGroupId: telegramGroup.id,
+      },
+    });
+
+    const inviteLinkResult = await this.telegramService.createInviteLink({
+      campaignId: campaign.id,
+      groupExternalId: telegramGroup.externalId,
+      groupTitle: telegramGroup.title,
+      name: input.name,
+      createsJoinRequest: false,
+      expireHours: 24 * 30,
+    });
+
+    if (!inviteLinkResult.ok || !inviteLinkResult.inviteLink?.url) {
+      await this.prisma.campaign.delete({
+        where: { id: campaign.id },
+      });
+
+      throw new BadRequestException(
+        inviteLinkResult.description ||
+          inviteLinkResult.reason ||
+          'Không thể tạo link mời Telegram cho campaign.',
+      );
+    }
+
+    const updatedCampaign = await this.prisma.campaign.update({
+      where: { id: campaign.id },
+      data: {
+        inviteCode: inviteLinkResult.inviteLink.url,
+      },
+    });
+
+    await this.prisma.campaignInviteLink.upsert({
+      where: {
+        inviteUrl: inviteLinkResult.inviteLink.url,
+      },
+      update: {
+        campaignId: campaign.id,
+        telegramGroupId: telegramGroup.id,
+        externalInviteId: input.name.trim() || null,
+        label: input.name.trim() || `Invite ${telegramGroup.title}`,
+        memberLimit: inviteLinkResult.inviteLink.memberLimit || null,
+        createsJoinRequest: Boolean(
+          inviteLinkResult.inviteLink.createsJoinRequest,
+        ),
+        expireAt: inviteLinkResult.inviteLink.expireDate
+          ? new Date(inviteLinkResult.inviteLink.expireDate)
+          : null,
+        status: 'ACTIVE',
+      },
+      create: {
+        campaignId: campaign.id,
+        telegramGroupId: telegramGroup.id,
+        externalInviteId: input.name.trim() || null,
+        inviteUrl: inviteLinkResult.inviteLink.url,
+        label: input.name.trim() || `Invite ${telegramGroup.title}`,
+        memberLimit: inviteLinkResult.inviteLink.memberLimit || null,
+        createsJoinRequest: Boolean(
+          inviteLinkResult.inviteLink.createsJoinRequest,
+        ),
+        expireAt: inviteLinkResult.inviteLink.expireDate
+          ? new Date(inviteLinkResult.inviteLink.expireDate)
+          : null,
+        status: 'ACTIVE',
       },
     });
 
     return {
-      id: campaign.id,
-      name: campaign.name,
-      channel: campaign.channel,
-      inviteCode: campaign.inviteCode,
-      joinRate: campaign.joinRate,
-      status: statusFromDb[campaign.status],
-      conversionRate: campaign.conversionRate,
+      id: updatedCampaign.id,
+      telegramGroupId: updatedCampaign.telegramGroupId,
+      name: updatedCampaign.name,
+      channel: updatedCampaign.channel,
+      inviteCode: updatedCampaign.inviteCode,
+      joinRate: updatedCampaign.joinRate,
+      status: statusFromDb[updatedCampaign.status],
+      conversionRate: updatedCampaign.conversionRate,
       joinedCount: 0,
       leftCount: 0,
       activeCount: 0,

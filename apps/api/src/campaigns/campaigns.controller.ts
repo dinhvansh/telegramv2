@@ -6,7 +6,7 @@ import { CampaignsService } from './campaigns.service';
 
 type CreateCampaignBody = {
   name: string;
-  channel: string;
+  telegramGroupId: string;
   joinRate?: string;
   status?: 'Active' | 'Paused' | 'Review';
 };

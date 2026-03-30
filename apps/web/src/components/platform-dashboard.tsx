@@ -19,9 +19,16 @@ type SessionUser = {
 
 type CreateCampaignInput = {
   name: string;
-  channel: string;
+  telegramGroupId: string;
   joinRate: string;
   status: "Active" | "Paused" | "Review";
+};
+
+type TelegramGroupOption = {
+  id: string;
+  title: string;
+  externalId: string;
+  isActive: boolean;
 };
 
 type PlatformDashboardProps = {
@@ -140,7 +147,21 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed with status ${response.status}`);
+    let detail = `Request failed with status ${response.status}`;
+    try {
+      const payload = (await response.json()) as {
+        message?: string | string[];
+      };
+      const message = Array.isArray(payload?.message)
+        ? payload.message.join(", ")
+        : payload?.message;
+      if (message) {
+        detail = message;
+      }
+    } catch (error) {
+      // Keep default status message when backend has no JSON error body.
+    }
+    throw new Error(detail);
   }
 
   return (await response.json()) as T;
@@ -164,9 +185,10 @@ export function PlatformDashboard({
   const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
   const [campaignError, setCampaignError] = useState<string | null>(null);
   const [campaignNotice, setCampaignNotice] = useState<string | null>(null);
+  const [telegramGroups, setTelegramGroups] = useState<TelegramGroupOption[]>([]);
   const [campaignForm, setCampaignForm] = useState<CreateCampaignInput>({
     name: "Spring Operator Push",
-    channel: "Nexus Global",
+    telegramGroupId: "",
     joinRate: "0% conversion",
     status: "Active",
   });
@@ -255,6 +277,49 @@ export function PlatformDashboard({
     };
   }, [entryMode, router, token]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadTelegramGroups(currentToken: string) {
+      try {
+        const response = await fetchJson<{ items: TelegramGroupOption[] }>(
+          `${apiBaseUrl}/telegram/groups`,
+          {
+            headers: {
+              Authorization: `Bearer ${currentToken}`,
+            },
+          },
+        );
+
+        if (!isMounted) {
+          return;
+        }
+
+        const availableGroups = (response.items || []).filter((group) => group.isActive);
+        setTelegramGroups(availableGroups);
+        setCampaignForm((current) => ({
+          ...current,
+          telegramGroupId: current.telegramGroupId || availableGroups[0]?.id || "",
+        }));
+      } catch {
+        if (isMounted) {
+          setTelegramGroups([]);
+        }
+      }
+    }
+
+    if (!token) {
+      setTelegramGroups([]);
+      return;
+    }
+
+    void loadTelegramGroups(token);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
+
   async function reloadSnapshot() {
     const data = await fetchJson<PlatformSnapshot>(`${apiBaseUrl}/platform`);
     setSnapshot(normalizeText(data));
@@ -301,6 +366,11 @@ export function PlatformDashboard({
       return;
     }
 
+    if (!campaignForm.telegramGroupId) {
+      setCampaignError("Cần chọn một group Telegram đã đồng bộ trước khi tạo campaign.");
+      return;
+    }
+
     setIsCreatingCampaign(true);
     setCampaignError(null);
     setCampaignNotice(null);
@@ -319,7 +389,7 @@ export function PlatformDashboard({
       setIsCreateModalOpen(false);
       setCampaignForm({
         name: "",
-        channel: "Nexus Global",
+        telegramGroupId: telegramGroups[0]?.id || "",
         joinRate: "0% conversion",
         status: "Active",
       });
@@ -455,6 +525,10 @@ export function PlatformDashboard({
         onCreateCampaign={() => {
           setCampaignError(null);
           setCampaignNotice(null);
+          setCampaignForm((current) => ({
+            ...current,
+            telegramGroupId: current.telegramGroupId || telegramGroups[0]?.id || "",
+          }));
           setIsCreateModalOpen(true);
         }}
         isCreatingCampaign={isCreatingCampaign}
@@ -517,17 +591,32 @@ export function PlatformDashboard({
                   <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
                     Channel
                   </span>
-                  <input
+                  <select
                     required
-                    value={campaignForm.channel}
+                    value={campaignForm.telegramGroupId}
                     onChange={(event) =>
                       setCampaignForm((current) => ({
                         ...current,
-                        channel: event.target.value,
+                        telegramGroupId: event.target.value,
                       }))
                     }
                     className="w-full rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
-                  />
+                  >
+                    <option value="" disabled>
+                      {telegramGroups.length
+                        ? "Chọn group Telegram"
+                        : "Chưa có group nào được đồng bộ"}
+                    </option>
+                    {telegramGroups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.title}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs leading-5 text-[color:var(--on-surface-variant)]">
+                    Campaign phải chọn từ group Telegram đã quét được để CRM giữ đúng chat ID,
+                    tạo link mời và theo dõi thành viên vào nhóm theo từng nguồn.
+                  </p>
                 </label>
 
                 <label className="block">
@@ -582,7 +671,7 @@ export function PlatformDashboard({
                   Hủy
                 </button>
                 <button
-                  disabled={isCreatingCampaign}
+                  disabled={isCreatingCampaign || !telegramGroups.length}
                   className="rounded-[18px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white disabled:opacity-60"
                 >
                   {isCreatingCampaign ? "Đang tạo..." : "Lưu campaign"}
