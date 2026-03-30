@@ -1,93 +1,176 @@
 # Telegram Operations Platform
 
-CRM-first Telegram operations platform for:
+CRM-first platform để vận hành Telegram group, campaign, moderation, autopost và quản trị nội bộ.
 
-- campaign tracking
-- Telegram group integration
-- anti-spam moderation
-- invite link management
-- autopost planning
-- RBAC-based admin workflow
+## Mục tiêu hệ thống
 
-Current repository status:
+Hệ thống này đi theo hướng:
 
-- `apps/api`: NestJS + Prisma + PostgreSQL
-- `apps/web`: Next.js App Router + Tailwind CSS
-- local stack: PostgreSQL + Redis + API + Web
-- moderation architecture direction: CRM is the source of truth, Telegram bot is only the execution layer
+- Toàn bộ cấu hình nằm trên web CRM.
+- Bot Telegram chỉ là execution layer.
+- Khi bot được add vào group, CRM ghi nhận group đó.
+- Moderation engine đọc config từ CRM để quyết định xử lý.
+- Telegram Bot API chỉ được gọi ở bước thực thi cuối cùng.
 
-## Monorepo Structure
+Domain production đã chốt:
+
+- `https://tele.blogthethao.org`
+
+## Trạng thái hiện tại
+
+Repository hiện đã có các phần chạy thật:
+
+- Đăng nhập JWT và phân quyền RBAC.
+- Quản lý user và role.
+- Telegram bot config, verify bot, register webhook, discover groups.
+- Sync group Telegram vào CRM.
+- Campaign gắn với group Telegram thật.
+- Tạo invite link Telegram thật khi tạo campaign.
+- Tracking members theo campaign.
+- Moderation engine với lock rules, antiflood, warning ladder.
+- Telegram execution cho `warn`, `mute`, `tmute`, `kick`, `ban`, `tban`.
+- Announcement lên group sau khi xử lý.
+- Autopost targets, schedules, dispatch và logs.
+- Docker local stack.
+- GitHub Actions chạy CI trước khi deploy VPS.
+
+## Cấu trúc monorepo
 
 ```text
 .
 |-- apps/
 |   |-- api/        NestJS API, Prisma schema, Telegram integration, moderation logic
 |   `-- web/        Next.js admin CRM UI
-|-- docs/           Project docs, local test notes, implementation plans
-|-- infra/          Nginx and VPS deployment files
-|-- stitch/         Design/source references for UI screens
+|-- docs/           Tài liệu phân tích, kế hoạch triển khai, handover
+|-- infra/          Nginx, deploy script, VPS setup
+|-- stitch/         Nguồn tham chiếu UI cũ
 |-- docker-compose.yml
 `-- docker-compose.prod.yml
 ```
 
-## Main Modules
+## Các module chính
 
-### API
+### `apps/api`
 
-The backend is organized by domain modules:
+Backend hiện được tổ chức theo domain:
 
-- `auth`: login, JWT, profile, permission guards
-- `campaigns`: campaign CRUD and invite-link related data
-- `telegram`: Telegram config, webhook handling, group discovery, invite links
-- `telegram-actions`: Telegram Bot API execution layer
-- `moderation`: moderation config, evaluation engine, manual actions
-- `roles` and `users`: RBAC and user administration
-- `settings`: encrypted system settings and AI config
-- `system-logs`: audit and execution logging
-- `platform`: dashboard snapshot endpoint
+- `auth`: đăng nhập, JWT, profile
+- `campaigns`: campaign, invite link, member stats
+- `telegram`: bot config, webhook, group sync, invite links
+- `telegram-actions`: lớp gọi Telegram Bot API
+- `moderation`: rule engine, warning ladder, antiflood, manual actions
+- `autopost`: target, schedule, dispatch, logs
+- `roles`, `users`: RBAC và user administration
+- `settings`: system settings, encrypted secrets
+- `system-logs`: audit/execution logs
+- `platform`: dashboard snapshot và dữ liệu tổng hợp
 
-### Web
+### `apps/web`
 
-The frontend currently provides:
+Frontend hiện có các màn chính:
 
-- login flow for seeded local users
-- dashboard shell
-- campaign creation flow
-- moderation, roles, autopost, Telegram, and settings pages
+- đăng nhập
+- tổng quan
+- campaign
+- thành viên
+- chống spam
+- autopost
+- phân quyền
+- Telegram
+- cài đặt
 
-Current UI state:
+## Luồng chính đang chạy
 
-- functional for local demo and API integration
-- still partially driven by fallback snapshot data
-- needs refactor into feature-based data screens for production readiness
+### 1. Telegram CRM-first
 
-## Current Architecture Direction
+- User nhập bot token và cấu hình Telegram trên web.
+- CRM lưu token đã mã hóa trong settings.
+- Có thể verify bot bằng `getMe`.
+- Có thể register webhook.
+- Khi bot được add vào group hoặc đổi quyền, CRM sync group qua webhook `my_chat_member` và `chat_member`.
 
-The target moderation model is:
+### 2. Campaign
 
-- all moderation config lives in the CRM
-- bot token and webhook setup live in CRM
-- when the bot is added to a Telegram group, CRM should register that group
-- moderation engine reads CRM config and decides what to do
-- Telegram bot only executes actions through Telegram Bot API
+Luồng tạo campaign hiện tại:
 
-Design document:
+1. User tạo campaign từ web.
+2. Không nhập tay channel.
+3. Bắt buộc chọn từ danh sách `TelegramGroup` đã sync.
+4. Backend tạo record campaign.
+5. Backend gọi Telegram `createChatInviteLink` thật.
+6. Nếu Telegram thành công:
+   - cập nhật `inviteCode`
+   - lưu mapping invite link theo campaign/group
+7. Nếu Telegram lỗi:
+   - rollback campaign
+   - không để lại record rác
 
-- [docs/crm_first_moderation_architecture.md](d:\OneDrive - ANDROS\Documents\telegram v2\telegramv2\docs\crm_first_moderation_architecture.md)
+### 3. Members
 
-## Local Development
+- Thành viên được ghi nhận theo campaign/group.
+- Có thống kê:
+  - đã tham gia
+  - đang ở lại
+  - đã rời đi
+- Có thể gán `owner` và `note` cho từng member trong CRM.
 
-### Requirements
+### 4. Moderation
+
+Moderation hiện đã có:
+
+- lock `url`
+- lock `invitelink`
+- lock `forward`
+- lock `email`
+- lock `phone`
+- lock `bot`
+- lock `photo`
+- lock `video`
+- lock `document`
+- lock `sticker`
+- `antiflood`
+- `warning ladder`
+- exemption cho trusted user, owner, admin
+- manual action từ CRM
+- command workflow cơ bản
+
+Action matrix hiện có:
+
+- `warn`
+- `mute`
+- `tmute`
+- `kick`
+- `ban`
+- `tban`
+
+### 5. Execution layer
+
+Khi CRM quyết định xử lý:
+
+- Bot sẽ gọi Telegram Bot API để xóa tin, mute, ban, decline join request, approve request.
+- Nếu thiếu quyền admin, hệ thống sẽ map lỗi Telegram sang quyền cần cấp cho bot.
+- Nếu action chạy được, hệ thống có thể gửi announcement vào group.
+
+### 6. Autopost
+
+- Tạo target.
+- Tạo schedule.
+- Dispatch thủ công hoặc dispatch lịch đến hạn.
+- Ghi log gửi bài.
+
+## Local development
+
+### Yêu cầu
 
 - Node.js 24+
 - npm 11+
 - Docker Desktop
 
-### Environment
+### Biến môi trường
 
-Copy `.env.example` to `.env` and adjust values if needed.
+Tạo `.env` từ `.env.example`.
 
-Important variables:
+Các biến quan trọng:
 
 ```env
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/telegram_ops?schema=public
@@ -96,16 +179,20 @@ API_PORT=4000
 WEB_PORT=3000
 JWT_SECRET=local-dev-secret
 SETTINGS_ENCRYPTION_KEY=change-me-to-a-long-random-secret
-NEXT_PUBLIC_API_URL=http://localhost:4000/api
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_BOT_USERNAME=
 TELEGRAM_WEBHOOK_SECRET=
 TELEGRAM_PUBLIC_BASE_URL=
 ```
 
-### Start with Docker
+Lưu ý:
 
-From repo root:
+- `SETTINGS_ENCRYPTION_KEY` nên khác `JWT_SECRET`.
+- Token Telegram hiện hỗ trợ 1 bot active.
+
+### Chạy bằng Docker
+
+Từ root repo:
 
 ```bash
 docker compose up --build
@@ -118,13 +205,7 @@ Services:
 - PostgreSQL: `localhost:5432`
 - Redis: `localhost:6379`
 
-### Start manually
-
-1. Start PostgreSQL and Redis
-2. Install dependencies
-3. Generate Prisma client
-4. Start API
-5. Start Web
+### Chạy thủ công
 
 API:
 
@@ -143,23 +224,12 @@ npm ci
 npm run dev
 ```
 
-Important note:
-
-- after a fresh clone, run `npm run prisma:generate` in `apps/api` before build/lint/test
-
-## Local Accounts
-
-Seeded local accounts used by the current local flow:
+## Tài khoản local
 
 - `admin@nexus.local / admin123`
 - `operator@nexus.local / operator123`
 
-## Useful Endpoints
-
-### Platform
-
-- `GET /api/health`
-- `GET /api/platform`
+## Các endpoint quan trọng
 
 ### Auth
 
@@ -176,10 +246,13 @@ Seeded local accounts used by the current local flow:
 
 - `GET /api/telegram/status`
 - `POST /api/telegram/config`
+- `POST /api/telegram/verify-bot`
 - `POST /api/telegram/register-webhook`
+- `GET /api/telegram/groups`
+- `POST /api/telegram/discover-groups`
 - `POST /api/telegram/mock`
 - `POST /api/telegram/webhook`
-- `POST /api/telegram/discover-groups`
+- `POST /api/telegram/commands/execute`
 
 ### Moderation
 
@@ -188,77 +261,60 @@ Seeded local accounts used by the current local flow:
 - `GET /api/moderation/events`
 - `POST /api/moderation/analyze`
 - `POST /api/moderation/events/:eventId/action`
+- `GET /api/moderation/debug`
 
-## Telegram Local Testing
+### Autopost
 
-There are two supported local testing modes:
+- `GET /api/autopost/targets`
+- `POST /api/autopost/targets`
+- `GET /api/autopost/schedules`
+- `POST /api/autopost/schedules`
+- `POST /api/autopost/dispatch`
 
-1. local-only testing with mock or manual webhook payloads
-2. public tunnel testing with a real HTTPS URL
+## Kiểm tra chất lượng đã chạy
 
-Recommended doc:
+Ở trạng thái repo hiện tại, các bước sau đã pass trong các vòng làm việc gần nhất:
 
-- [docs/telegram_local_test.md](d:\OneDrive - ANDROS\Documents\telegram v2\telegramv2\docs\telegram_local_test.md)
+- `apps/api`: `npm run prisma:generate`
+- `apps/api`: `npm run lint`
+- `apps/api`: `npm run build`
+- `apps/web`: `npm run lint`
+- `apps/web`: `npm run build`
+- `docker compose up -d --build`
 
-Typical local-only checks:
+Ghi chú:
 
-- login from CRM
-- inspect `GET /api/telegram/status`
-- send `POST /api/telegram/mock`
-- send `POST /api/telegram/webhook`
-- inspect `GET /api/platform`
+- `apps/api` hiện không có unit test kiểu `npm test` chuẩn, nên lệnh đó có thể báo `No tests found`.
 
-For real Telegram webhook testing:
+## Production
 
-- expose local API with `ngrok http 4000`
-- save `publicBaseUrl` and `webhookSecret` in CRM
-- register webhook
+Production đang đi theo:
 
-## Quality Checks
+- web qua Nginx tại `https://tele.blogthethao.org/`
+- API qua `https://tele.blogthethao.org/api/`
+- webhook Telegram dự kiến:
+  - `https://tele.blogthethao.org/api/telegram/webhook`
 
-Verified on the current repository state:
+File liên quan:
 
-- `apps/web`: `npm run build` passes
-- `apps/web`: `npm run lint` passes
-- `apps/api`: `npm run prisma:generate` passes
-- `apps/api`: `npm run build` passes
-- `apps/api`: `npm run lint` passes
-- `apps/api`: `npm run test:e2e -- --runInBand` passes
+- `infra/nginx/tele.blogthethao.org.conf`
+- `docker-compose.prod.yml`
+- `.github/workflows/deploy-vps.yml`
 
-Notes:
+## Phần còn cần hoàn thiện thêm
 
-- `apps/api` unit test command `npm test` currently reports `No tests found`
-- some docs and UI fallback text still contain encoding issues from older content
+Những gap còn lại chủ yếu là live validation và polish:
 
-## Current Gaps
+- verify live `CampaignInviteLink` end-to-end với bot token thật
+- test moderation thật trên group Telegram thật
+- test announcement thật trong group
+- test autopost thật trên production
+- dọn thêm text tiếng Việt lỗi mã hóa ở vài màn cũ
+- làm UX lỗi rõ hơn ở một số form như tạo campaign
 
-This repo is already a working MVP foundation, but not yet the final CRM-first moderation system.
+## Tài liệu liên quan
 
-Main gaps still open:
-
-- group lifecycle sync when bot is added/removed from Telegram
-- Rose-like lock matrix by content type
-- warning counter and escalation ladder
-- queue-first processing for Telegram updates
-- richer moderation workbench UI
-- cleaner feature-based frontend architecture
-- UTF-8 cleanup for older docs and fallback data
-
-## Recommended Next Step
-
-If the next priority is anti-spam moderation, build in this order:
-
-1. Telegram group registration from `my_chat_member`
-2. CRM group management screen
-3. moderation config per group
-4. lock rules for `url`, `invitelink`, `forward`, `command`
-5. warning ladder and execution audit logs
-6. queue-based moderation pipeline
-
-## Related Docs
-
-- [docs/crm_first_moderation_architecture.md](d:\OneDrive - ANDROS\Documents\telegram v2\telegramv2\docs\crm_first_moderation_architecture.md)
-- [docs/telegram_local_test.md](d:\OneDrive - ANDROS\Documents\telegram v2\telegramv2\docs\telegram_local_test.md)
-- [docs/implementation_master_plan.md](d:\OneDrive - ANDROS\Documents\telegram v2\telegramv2\docs\implementation_master_plan.md)
-- [docs/live_debug_runbook.md](d:\OneDrive - ANDROS\Documents\telegram v2\telegramv2\docs\live_debug_runbook.md)
-
+- [docs/crm_first_moderation_architecture.md](docs/crm_first_moderation_architecture.md)
+- [docs/telegram_moderation_implementation_plan.md](docs/telegram_moderation_implementation_plan.md)
+- [docs/telegram_moderation_dev_spec_full.md](docs/telegram_moderation_dev_spec_full.md)
+- [docs/handover_2026-03-30.md](docs/handover_2026-03-30.md)
