@@ -127,14 +127,80 @@ model RolePermission {
 }
 
 model TelegramGroup {
-  id                 String              @id @default(cuid())
-  title              String
-  slug               String              @unique
-  externalId         String              @unique
-  campaigns          Campaign[]
-  inviteLinks        CampaignInviteLink[]
-  moderationPolicies ModerationPolicy[]
-  createdAt          DateTime            @default(now())
+  id                          String                          @id @default(cuid())
+  title                       String
+  slug                        String                          @unique
+  externalId                  String                          @unique
+  username                    String?
+  type                        String                          @default("supergroup")
+  isActive                    Boolean                         @default(true)
+  discoveredFrom              String?
+  lastSyncedAt                DateTime?
+  botMemberState              String?
+  botCanDeleteMessages        Boolean                         @default(false)
+  botCanRestrictMembers       Boolean                         @default(false)
+  botCanInviteUsers           Boolean                         @default(false)
+  botCanManageTopics          Boolean                         @default(false)
+  campaigns                   Campaign[]
+  inviteLinks                 CampaignInviteLink[]
+  moderationPolicies          ModerationPolicy[]
+  moderationSettings          TelegramGroupModerationSettings?
+  createdAt                   DateTime                        @default(now())
+}
+
+model TelegramBotConfig {
+  id                 String   @id @default(cuid())
+  singletonKey       String   @unique @default("default")
+  botExternalId      String?
+  botUsername        String?
+  botDisplayName     String?
+  isVerified         Boolean  @default(false)
+  webhookRegistered  Boolean  @default(false)
+  webhookUrl         String?
+  lastVerifiedAt     DateTime?
+  lastDiscoveredAt   DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model TelegramGroupModerationSettings {
+  id                           String   @id @default(cuid())
+  telegramGroupId              String   @unique
+  telegramGroup                TelegramGroup @relation(fields: [telegramGroupId], references: [id], onDelete: Cascade)
+  moderationEnabled            Boolean  @default(false)
+  lockUrl                      Boolean  @default(false)
+  lockInvitelink               Boolean  @default(false)
+  lockForward                  Boolean  @default(false)
+  lockEmail                    Boolean  @default(false)
+  lockPhone                    Boolean  @default(false)
+  lockBot                      Boolean  @default(false)
+  lockPhoto                    Boolean  @default(false)
+  lockVideo                    Boolean  @default(false)
+  lockDocument                 Boolean  @default(false)
+  lockSticker                  Boolean  @default(false)
+  trustedUsernames             String   @default("")
+  trustedExternalIds           String   @default("")
+  exemptAdmins                 Boolean  @default(true)
+  exemptOwners                 Boolean  @default(true)
+  lockWarns                    Boolean  @default(true)
+  warnLimit                    Int      @default(2)
+  warnAction                   String   @default("kick")
+  warnActionDurationSeconds    Int?
+  antifloodEnabled             Boolean  @default(false)
+  antifloodLimit               Int      @default(5)
+  antifloodWindowSeconds       Int      @default(10)
+  antifloodAction              String   @default("tmute")
+  antifloodActionDurationSeconds Int    @default(600)
+  antifloodDeleteAll           Boolean  @default(true)
+  aiModerationEnabled          Boolean  @default(false)
+  aiMode                       String   @default("off")
+  aiConfidenceThreshold        Float    @default(0.85)
+  aiOverrideAction             Boolean  @default(false)
+  silentActions                Boolean  @default(false)
+  rawLoggingEnabled            Boolean  @default(true)
+  detailedLoggingEnabled       Boolean  @default(true)
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
 }
 
 model Campaign {
@@ -149,19 +215,29 @@ model Campaign {
   telegramGroup   TelegramGroup?       @relation(fields: [telegramGroupId], references: [id])
   telegramGroupId String?
   inviteLinks     CampaignInviteLink[]
+  communityMembers CommunityMember[]
 }
 
 model CommunityMember {
-  id            String   @id @default(cuid())
-  displayName   String
+  id             String    @id @default(cuid())
+  displayName    String
   avatarInitials String
-  externalId    String
-  username      String?
-  campaignLabel String
-  groupTitle    String
-  joinedAt      DateTime
-  leftAt        DateTime?
-  createdAt     DateTime @default(now())
+  externalId     String
+  username       String?
+  campaignLabel  String
+  campaignId     String?
+  campaign       Campaign? @relation(fields: [campaignId], references: [id])
+  groupTitle     String
+  ownerName      String?
+  note           String?
+  warningCount   Int       @default(0)
+  lastWarnedAt   DateTime?
+  joinedAt       DateTime
+  leftAt         DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
+
+  @@index([campaignId])
 }
 
 model MetricCard {
@@ -252,6 +328,31 @@ model SpamEvent {
   actionLogs      Json?
   lastActionAt    DateTime?
   createdAt       DateTime     @default(now())
+}
+
+model ModerationActionJob {
+  id              String   @id @default(cuid())
+  source          String
+  status          String   @default("PENDING")
+  eventType       String
+  actionVariant   String
+  spamEventId     String?
+  chatId          String
+  userId          String
+  groupTitle      String?
+  actorExternalId String?
+  note            String?
+  commandText     String?
+  executeAt       DateTime @default(now())
+  expireAt        DateTime
+  completedAt     DateTime?
+  lastError       String?
+  payload         Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status, expireAt])
+  @@index([chatId, userId, actionVariant])
 }
 
 model RoadmapPhase {

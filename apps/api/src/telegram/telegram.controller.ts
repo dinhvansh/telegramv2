@@ -3,7 +3,9 @@ import {
   Controller,
   Get,
   Headers,
+  Param,
   Post,
+  Put,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -27,6 +29,26 @@ type TelegramMockBody = {
   displayName?: string;
   memberCount?: number;
   messageText?: string;
+  isForwarded?: boolean;
+  hasPhoto?: boolean;
+  hasVideo?: boolean;
+  hasDocument?: boolean;
+  hasSticker?: boolean;
+  hasContact?: boolean;
+  viaBot?: boolean;
+};
+
+type TelegramCommandBody = {
+  groupId?: string;
+  groupExternalId?: string;
+  groupTitle?: string;
+  commandText?: string;
+  actorExternalId?: string;
+  actorUsername?: string;
+  targetExternalId?: string;
+  targetUsername?: string;
+  targetMessageId?: string;
+  note?: string;
 };
 
 type TelegramInviteLinkBody = {
@@ -37,6 +59,41 @@ type TelegramInviteLinkBody = {
   memberLimit?: number;
   createsJoinRequest?: boolean;
   expireHours?: number;
+};
+
+type TelegramGroupModerationBody = {
+  moderationEnabled?: boolean;
+  lockUrl?: boolean;
+  lockInvitelink?: boolean;
+  lockForward?: boolean;
+  lockEmail?: boolean;
+  lockPhone?: boolean;
+  lockBot?: boolean;
+  lockPhoto?: boolean;
+  lockVideo?: boolean;
+  lockDocument?: boolean;
+  lockSticker?: boolean;
+  trustedUsernames?: string;
+  trustedExternalIds?: string;
+  exemptAdmins?: boolean;
+  exemptOwners?: boolean;
+  lockWarns?: boolean;
+  warnLimit?: number;
+  warnAction?: 'mute' | 'tmute' | 'kick' | 'ban' | 'tban';
+  warnActionDurationSeconds?: number | null;
+  antifloodEnabled?: boolean;
+  antifloodLimit?: number;
+  antifloodWindowSeconds?: number;
+  antifloodAction?: 'mute' | 'tmute' | 'kick' | 'ban' | 'tban';
+  antifloodActionDurationSeconds?: number | null;
+  antifloodDeleteAll?: boolean;
+  aiModerationEnabled?: boolean;
+  aiMode?: 'off' | 'fallback_only' | 'suspicious_only';
+  aiConfidenceThreshold?: number;
+  aiOverrideAction?: boolean;
+  silentActions?: boolean;
+  rawLoggingEnabled?: boolean;
+  detailedLoggingEnabled?: boolean;
 };
 
 @Controller('telegram')
@@ -57,11 +114,25 @@ export class TelegramController {
     return this.telegramService.getGroups();
   }
 
+  @Get('groups/:groupId/moderation')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('settings.manage')
+  getGroupModeration(@Param('groupId') groupId: string) {
+    return this.telegramService.getGroupModerationSettings(groupId);
+  }
+
   @Post('config')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
   updateConfig(@Body() body: TelegramConfigBody) {
     return this.telegramService.updateConfig(body);
+  }
+
+  @Post('verify-bot')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('settings.manage')
+  verifyBot() {
+    return this.telegramService.verifyBot();
   }
 
   @Post('register-webhook')
@@ -76,6 +147,16 @@ export class TelegramController {
   @Permissions('settings.manage')
   discoverGroups() {
     return this.telegramService.discoverGroups();
+  }
+
+  @Put('groups/:groupId/moderation')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('settings.manage')
+  updateGroupModeration(
+    @Param('groupId') groupId: string,
+    @Body() body: TelegramGroupModerationBody,
+  ) {
+    return this.telegramService.updateGroupModerationSettings(groupId, body);
   }
 
   @Post('invite-links')
@@ -98,6 +179,13 @@ export class TelegramController {
   @Permissions('campaign.manage')
   mockEvent(@Body() body: TelegramMockBody) {
     return this.telegramService.mockEvent(body);
+  }
+
+  @Post('commands/execute')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('moderation.review')
+  executeCommand(@Body() body: TelegramCommandBody) {
+    return this.telegramService.executeCommand(body);
   }
 
   @Post('webhook')

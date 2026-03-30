@@ -89,6 +89,7 @@ export class ModerationEngineService {
     const detectionText = normalizeDetectionText(input.messageText);
     const username = normalizeText(input.actorUsername).replace(/^@/, '');
     const detectionUsername = normalizeDetectionText(username);
+    const actorExternalId = normalizeText(input.actorExternalId) || null;
     const matchedRules: string[] = [];
     let ruleScore = 0;
 
@@ -199,18 +200,26 @@ export class ModerationEngineService {
         ? ruleScore
         : ruleScore * 0.65 + aiResult.riskScore * 0.35,
     );
-    const decision = this.applyPolicyDecision(
+    const baseDecision = this.applyPolicyDecision(
       this.decide(blendedScore, matchedRules),
       blendedScore,
       input.eventType,
       effectivePolicy,
     );
+    const warningContext =
+      await this.moderationService.getWarningEscalationPreview({
+        actorExternalId,
+        groupTitle: input.groupTitle,
+        decision: baseDecision,
+      });
+    matchedRules.push(...warningContext.matchedRules);
+    const decision = warningContext.effectiveDecision;
 
     const payload = {
       source: input.source,
       eventType: input.eventType,
       actorUsername: username || null,
-      actorExternalId: normalizeText(input.actorExternalId) || null,
+      actorExternalId,
       groupTitle: input.groupTitle,
       groupExternalId: normalizeText(input.groupExternalId) || null,
       campaignLabel: normalizeText(input.campaignLabel) || null,
@@ -255,6 +264,7 @@ export class ModerationEngineService {
         blockDomains: effectivePolicy.blockDomains,
         allowDomains: effectivePolicy.allowDomains,
       },
+      warningContext,
     };
   }
 

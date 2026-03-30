@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { SpamDecision } from '@prisma/client';
@@ -48,6 +49,11 @@ type ApplyActionBody = {
   note?: string;
 };
 
+type UpdateMemberBody = {
+  ownerName?: string | null;
+  note?: string | null;
+};
+
 @Controller('moderation')
 export class ModerationController {
   constructor(
@@ -58,8 +64,28 @@ export class ModerationController {
   @Get('members')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('moderation.review')
-  getMembers() {
-    return this.moderationService.getMembers();
+  getMembers(@Query('campaignId') campaignId?: string) {
+    return this.moderationService.getMembers(campaignId);
+  }
+
+  @Get('members/:memberId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('moderation.review')
+  getMemberDetail(@Param('memberId') memberId: string) {
+    return this.moderationService.getMemberDetail(memberId);
+  }
+
+  @Put('members/:memberId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('moderation.review')
+  updateMember(
+    @Param('memberId') memberId: string,
+    @Body() body: UpdateMemberBody,
+  ) {
+    return this.moderationService.updateMember(memberId, {
+      ownerName: body.ownerName ?? null,
+      note: body.note ?? null,
+    });
   }
 
   @Get('events')
@@ -67,6 +93,13 @@ export class ModerationController {
   @Permissions('moderation.review')
   getEvents() {
     return this.moderationEngineService.getEvents();
+  }
+
+  @Get('debug')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('moderation.review')
+  getDebugOverview() {
+    return this.moderationService.getDebugOverview();
   }
 
   @Get('config')
@@ -135,6 +168,13 @@ export class ModerationController {
       decision: body.decision || SpamDecision.REVIEW,
       note: body.note || '',
     });
+  }
+
+  @Post('jobs/process-due')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('moderation.review')
+  processDueJobs() {
+    return this.moderationService.processDueActionJobs();
   }
 
   @Post('analyze')

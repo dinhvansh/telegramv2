@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
 import { Injectable } from '@nestjs/common';
 import {
   ModerationListMode,
@@ -26,13 +25,33 @@ type ModerationMember = {
   externalId: string;
   username: string | null;
   campaignLabel: string;
+  campaignId: string | null;
   groupTitle: string;
+  ownerName: string | null;
+  note: string | null;
+  warningCount: number;
+  lastWarnedAt: string | null;
   joinedAt: string;
   joinedRelative: string;
   membershipStatus: 'active' | 'left';
   statusLabel: string;
   statusDetail: string;
   leftAt: string | null;
+};
+
+type WarningEscalationPreview = {
+  memberId: string | null;
+  currentWarningCount: number;
+  nextWarningCount: number;
+  warnLimit: number;
+  warnAction: 'mute' | 'tmute' | 'kick' | 'ban' | 'tban';
+  actionVariant: 'mute' | 'tmute' | 'kick' | 'ban' | 'tban';
+  incrementWarning: boolean;
+  triggered: boolean;
+  effectiveDecision: SpamDecision;
+  muteDurationHours: number | null;
+  durationSeconds: number | null;
+  matchedRules: string[];
 };
 
 type PolicyRecord = Prisma.ModerationPolicyGetPayload<{
@@ -51,7 +70,12 @@ const fallbackMembers: ModerationMember[] = [
     externalId: '5029112',
     username: 'juli_dev',
     campaignLabel: 'Winter_24',
+    campaignId: null,
     groupTitle: 'Dev_Ops_Global',
+    ownerName: 'Trust Moderator',
+    note: 'Ưu tiên theo dõi sau khi vào nhóm.',
+    warningCount: 1,
+    lastWarnedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
     joinedAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
     joinedRelative: '2 phút trước',
     membershipStatus: 'active',
@@ -66,7 +90,12 @@ const fallbackMembers: ModerationMember[] = [
     externalId: '1129384',
     username: 'marko_k',
     campaignLabel: 'Trực tiếp',
+    campaignId: null,
     groupTitle: 'Support_QA',
+    ownerName: null,
+    note: null,
+    warningCount: 0,
+    lastWarnedAt: null,
     joinedAt: new Date(Date.now() - 14 * 60 * 1000).toISOString(),
     joinedRelative: '14 phút trước',
     membershipStatus: 'active',
@@ -81,7 +110,12 @@ const fallbackMembers: ModerationMember[] = [
     externalId: '9928374',
     username: 'slee_crypto',
     campaignLabel: 'Winter_24',
+    campaignId: null,
     groupTitle: 'Dev_Ops_Global',
+    ownerName: 'Campaign Operator',
+    note: 'Đã rời nhóm sau đợt thử nghiệm.',
+    warningCount: 2,
+    lastWarnedAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
     joinedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
     joinedRelative: '1 giờ trước',
     membershipStatus: 'left',
@@ -118,12 +152,16 @@ export class ModerationService {
     private readonly systemLogsService: SystemLogsService,
   ) {}
 
-  async getMembers() {
+  async getMembers(campaignId?: string) {
     if (!process.env.DATABASE_URL) {
       return this.composePayload(fallbackMembers);
     }
 
     const members = await this.prisma.communityMember.findMany({
+      include: {
+        campaign: true,
+      },
+      where: campaignId ? { campaignId } : undefined,
       orderBy: { joinedAt: 'desc' },
     });
 
@@ -136,8 +174,15 @@ export class ModerationService {
           avatarInitials: member.avatarInitials,
           externalId: member.externalId,
           username: member.username,
-          campaignLabel: member.campaignLabel,
+          campaignLabel: member.campaign?.name || member.campaignLabel,
+          campaignId: member.campaignId,
           groupTitle: member.groupTitle,
+          ownerName: member.ownerName,
+          note: member.note,
+          warningCount: member.warningCount,
+          lastWarnedAt: member.lastWarnedAt
+            ? member.lastWarnedAt.toISOString()
+            : null,
           joinedAt: member.joinedAt.toISOString(),
           joinedRelative: formatRelativeTime(member.joinedAt),
           membershipStatus: hasLeft ? 'left' : 'active',
@@ -150,6 +195,87 @@ export class ModerationService {
         } satisfies ModerationMember;
       }),
     );
+  }
+
+  async getMemberDetail(memberId: string) {
+    if (!process.env.DATABASE_URL) {
+      const fallbackMember = fallbackMembers.find(
+        (member) => member.id === memberId,
+      );
+      return {
+        found: Boolean(fallbackMember),
+        member: fallbackMember || null,
+      };
+    }
+
+    const member = await this.prisma.communityMember.findUnique({
+      where: { id: memberId },
+      include: {
+        campaign: true,
+      },
+    });
+
+    return {
+      found: Boolean(member),
+      member: member
+        ? {
+            id: member.id,
+            displayName: member.displayName,
+            avatarInitials: member.avatarInitials,
+            externalId: member.externalId,
+            username: member.username,
+            campaignLabel: member.campaign?.name || member.campaignLabel,
+            campaignId: member.campaignId,
+            groupTitle: member.groupTitle,
+            ownerName: member.ownerName,
+            note: member.note,
+            warningCount: member.warningCount,
+            lastWarnedAt: member.lastWarnedAt
+              ? member.lastWarnedAt.toISOString()
+              : null,
+            joinedAt: member.joinedAt.toISOString(),
+            joinedRelative: formatRelativeTime(member.joinedAt),
+            membershipStatus: member.leftAt ? 'left' : 'active',
+            statusLabel: member.leftAt ? 'Đã rời nhóm' : 'Đang ở trong nhóm',
+            statusDetail: member.leftAt
+              ? `Rời nhóm ${formatRelativeTime(member.leftAt)}.`
+              : 'Chưa ghi nhận sự kiện rời nhóm.',
+            leftAt: member.leftAt ? member.leftAt.toISOString() : null,
+          }
+        : null,
+    };
+  }
+
+  async updateMember(
+    memberId: string,
+    input: { ownerName?: string | null; note?: string | null },
+  ) {
+    if (!process.env.DATABASE_URL) {
+      const fallbackMember = fallbackMembers.find(
+        (member) => member.id === memberId,
+      );
+      if (!fallbackMember) {
+        return { found: false, member: null };
+      }
+
+      fallbackMember.ownerName = input.ownerName?.trim() || null;
+      fallbackMember.note = input.note?.trim() || null;
+
+      return {
+        found: true,
+        member: fallbackMember,
+      };
+    }
+
+    const member = await this.prisma.communityMember.update({
+      where: { id: memberId },
+      data: {
+        ownerName: input.ownerName?.trim() || null,
+        note: input.note?.trim() || null,
+      },
+    });
+
+    return this.getMemberDetail(member.id);
   }
 
   async getConfig() {
@@ -366,7 +492,7 @@ export class ModerationService {
       };
     }
 
-    const updated = (await this.prisma.spamEvent.update({
+    const updated = await this.prisma.spamEvent.update({
       where: {
         id: input.eventId,
       },
@@ -375,7 +501,7 @@ export class ModerationService {
         manualNote: String(input.note || '').trim() || null,
         reviewedAt: new Date(),
       },
-    })) as any;
+    });
 
     const action =
       input.decision === SpamDecision.REVIEW ||
@@ -397,6 +523,24 @@ export class ModerationService {
             userId: updated.actorExternalId,
             messageId: updated.messageExternalId,
             note: input.note || '',
+            groupTitle: updated.groupTitle,
+            actorExternalId: updated.actorExternalId,
+            actorUsername: updated.actorUsername,
+            reasonSummary: this.buildAnnouncementReasonSummary(
+              Array.isArray(updated.matchedRules)
+                ? updated.matchedRules
+                    .map((rule) =>
+                      typeof rule === 'string' ? rule.trim() : '',
+                    )
+                    .filter(Boolean)
+                : [],
+              input.note || '',
+            ),
+            operatorName: 'CRM Admin',
+            silentActions: await this.resolveSilentActionsForGroup({
+              groupExternalId: updated.groupExternalId,
+              groupTitle: updated.groupTitle,
+            }),
           });
 
     await this.systemLogsService.log({
@@ -412,6 +556,8 @@ export class ModerationService {
       },
     });
 
+    const memberImpact = await this.applyMemberModerationEffect(updated, input);
+
     return {
       updated: true,
       id: updated.id,
@@ -419,7 +565,300 @@ export class ModerationService {
       manualNote: updated.manualNote,
       reviewedAt: updated.reviewedAt?.toISOString() || null,
       action,
+      memberImpact,
     };
+  }
+
+  async getDebugOverview() {
+    const jobs = (await this.telegramActionsService.listActionJobs(
+      30,
+    )) as Array<{
+      id: string;
+      source: string;
+      status: string;
+      eventType: string;
+      actionVariant: string;
+      chatId: string;
+      userId: string;
+      groupTitle: string | null;
+      note: string | null;
+      commandText: string | null;
+      expireAt: string | null;
+      completedAt: string | null;
+      lastError: string | null;
+    }>;
+    const logs = (await this.systemLogsService.findRecent({
+      limit: 40,
+    })) as Array<{
+      id: string;
+      level: 'INFO' | 'WARN' | 'ERROR';
+      scope: string;
+      action: string;
+      message: string;
+      detail: string | null;
+      createdAt: string;
+    }>;
+
+    return {
+      jobs,
+      logs,
+    };
+  }
+
+  async processDueActionJobs() {
+    return this.telegramActionsService.processDueActionJobs(30);
+  }
+
+  async getWarningEscalationPreview(input: {
+    actorExternalId?: string | null;
+    groupTitle: string;
+    decision: SpamDecision;
+  }): Promise<WarningEscalationPreview> {
+    const warnSettings = await this.resolveWarnSettingsForGroup(
+      input.groupTitle,
+    );
+    const defaultPreview = {
+      memberId: null,
+      currentWarningCount: 0,
+      nextWarningCount: 0,
+      warnLimit: warnSettings.warnLimit,
+      warnAction: warnSettings.warnAction,
+      actionVariant: warnSettings.warnAction,
+      incrementWarning: false,
+      triggered: false,
+      effectiveDecision: input.decision,
+      muteDurationHours: warnSettings.warnActionDurationHours,
+      durationSeconds: warnSettings.warnActionDurationSeconds,
+      matchedRules: [] as string[],
+    } satisfies WarningEscalationPreview;
+
+    if (input.decision !== SpamDecision.WARN) {
+      return defaultPreview;
+    }
+
+    const actorExternalId = String(input.actorExternalId || '').trim();
+    const member = process.env.DATABASE_URL
+      ? await this.findCommunityMemberForEvent(
+          actorExternalId,
+          input.groupTitle,
+        )
+      : fallbackMembers.find(
+          (candidate) =>
+            candidate.externalId === actorExternalId &&
+            candidate.groupTitle === input.groupTitle,
+        ) || null;
+
+    const currentWarningCount = member?.warningCount || 0;
+    const nextWarningCount = currentWarningCount + 1;
+    const triggered =
+      warnSettings.lockWarns && nextWarningCount >= warnSettings.warnLimit;
+
+    return {
+      memberId: member?.id || null,
+      currentWarningCount,
+      nextWarningCount,
+      warnLimit: warnSettings.warnLimit,
+      warnAction: warnSettings.warnAction,
+      actionVariant: warnSettings.warnAction,
+      incrementWarning: true,
+      triggered,
+      effectiveDecision: triggered
+        ? this.mapWarnActionToDecision(warnSettings.warnAction)
+        : SpamDecision.WARN,
+      muteDurationHours: warnSettings.warnActionDurationHours,
+      durationSeconds: warnSettings.warnActionDurationSeconds,
+      matchedRules: triggered
+        ? [
+            `warning_ladder:${nextWarningCount}/${warnSettings.warnLimit}`,
+            `warning_action:${warnSettings.warnAction}`,
+          ]
+        : [`warning_count:${nextWarningCount}/${warnSettings.warnLimit}`],
+    };
+  }
+
+  async applyAutomatedDecisionEffect(input: {
+    actorExternalId?: string | null;
+    groupTitle: string;
+    incrementWarning: boolean;
+  }) {
+    const actorExternalId = String(input.actorExternalId || '').trim() || null;
+
+    if (!actorExternalId) {
+      return {
+        memberId: null,
+        warningCount: null,
+        warningApplied: false,
+      };
+    }
+
+    if (!process.env.DATABASE_URL) {
+      const fallbackMember = fallbackMembers.find(
+        (member) =>
+          member.externalId === actorExternalId &&
+          member.groupTitle === input.groupTitle,
+      );
+
+      if (!fallbackMember) {
+        return {
+          memberId: null,
+          warningCount: null,
+          warningApplied: false,
+        };
+      }
+
+      if (input.incrementWarning) {
+        fallbackMember.warningCount += 1;
+        fallbackMember.lastWarnedAt = new Date().toISOString();
+      }
+
+      return {
+        memberId: fallbackMember.id,
+        warningCount: fallbackMember.warningCount,
+        warningApplied: input.incrementWarning,
+      };
+    }
+
+    const member = await this.findCommunityMemberForEvent(
+      actorExternalId,
+      input.groupTitle,
+    );
+
+    if (!member) {
+      return {
+        memberId: null,
+        warningCount: null,
+        warningApplied: false,
+      };
+    }
+
+    if (!input.incrementWarning) {
+      return {
+        memberId: member.id,
+        warningCount: member.warningCount,
+        warningApplied: false,
+      };
+    }
+
+    const updatedMember = await this.prisma.communityMember.update({
+      where: { id: member.id },
+      data: {
+        warningCount: {
+          increment: 1,
+        },
+        lastWarnedAt: new Date(),
+      },
+    });
+
+    return {
+      memberId: updatedMember.id,
+      warningCount: updatedMember.warningCount,
+      warningApplied: true,
+    };
+  }
+
+  private async applyMemberModerationEffect(
+    spamEvent: {
+      actorExternalId?: string | null;
+      groupTitle: string;
+    },
+    input: { decision: SpamDecision },
+  ) {
+    return this.applyAutomatedDecisionEffect({
+      actorExternalId: spamEvent.actorExternalId || null,
+      groupTitle: spamEvent.groupTitle,
+      incrementWarning: input.decision === SpamDecision.WARN,
+    });
+  }
+
+  private async resolveSilentActionsForGroup(input: {
+    groupExternalId?: string | null;
+    groupTitle?: string | null;
+  }) {
+    if (!process.env.DATABASE_URL) {
+      return false;
+    }
+
+    const group = await this.prisma.telegramGroup.findFirst({
+      where: {
+        OR: [
+          input.groupExternalId
+            ? { externalId: input.groupExternalId }
+            : undefined,
+          input.groupTitle ? { title: input.groupTitle } : undefined,
+        ].filter(Boolean) as never,
+      },
+      include: {
+        moderationSettings: true,
+      },
+    });
+
+    return group?.moderationSettings?.silentActions ?? false;
+  }
+
+  private buildAnnouncementReasonSummary(
+    matchedRules?: string[] | null,
+    fallbackNote?: string | null,
+  ) {
+    const normalizedRules = Array.from(
+      new Set(
+        (matchedRules || [])
+          .map((rule) => this.formatAnnouncementRule(rule))
+          .filter(Boolean),
+      ),
+    ).slice(0, 4);
+
+    if (normalizedRules.length > 0) {
+      return normalizedRules.join(', ');
+    }
+
+    const note = String(fallbackNote || '').trim();
+    return note || null;
+  }
+
+  private formatAnnouncementRule(rule: string) {
+    const normalizedRule = String(rule || '').trim();
+    if (!normalizedRule) {
+      return null;
+    }
+
+    if (normalizedRule.startsWith('lock:')) {
+      const lockKey = normalizedRule.slice(5);
+      const lockLabels: Record<string, string> = {
+        url: 'chứa liên kết',
+        invitelink: 'chứa link mời Telegram',
+        forward: 'tin nhắn chuyển tiếp',
+        email: 'chứa email',
+        phone: 'chứa số điện thoại',
+        bot: 'gửi qua bot',
+        photo: 'gửi ảnh',
+        video: 'gửi video',
+        document: 'gửi tài liệu',
+        sticker: 'gửi sticker',
+      };
+      return lockLabels[lockKey] || `vi phạm ${lockKey}`;
+    }
+
+    if (normalizedRule.startsWith('antiflood:')) {
+      return `gửi tin quá nhanh (${normalizedRule.slice('antiflood:'.length)})`;
+    }
+
+    if (normalizedRule.startsWith('warning_ladder:')) {
+      return `vượt ngưỡng cảnh báo (${normalizedRule.slice('warning_ladder:'.length)})`;
+    }
+
+    if (normalizedRule.startsWith('warning_action:')) {
+      const action = normalizedRule.slice('warning_action:'.length);
+      const labels: Record<string, string> = {
+        mute: 'nâng lên khóa chat',
+        tmute: 'nâng lên khóa chat tạm thời',
+        kick: 'nâng lên kick',
+        ban: 'nâng lên cấm khỏi nhóm',
+        tban: 'nâng lên cấm tạm thời',
+      };
+      return labels[action] || `nâng mức ${action}`;
+    }
+
+    return normalizedRule.replace(/_/g, ' ');
   }
 
   async getResolvedPolicyForGroup(groupTitle: string) {
@@ -509,6 +948,89 @@ export class ModerationService {
       },
       decisionThresholds: moderationDecisionThresholds,
     };
+  }
+
+  private async findCommunityMemberForEvent(
+    actorExternalId: string | null,
+    groupTitle: string,
+  ) {
+    if (!actorExternalId) {
+      return null;
+    }
+
+    return this.prisma.communityMember.findFirst({
+      where: {
+        externalId: actorExternalId,
+        groupTitle,
+      },
+      orderBy: {
+        joinedAt: 'desc',
+      },
+    });
+  }
+
+  private async resolveWarnSettingsForGroup(groupTitle: string) {
+    if (!process.env.DATABASE_URL) {
+      return {
+        lockWarns: true,
+        warnLimit: 2,
+        warnAction: 'kick' as const,
+        warnActionDurationHours: 24,
+        warnActionDurationSeconds: null,
+      };
+    }
+
+    const group = await this.prisma.telegramGroup.findFirst({
+      where: {
+        title: groupTitle,
+      },
+      include: {
+        moderationSettings: true,
+      },
+    });
+
+    const warnAction = group?.moderationSettings?.warnAction || 'kick';
+    const warnActionDurationHours =
+      warnAction === 'tmute' || warnAction === 'tban'
+        ? Math.max(
+            1,
+            Math.ceil(
+              Number(
+                group?.moderationSettings?.warnActionDurationSeconds || 3600,
+              ) / 3600,
+            ),
+          )
+        : 24;
+    const warnActionDurationSeconds =
+      warnAction === 'tmute' || warnAction === 'tban'
+        ? Math.max(
+            60,
+            Number(
+              group?.moderationSettings?.warnActionDurationSeconds || 3600,
+            ),
+          )
+        : null;
+
+    return {
+      lockWarns: group?.moderationSettings?.lockWarns ?? true,
+      warnLimit: Math.max(1, group?.moderationSettings?.warnLimit ?? 2),
+      warnAction: warnAction as 'mute' | 'tmute' | 'kick' | 'ban' | 'tban',
+      warnActionDurationHours,
+      warnActionDurationSeconds,
+    };
+  }
+
+  private mapWarnActionToDecision(action: string) {
+    switch (action) {
+      case 'mute':
+      case 'tmute':
+        return SpamDecision.RESTRICT;
+      case 'kick':
+      case 'ban':
+      case 'tban':
+      default:
+        return SpamDecision.BAN;
+    }
   }
 
   private composePayload(members: ModerationMember[]) {

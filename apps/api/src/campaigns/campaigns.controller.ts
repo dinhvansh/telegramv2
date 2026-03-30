@@ -25,6 +25,16 @@ export class CampaignsController {
     return this.campaignsService.findInviteLinks(campaignId);
   }
 
+  @Get(':campaignId')
+  getCampaign(@Param('campaignId') campaignId: string) {
+    return this.campaignsService.findOne(campaignId);
+  }
+
+  @Get(':campaignId/members')
+  getCampaignMembers(@Param('campaignId') campaignId: string) {
+    return this.campaignsService.findMembers(campaignId);
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('campaign.manage')

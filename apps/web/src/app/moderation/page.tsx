@@ -1,6 +1,5 @@
-import { StitchWorkspace } from "@/components/stitch-workspace";
-import { getStitchPageHtml } from "@/lib/stitch-pages";
+import { PlatformDashboard } from "@/components/platform-dashboard";
 
 export default function ModerationPage() {
-  return <StitchWorkspace html={getStitchPageHtml("moderation")} />;
+  return <PlatformDashboard page="moderation" />;
 }

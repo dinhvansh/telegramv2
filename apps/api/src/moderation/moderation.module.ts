@@ -10,6 +10,6 @@ import { ModerationService } from './moderation.service';
   imports: [SettingsModule, TelegramActionsModule, SystemLogsModule],
   controllers: [ModerationController],
   providers: [ModerationService, ModerationEngineService],
-  exports: [ModerationEngineService],
+  exports: [ModerationEngineService, ModerationService],
 })
 export class ModerationModule {}

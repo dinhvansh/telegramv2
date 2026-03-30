@@ -1,0 +1,14 @@
+.git
+.github
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+coverage
+**/coverage
+npm-debug.log
+*.log
+.env
+**/.env

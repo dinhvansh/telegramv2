@@ -28,6 +28,8 @@ async function main() {
   await prisma.autopostTarget.deleteMany();
   await prisma.inviteLinkEvent.deleteMany();
   await prisma.campaignInviteLink.deleteMany();
+  await prisma.telegramGroupModerationSettings.deleteMany();
+  await prisma.telegramBotConfig.deleteMany();
   await prisma.eventFeedItem.deleteMany();
   await prisma.communityMember.deleteMany();
   await prisma.metricCard.deleteMany();
@@ -36,6 +38,7 @@ async function main() {
   await prisma.moderationPolicy.deleteMany();
   await prisma.moderationRule.deleteMany();
   await prisma.spamEvent.deleteMany();
+  await prisma.moderationActionJob.deleteMany();
   await prisma.roadmapTask.deleteMany();
   await prisma.roadmapPhase.deleteMany();
   await prisma.autopostCapability.deleteMany();
@@ -46,18 +49,109 @@ async function main() {
 
   const [globalGroup, partnerGroup, vipGroup, alphaGroup] = await Promise.all([
     prisma.telegramGroup.create({
-      data: { title: 'Nexus Global', slug: 'nexus-global', externalId: '-100221001' },
+      data: {
+        title: 'Nexus Global',
+        slug: 'nexus-global',
+        externalId: '-100221001',
+        username: 'nexus_global',
+        type: 'supergroup',
+        isActive: true,
+        discoveredFrom: 'seed_import',
+        lastSyncedAt: new Date(),
+        botMemberState: 'administrator',
+        botCanDeleteMessages: true,
+        botCanRestrictMembers: true,
+        botCanInviteUsers: true,
+      },
     }),
     prisma.telegramGroup.create({
-      data: { title: 'Partner Circle', slug: 'partner-circle', externalId: '-100221002' },
+      data: {
+        title: 'Partner Circle',
+        slug: 'partner-circle',
+        externalId: '-100221002',
+        username: 'partner_circle',
+        type: 'supergroup',
+        isActive: true,
+        discoveredFrom: 'seed_import',
+        lastSyncedAt: new Date(),
+        botMemberState: 'administrator',
+        botCanDeleteMessages: true,
+        botCanRestrictMembers: true,
+        botCanInviteUsers: true,
+      },
     }),
     prisma.telegramGroup.create({
-      data: { title: 'Inner Room', slug: 'inner-room', externalId: '-100221003' },
+      data: {
+        title: 'Inner Room',
+        slug: 'inner-room',
+        externalId: '-100221003',
+        username: 'inner_room',
+        type: 'supergroup',
+        isActive: true,
+        discoveredFrom: 'seed_import',
+        lastSyncedAt: new Date(),
+        botMemberState: 'administrator',
+        botCanDeleteMessages: true,
+        botCanRestrictMembers: true,
+        botCanInviteUsers: true,
+      },
     }),
     prisma.telegramGroup.create({
-      data: { title: 'Alpha Testers', slug: 'alpha-testers', externalId: '-100221004' },
+      data: {
+        title: 'Alpha Testers',
+        slug: 'alpha-testers',
+        externalId: '-100221004',
+        username: 'alpha_testers',
+        type: 'supergroup',
+        isActive: true,
+        discoveredFrom: 'seed_import',
+        lastSyncedAt: new Date(),
+        botMemberState: 'member',
+        botCanDeleteMessages: false,
+        botCanRestrictMembers: false,
+        botCanInviteUsers: false,
+      },
     }),
   ]);
+
+  await prisma.telegramBotConfig.create({
+    data: {
+      botExternalId: '100000001',
+      botUsername: 'nexus_guard_bot',
+      botDisplayName: 'Nexus Guard',
+      isVerified: true,
+      webhookRegistered: false,
+      webhookUrl: null,
+      lastVerifiedAt: new Date(),
+      lastDiscoveredAt: new Date(),
+    },
+  });
+
+  await prisma.telegramGroupModerationSettings.createMany({
+    data: [
+      {
+        telegramGroupId: globalGroup.id,
+        moderationEnabled: true,
+        lockUrl: true,
+        lockInvitelink: true,
+        lockForward: true,
+      },
+      {
+        telegramGroupId: partnerGroup.id,
+        moderationEnabled: true,
+        lockUrl: true,
+        lockInvitelink: true,
+      },
+      {
+        telegramGroupId: vipGroup.id,
+        moderationEnabled: false,
+      },
+      {
+        telegramGroupId: alphaGroup.id,
+        moderationEnabled: false,
+      },
+    ],
+  });
 
   const [globalModerationPolicy, partnerModerationPolicy, vipModerationPolicy] =
     await Promise.all([
@@ -279,8 +373,11 @@ async function main() {
         avatarInitials: 'JD',
         externalId: '5029112',
         username: 'juli_dev',
-        campaignLabel: 'Winter_24',
-        groupTitle: 'Dev_Ops_Global',
+        campaignLabel: summerCampaign.name,
+        campaignId: summerCampaign.id,
+        groupTitle: globalGroup.title,
+        ownerName: 'Campaign Operator',
+        note: 'Nguồn vào nhóm tốt, giữ theo dõi chuyển đổi.',
         joinedAt: new Date(now - 2 * 60 * 1000),
         leftAt: null,
       },
@@ -290,7 +387,10 @@ async function main() {
         externalId: '1129384',
         username: 'marko_k',
         campaignLabel: 'Trực tiếp',
-        groupTitle: 'Support_QA',
+        campaignId: summerCampaign.id,
+        groupTitle: globalGroup.title,
+        ownerName: 'Nexus Admin',
+        note: 'Đã phản hồi bài giới thiệu trong 10 phút đầu.',
         joinedAt: new Date(now - 14 * 60 * 1000),
         leftAt: null,
       },
@@ -299,8 +399,11 @@ async function main() {
         avatarInitials: 'SL',
         externalId: '9928374',
         username: 'slee_crypto',
-        campaignLabel: 'Winter_24',
-        groupTitle: 'Dev_Ops_Global',
+        campaignLabel: summerCampaign.name,
+        campaignId: summerCampaign.id,
+        groupTitle: globalGroup.title,
+        ownerName: 'Trust Moderator',
+        note: 'Đã rời nhóm sau 35 phút, cần xem lại nguồn traffic.',
         joinedAt: new Date(now - 60 * 60 * 1000),
         leftAt: new Date(now - 25 * 60 * 1000),
       },
@@ -309,8 +412,11 @@ async function main() {
         avatarInitials: 'NT',
         externalId: '8872311',
         username: 'nadia_growth',
-        campaignLabel: 'Partner_East',
-        groupTitle: 'Partner_Circle',
+        campaignLabel: partnerCampaign.name,
+        campaignId: partnerCampaign.id,
+        groupTitle: partnerGroup.title,
+        ownerName: 'Campaign Operator',
+        note: 'Lead chất lượng, ưu tiên chăm sóc.',
         joinedAt: new Date(now - 3 * 60 * 60 * 1000),
         leftAt: null,
       },
@@ -320,7 +426,10 @@ async function main() {
         externalId: '2219087',
         username: 'luca_ops',
         campaignLabel: 'Trực tiếp',
-        groupTitle: 'Inner_Room',
+        campaignId: vipCampaign.id,
+        groupTitle: vipGroup.title,
+        ownerName: null,
+        note: 'Đã rời nhóm, chưa có người phụ trách.',
         joinedAt: new Date(now - 5 * 60 * 60 * 1000),
         leftAt: new Date(now - 90 * 60 * 1000),
       },

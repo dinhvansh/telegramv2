@@ -5,8 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { fallbackPlatformSnapshot, PlatformSnapshot } from "@/lib/platform-data";
 
-const apiBaseUrl =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "/api";
+const apiBaseUrl = "/api";
 
 const authStorageKey = "telegram-ops-access-token";
 
@@ -29,6 +28,7 @@ type PlatformDashboardProps = {
   page?:
     | "dashboard"
     | "campaigns"
+    | "members"
     | "moderation"
     | "autopost"
     | "roles"

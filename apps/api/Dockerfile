@@ -4,18 +4,18 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
-COPY package*.json ./
+COPY apps/api/package*.json ./
 RUN npm ci
 
-COPY prisma ./prisma
+COPY apps/api/prisma ./prisma
 RUN npx prisma generate
 
-COPY tsconfig*.json ./
-COPY nest-cli.json ./
-COPY .prettierrc ./
-COPY eslint.config.mjs ./
-COPY src ./src
-COPY test ./test
+COPY apps/api/tsconfig*.json ./
+COPY apps/api/nest-cli.json ./
+COPY apps/api/.prettierrc ./
+COPY apps/api/eslint.config.mjs ./
+COPY apps/api/src ./src
+COPY apps/api/test ./test
 
 RUN npm run build
 

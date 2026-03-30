@@ -32,7 +32,8 @@ services:
 
   api:
     build:
-      context: ./apps/api
+      context: .
+      dockerfile: ./apps/api/Dockerfile
     container_name: telegram-api
     environment:
       PORT: 4000
@@ -58,7 +59,7 @@ services:
       dockerfile: ./apps/web/Dockerfile
     container_name: telegram-web
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:4000/api
+      API_PROXY_TARGET: http://telegram-api:4000/api
     depends_on:
       api:
         condition: service_started

@@ -1,6 +1,5 @@
-import { StitchWorkspace } from "@/components/stitch-workspace";
-import { getStitchPageHtml } from "@/lib/stitch-pages";
+import { PlatformDashboard } from "@/components/platform-dashboard";
 
 export default function Home() {
-  return <StitchWorkspace entryMode html={getStitchPageHtml("dashboard")} />;
+  return <PlatformDashboard entryMode />;
 }
