@@ -39,6 +39,7 @@ jobs:
             fi
             cd /opt/telegramv2/app
             git fetch origin main
-            git reset --hard origin/main
+            git checkout main
+            git pull --ff-only origin main
             chmod +x infra/deploy/deploy-vps.sh
             APP_ROOT=/opt/telegramv2 APP_DIR=/opt/telegramv2/app SHARED_DIR=/opt/telegramv2/shared ./infra/deploy/deploy-vps.sh

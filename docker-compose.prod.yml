@@ -30,7 +30,8 @@ services:
 
   api:
     build:
-      context: ./apps/api
+      context: .
+      dockerfile: ./apps/api/Dockerfile
     container_name: telegramv2-api
     restart: unless-stopped
     environment:
@@ -62,7 +63,7 @@ services:
     container_name: telegramv2-web
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      API_PROXY_TARGET: http://api:4000/api
     depends_on:
       api:
         condition: service_started
