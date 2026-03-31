@@ -626,14 +626,14 @@ export function TelegramGroupModerationSettings({
               </div>
 
               <div className="rounded-[24px] bg-[color:var(--surface-low)] p-5">
-                <p className="text-sm font-bold">Ch?ng spam li?n t?c</p>
+                <p className="text-sm font-bold">Chống spam liên tục</p>
                 <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">
-                  D?ng khi m?t user g?i qu? nhi?u tin nh?n trong m?t kho?ng th?i gian ng?n.
+                  Dùng khi một user gửi quá nhiều tin nhắn trong một khoảng thời gian ngắn.
                 </p>
                 <div className="mt-4 grid gap-4">
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      S? tin nh?n t?i ?a
+                      Số tin nhắn tối đa
                     </span>
                     <input
                       type="number"
@@ -654,7 +654,7 @@ export function TelegramGroupModerationSettings({
                   </label>
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      C?a s? th?i gian (gi?y)
+                      Khoảng thời gian (giây)
                     </span>
                     <input
                       type="number"
@@ -726,9 +726,9 @@ export function TelegramGroupModerationSettings({
               </div>
 
               <div className="rounded-[24px] bg-[color:var(--surface-low)] p-5">
-                <p className="text-sm font-bold">User m?i / ch?ng v?o nh?m ? ?t</p>
+                <p className="text-sm font-bold">User mới / chống vào nhóm tự động</p>
                 <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">
-                  Probation d?ng ?? si?t user m?i trong th?i gian ??u. Anti-raid d?ng ?? ch?n l?n s?ng nhi?u nick m?i v?o nh?m li?n t?c.
+                  Probation dùng để siết user mới trong thời gian đầu. Anti-raid dùng để chặn làn sóng nhiều nick mới vào nhóm liên tục.
                 </p>
                 <div className="mt-4 grid gap-4">
                   <label className="flex items-center justify-between gap-4 rounded-[16px] bg-white px-4 py-3 text-sm font-semibold">
