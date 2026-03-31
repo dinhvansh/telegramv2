@@ -221,8 +221,7 @@ export class TelegramActionsService {
 
     if (
       input.eventType === 'message_received' ||
-      input.eventType === 'user_joined' ||
-      input.eventType === 'join_request'
+      input.eventType === 'user_joined'
     ) {
       switch (actionVariant) {
         case 'warn':
@@ -902,11 +901,14 @@ export class TelegramActionsService {
       : input.actorExternalId
         ? `user ${input.actorExternalId}`
         : 'một thành viên';
-    const actionLabel = this.getAnnouncementActionLabel(
-      result.actionVariant,
-      input.durationSeconds,
-      input.muteDurationHours,
-    );
+    const actionLabel =
+      input.eventType === 'join_request' && result.actionVariant !== 'allow'
+        ? 'đã bị từ chối yêu cầu tham gia'
+        : this.getAnnouncementActionLabel(
+            result.actionVariant,
+            input.durationSeconds,
+            input.muteDurationHours,
+          );
     const reasonLine = input.reasonSummary
       ? `Lý do: ${input.reasonSummary}`
       : null;
@@ -915,11 +917,14 @@ export class TelegramActionsService {
       : input.source === 'webhook'
         ? 'Thực hiện bởi: bot tự động'
         : null;
-    const expiryLine = this.getExpiryLine(
-      result.actionVariant,
-      input.durationSeconds,
-      input.muteDurationHours,
-    );
+    const expiryLine =
+      input.eventType === 'join_request'
+        ? null
+        : this.getExpiryLine(
+            result.actionVariant,
+            input.durationSeconds,
+            input.muteDurationHours,
+          );
 
     return [
       `${targetLabel} ${actionLabel}.`,

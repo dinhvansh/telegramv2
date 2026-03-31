@@ -610,6 +610,8 @@ export class AutopostService {
     title: string;
     message: string;
     mediaUrl?: string | null;
+    frequency: string;
+    scheduledFor?: Date | null;
     target: {
       id: string;
       platform: AutopostTargetPlatform;
@@ -681,10 +683,12 @@ export class AutopostService {
     await this.prisma.autopostSchedule.update({
       where: { id: schedule.id },
       data: {
-        status:
-          logStatus === AutopostDeliveryStatus.SENT
-            ? AutopostScheduleStatus.COMPLETED
-            : AutopostScheduleStatus.FAILED,
+        ...(logStatus === AutopostDeliveryStatus.SENT
+          ? this.resolveNextScheduleState(
+              schedule.frequency,
+              schedule.scheduledFor,
+            )
+          : { status: AutopostScheduleStatus.FAILED }),
       },
     });
 
@@ -695,6 +699,47 @@ export class AutopostService {
       status: logStatus,
       detail,
       externalPostId,
+    };
+  }
+
+  private resolveNextScheduleState(
+    frequency: string,
+    scheduledFor?: Date | null,
+  ) {
+    const normalized = String(frequency || 'ONCE')
+      .trim()
+      .toUpperCase();
+    const base = scheduledFor ? new Date(scheduledFor) : new Date();
+
+    if (normalized === 'DAILY') {
+      const next = new Date(base);
+      next.setDate(next.getDate() + 1);
+      return {
+        status: AutopostScheduleStatus.SCHEDULED,
+        scheduledFor: next,
+      };
+    }
+
+    if (normalized === 'WEEKLY') {
+      const next = new Date(base);
+      next.setDate(next.getDate() + 7);
+      return {
+        status: AutopostScheduleStatus.SCHEDULED,
+        scheduledFor: next,
+      };
+    }
+
+    if (normalized === 'MONTHLY') {
+      const next = new Date(base);
+      next.setMonth(next.getMonth() + 1);
+      return {
+        status: AutopostScheduleStatus.SCHEDULED,
+        scheduledFor: next,
+      };
+    }
+
+    return {
+      status: AutopostScheduleStatus.COMPLETED,
     };
   }
 
