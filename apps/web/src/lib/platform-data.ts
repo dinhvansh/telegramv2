@@ -158,7 +158,7 @@ export const fallbackPlatformSnapshot: PlatformSnapshot = {
   ],
   moderationRules: [
     "Chặn link ngoài danh sách whitelist và domain blacklist.",
-    "Mute user mới trong 24 giờ đầu nếu spam quá số lượng message cho phép.",
+    "Siết review/join request cho member mới và chỉ restrict khi rule thực sự kích hoạt.",
     "Tính risk score từ keyword, link, history và AI moderation.",
     "Đẩy event vào moderation room thay vì xử lý nặng ngay trong webhook.",
   ],

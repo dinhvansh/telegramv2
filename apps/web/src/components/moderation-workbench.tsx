@@ -1090,7 +1090,7 @@ export function ModerationWorkbench() {
 
                 <label className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4">
                   <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                    Mute user mới
+                    Siết join request
                   </span>
                   <select
                     value={scopeForm.muteNewMembers ? "true" : "false"}
@@ -1105,11 +1105,14 @@ export function ModerationWorkbench() {
                     <option value="true">Bật</option>
                     <option value="false">Tắt</option>
                   </select>
+                  <p className="mt-2 text-xs leading-5 text-[color:var(--on-surface-variant)]">
+                    Chỉ làm policy chặt hơn cho join request hoặc luồng review, không phải auto mute mọi user mới.
+                  </p>
                 </label>
 
                 <label className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4">
                   <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                    Số giờ mute
+                    Thời lượng restrict mặc định
                   </span>
                   <input
                     type="number"
@@ -1124,6 +1127,9 @@ export function ModerationWorkbench() {
                     }
                     className="mt-3 w-full bg-transparent text-sm outline-none"
                   />
+                  <p className="mt-2 text-xs leading-5 text-[color:var(--on-surface-variant)]">
+                    Dùng khi policy hoặc manual action cần thời lượng mà chưa có cấu hình riêng.
+                  </p>
                 </label>
               </div>
 
