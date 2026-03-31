@@ -14,7 +14,7 @@ async function hydrateCampaigns() {
   const searchInput = tableCard && tableCard.querySelector('input[type="text"]');
   const tableBody = tableCard && tableCard.querySelector('tbody');
   const footerRow = tableCard && Array.from(tableCard.querySelectorAll('.px-8.py-6')).find(function(section) {
-    return /Äang hiá»ƒn thá»‹|Dang hien thi/i.test(String(section.textContent || ''));
+    return /Đang hiển thị|Dang hien thi/i.test(String(section.textContent || ''));
   });
   const tableFooter = footerRow && footerRow.querySelector('span');
   const tableHeader = tableCard && tableCard.querySelector('.px-8.py-6.border-b');
@@ -35,7 +35,7 @@ async function hydrateCampaigns() {
     : [];
   const joinMetric = Array.isArray(snapshot.metrics)
     ? snapshot.metrics.find(function(metric) {
-        return /join|user|ngÆ°á»i/i.test(String(metric.label || ''));
+        return /join|user|ngu?i/i.test(String(metric.label || ''));
       })
     : null;
 
@@ -51,7 +51,7 @@ async function hydrateCampaigns() {
     setText(statsCard.querySelector('h3'), joinMetric.value || '--');
     const note = statsCard.querySelector('p');
     if (note) {
-      note.textContent = 'Nguá»“n dá»¯ liá»‡u live tá»« API campaigns, Telegram groups vÃ  tracking invite link.';
+      note.textContent = 'Nguồn dữ liệu live từ API campaigns, Telegram groups và tracking invite link.';
     }
     const trend = statsCard.querySelector('span.text-tertiary');
     if (trend) {
@@ -71,7 +71,7 @@ async function hydrateCampaigns() {
           return { title: channel, externalId: channel };
         });
 
-    groupSelect.innerHTML = ['<option value="">Chá»n má»™t kÃªnh hoáº·c nhÃ³m</option>']
+    groupSelect.innerHTML = ['<option value="">Chọn một kênh hoặc nhóm</option>']
       .concat(groups.map(function(group) {
         return '<option value="' + escapeHtml(group.externalId || '') + '" data-group-title="' + escapeHtml(group.title || '') + '">' + escapeHtml(group.title || '') + '</option>';
       }))
@@ -90,10 +90,10 @@ async function hydrateCampaigns() {
         const statusShell = campaignStatusShellMap[statusKey] || campaignStatusShellMap.Active;
         const joinMode =
           statusKey === 'Review'
-            ? 'Cáº§n Duyá»‡t'
+            ? 'C?n duy?t'
             : statusKey === 'Paused'
-              ? 'ÄÃ£ dá»«ng'
-              : 'Tham gia Trá»±c tiáº¿p';
+              ? 'Đã dừng'
+              : 'Tham gia trực tiếp';
 
         return \`
           <tr class="group hover:bg-surface-container-low transition-colors \${index % 2 === 1 ? 'bg-surface-container-low/20' : ''}" data-campaign-id="\${escapeHtml(campaign.id || '')}">
@@ -124,7 +124,7 @@ async function hydrateCampaigns() {
             <td class="px-6 py-5">
               <span class="inline-flex items-center gap-1.5 text-xs font-semibold \${statusShell.status}">
                 <span class="w-1.5 h-1.5 rounded-full \${statusShell.dot}"></span>
-                \${escapeHtml(statusKey === 'Review' ? 'Cáº§n duyá»‡t' : statusKey === 'Paused' ? 'Táº¡m dá»«ng' : 'Hoáº¡t Ä‘á»™ng')}
+                \${escapeHtml(statusKey === 'Review' ? 'C?n duy?t' : statusKey === 'Paused' ? 'Tạm dừng' : 'Hoạt động')}
               </span>
             </td>
             <td class="px-8 py-5 text-right">
@@ -138,7 +138,7 @@ async function hydrateCampaigns() {
       .join('');
 
     if (tableFooter) {
-      tableFooter.textContent = 'Äang hiá»ƒn thá»‹ ' + String(items.length) + ' chiáº¿n dá»‹ch live tá»« API.';
+      tableFooter.textContent = 'Đang hiển thị ' + String(items.length) + ' chiến dịch live từ API.';
     }
 
     if (secondaryGrid) {
@@ -165,7 +165,7 @@ async function hydrateCampaigns() {
                   </div>
                 </div>
                 <button class="text-[10px] font-bold text-primary hover:underline" type="button" data-open-campaign="\${escapeHtml(campaign.id || '')}">
-                  Má»Ÿ
+                  Mở
                 </button>
               </div>
             \`;
@@ -181,11 +181,11 @@ async function hydrateCampaigns() {
         }).length;
         if (body) {
           body.innerHTML =
-            'Hiá»‡n cÃ³ <strong class="text-on-secondary-container">' +
+            'Hiện có <strong class="text-on-secondary-container">' +
             String(activeCount) +
-            ' chiáº¿n dá»‹ch Ä‘ang hoáº¡t Ä‘á»™ng</strong> vÃ  ' +
+            ' chiến dịch đang hoạt động</strong> và ' +
             String(reviewItems.length) +
-            ' chiáº¿n dá»‹ch chá» duyá»‡t.';
+            ' chiến dịch chờ duyệt.';
         }
         if (button) {
           button.textContent = 'Xem dashboard live';
@@ -254,7 +254,7 @@ async function hydrateCampaigns() {
       const requiresApproval = Boolean(approvalInput && approvalInput.checked);
 
       if (!name || !channel) {
-        showInlineStatus(statusBox, 'Vui lÃ²ng nháº­p tÃªn chiáº¿n dá»‹ch vÃ  chá»n nhÃ³m Telegram.', 'warning');
+        showInlineStatus(statusBox, 'Vui lòng nhập tên chiến dịch và chọn nhóm Telegram.', 'warning');
         return;
       }
 
@@ -267,9 +267,9 @@ async function hydrateCampaigns() {
         const created = await fetchJson('/campaigns', {
           method: 'POST',
           body: JSON.stringify({
-            name: note ? name + ' â€¢ ' + note.slice(0, 24) : name,
+            name: note ? name + ' • ' + note.slice(0, 24) : name,
             channel: channel,
-            joinRate: limit ? 'Giá»›i háº¡n ' + limit + ' thÃ nh viÃªn' : '0% conversion',
+            joinRate: limit ? 'Giới hạn ' + limit + ' thành viên' : '0% conversion',
             status: requiresApproval ? 'Review' : 'Active',
           }),
         });
@@ -304,12 +304,12 @@ async function hydrateCampaigns() {
         if (groupSelect && groupSelect.options.length > 0) {
           groupSelect.selectedIndex = 0;
         }
-        showInlineStatus(statusBox, 'ÄÃ£ táº¡o chiáº¿n dá»‹ch. Náº¿u bot cÃ³ quyá»n trÃªn nhÃ³m, link má»i Ä‘Ã£ Ä‘Æ°á»£c táº¡o vÃ  gáº¯n tracking.', 'success');
+        showInlineStatus(statusBox, 'Đã tạo chiến dịch. Nếu bot có quyền trên nhóm, link mời đã được tạo và gắn tracking.', 'success');
       } catch (error) {
         if (error && error.status === 403) {
-          showInlineStatus(statusBox, 'TÃ i khoáº£n hiá»‡n táº¡i khÃ´ng cÃ³ quyá»n táº¡o campaign.', 'danger');
+          showInlineStatus(statusBox, 'Tài khoản hiện tại không có quyền tạo campaign.', 'danger');
         } else {
-          showInlineStatus(statusBox, 'KhÃ´ng táº¡o Ä‘Æ°á»£c campaign. Kiá»ƒm tra API hoáº·c dá»¯ liá»‡u nháº­p.', 'danger');
+          showInlineStatus(statusBox, 'Không tạo được campaign. Kiểm tra API hoặc dữ liệu nhập.', 'danger');
         }
       } finally {
         if (submitButton) {

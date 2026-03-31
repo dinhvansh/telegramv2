@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { SpamDecision } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
+import { SystemLogsService } from '../system-logs/system-logs.service';
 import { ModerationService } from './moderation.service';
 import {
   builtInBlacklistKeywords,
@@ -23,6 +24,10 @@ type ModerateInput = {
   campaignLabel?: string | null;
   messageText?: string | null;
   messageExternalId?: string | null;
+  aiModerationEnabled?: boolean;
+  aiMode?: 'off' | 'fallback_only' | 'suspicious_only';
+  aiConfidenceThreshold?: number;
+  aiOverrideAction?: boolean;
 };
 
 type AiModerationResult = {
@@ -30,6 +35,15 @@ type AiModerationResult = {
   label: string;
   riskScore: number;
   reason: string;
+  confidence: number;
+  suggestedDecision: SpamDecision | null;
+};
+
+type EffectiveAiSettings = {
+  enabled: boolean;
+  mode: 'off' | 'fallback_only' | 'suspicious_only';
+  confidenceThreshold: number;
+  overrideAction: boolean;
 };
 
 function clampScore(score: number) {
@@ -82,6 +96,7 @@ export class ModerationEngineService {
     private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
     private readonly moderationService: ModerationService,
+    private readonly systemLogsService: SystemLogsService,
   ) {}
 
   async evaluate(input: ModerateInput) {
@@ -92,6 +107,7 @@ export class ModerationEngineService {
     const actorExternalId = normalizeText(input.actorExternalId) || null;
     const matchedRules: string[] = [];
     let ruleScore = 0;
+    const effectiveAiSettings = await this.resolveEffectiveAiSettings(input);
 
     const effectivePolicy =
       await this.moderationService.getResolvedPolicyForGroup(input.groupTitle);
@@ -179,12 +195,22 @@ export class ModerationEngineService {
     }
 
     const aiResult =
-      ruleScore >= 85 || (!text && input.eventType === 'user_joined')
+      !this.shouldRunAi({
+        text,
+        eventType: input.eventType,
+        matchedRules,
+        ruleScore,
+        settings: effectiveAiSettings,
+      }) ||
+      ruleScore >= 85 ||
+      (!text && input.eventType === 'user_joined')
         ? ({
             provider: 'disabled',
             label: 'skip',
             riskScore: 0,
             reason: 'Rule score already decisive or no analyzable text.',
+            confidence: 0,
+            suggestedDecision: null,
           } satisfies AiModerationResult)
         : await this.evaluateWithAi({
             eventType: input.eventType,
@@ -195,17 +221,33 @@ export class ModerationEngineService {
             ruleScore,
           });
 
+    const shouldTrustAi =
+      aiResult.provider !== 'disabled' &&
+      aiResult.confidence >= effectiveAiSettings.confidenceThreshold;
     const blendedScore = clampScore(
-      aiResult.provider === 'disabled'
+      aiResult.provider === 'disabled' || !shouldTrustAi
         ? ruleScore
         : ruleScore * 0.65 + aiResult.riskScore * 0.35,
     );
-    const baseDecision = this.applyPolicyDecision(
+    let baseDecision = this.applyPolicyDecision(
       this.decide(blendedScore, matchedRules),
       blendedScore,
       input.eventType,
       effectivePolicy,
     );
+    if (
+      effectiveAiSettings.overrideAction &&
+      shouldTrustAi &&
+      aiResult.suggestedDecision
+    ) {
+      baseDecision = this.escalateDecision(
+        baseDecision,
+        aiResult.suggestedDecision,
+      );
+      matchedRules.push(
+        `ai_override:${aiResult.suggestedDecision.toLowerCase()}`,
+      );
+    }
     const warningContext =
       await this.moderationService.getWarningEscalationPreview({
         actorExternalId,
@@ -237,6 +279,29 @@ export class ModerationEngineService {
       decision,
     };
 
+    if (aiResult.provider !== 'disabled') {
+      await this.systemLogsService.log({
+        level: 'INFO',
+        scope: 'moderation.ai',
+        action: 'evaluate',
+        message: `AI moderation evaluated ${input.eventType} in ${input.groupTitle}`,
+        payload: {
+          groupTitle: input.groupTitle,
+          eventType: input.eventType,
+          actorUsername: username || null,
+          actorExternalId,
+          label: aiResult.label,
+          riskScore: aiResult.riskScore,
+          confidence: aiResult.confidence,
+          suggestedDecision: aiResult.suggestedDecision,
+          matchedRules,
+          ruleScore,
+          finalScore: blendedScore,
+          trusted: shouldTrustAi,
+        },
+      });
+    }
+
     let createdEventId: string | null = null;
     if (process.env.DATABASE_URL) {
       const created = await this.prisma.spamEvent.create({
@@ -265,6 +330,18 @@ export class ModerationEngineService {
         allowDomains: effectivePolicy.allowDomains,
       },
       warningContext,
+      aiSummary:
+        aiResult.provider === 'disabled'
+          ? null
+          : {
+              provider: aiResult.provider,
+              label: aiResult.label,
+              score: clampScore(aiResult.riskScore),
+              confidence: aiResult.confidence,
+              reason: aiResult.reason,
+              trusted: shouldTrustAi,
+              suggestedDecision: aiResult.suggestedDecision,
+            },
     };
   }
 
@@ -308,6 +385,7 @@ export class ModerationEngineService {
         manualNote: event.manualNote,
         reviewedAt: event.reviewedAt?.toISOString() || null,
         actionLogs: Array.isArray(event.actionLogs) ? event.actionLogs : [],
+        actionTimeline: this.buildActionTimeline(event),
         lastActionAt: event.lastActionAt?.toISOString() || null,
         createdAt: event.createdAt.toISOString(),
       };
@@ -376,6 +454,146 @@ export class ModerationEngineService {
     }
   }
 
+  private async resolveEffectiveAiSettings(
+    input: Pick<
+      ModerateInput,
+      | 'groupTitle'
+      | 'groupExternalId'
+      | 'aiModerationEnabled'
+      | 'aiMode'
+      | 'aiConfidenceThreshold'
+      | 'aiOverrideAction'
+    >,
+  ): Promise<EffectiveAiSettings> {
+    const defaults: EffectiveAiSettings = {
+      enabled: false,
+      mode: 'off',
+      confidenceThreshold: 0.85,
+      overrideAction: false,
+    };
+
+    if (!process.env.DATABASE_URL) {
+      return {
+        enabled: input.aiModerationEnabled ?? defaults.enabled,
+        mode: input.aiMode ?? defaults.mode,
+        confidenceThreshold: Math.max(
+          0,
+          Math.min(
+            1,
+            Number(input.aiConfidenceThreshold ?? defaults.confidenceThreshold),
+          ),
+        ),
+        overrideAction: input.aiOverrideAction ?? defaults.overrideAction,
+      };
+    }
+
+    const group = await this.prisma.telegramGroup.findFirst({
+      where: {
+        OR: [
+          input.groupExternalId
+            ? { externalId: input.groupExternalId }
+            : undefined,
+          { title: input.groupTitle },
+        ].filter(Boolean) as never,
+      },
+      include: {
+        moderationSettings: true,
+      },
+    });
+
+    const settings = group?.moderationSettings;
+
+    return {
+      enabled:
+        input.aiModerationEnabled ??
+        (settings?.moderationEnabled && settings.aiModerationEnabled) ??
+        false,
+      mode: (input.aiMode ??
+        settings?.aiMode ??
+        'off') as EffectiveAiSettings['mode'],
+      confidenceThreshold: Math.max(
+        0,
+        Math.min(
+          1,
+          Number(
+            input.aiConfidenceThreshold ??
+              settings?.aiConfidenceThreshold ??
+              defaults.confidenceThreshold,
+          ),
+        ),
+      ),
+      overrideAction:
+        input.aiOverrideAction ??
+        settings?.aiOverrideAction ??
+        defaults.overrideAction,
+    };
+  }
+
+  private shouldRunAi(input: {
+    text: string;
+    eventType: ModerateInput['eventType'];
+    matchedRules: string[];
+    ruleScore: number;
+    settings: EffectiveAiSettings;
+  }) {
+    if (!input.settings.enabled || input.settings.mode === 'off') {
+      return false;
+    }
+
+    if (!input.text.trim() && input.eventType !== 'join_request') {
+      return false;
+    }
+
+    if (input.settings.mode === 'fallback_only') {
+      return input.ruleScore < moderationDecisionThresholds.restrict;
+    }
+
+    if (input.settings.mode === 'suspicious_only') {
+      return (
+        input.ruleScore >= moderationDecisionThresholds.review ||
+        input.matchedRules.length > 0
+      );
+    }
+
+    return true;
+  }
+
+  private mapSuggestedDecision(value?: string | null) {
+    const normalized = String(value || '')
+      .trim()
+      .toUpperCase();
+    switch (normalized) {
+      case 'ALLOW':
+        return SpamDecision.ALLOW;
+      case 'REVIEW':
+        return SpamDecision.REVIEW;
+      case 'WARN':
+        return SpamDecision.WARN;
+      case 'RESTRICT':
+      case 'MUTE':
+      case 'TMUTE':
+        return SpamDecision.RESTRICT;
+      case 'BAN':
+      case 'TBAN':
+      case 'KICK':
+        return SpamDecision.BAN;
+      default:
+        return null;
+    }
+  }
+
+  private escalateDecision(left: SpamDecision, right: SpamDecision) {
+    const rank: Record<SpamDecision, number> = {
+      ALLOW: 0,
+      REVIEW: 1,
+      WARN: 2,
+      RESTRICT: 3,
+      BAN: 4,
+    };
+
+    return rank[right] > rank[left] ? right : left;
+  }
+
   private async evaluateWithAi(input: {
     eventType: string;
     text: string;
@@ -386,11 +604,18 @@ export class ModerationEngineService {
   }): Promise<AiModerationResult> {
     const aiConfig = await this.settingsService.getResolvedAiConfig();
 
-    if (
-      !aiConfig.baseUrl ||
-      !aiConfig.apiToken ||
-      /^mock:\/\//i.test(aiConfig.baseUrl)
-    ) {
+    if (!aiConfig.baseUrl || !aiConfig.apiToken) {
+      return {
+        provider: 'disabled',
+        label: 'disabled',
+        riskScore: 0,
+        reason: 'AI provider is not configured.',
+        confidence: 0,
+        suggestedDecision: null,
+      };
+    }
+
+    if (/^mock:\/\//i.test(aiConfig.baseUrl)) {
       return this.getMockAiResult(input);
     }
 
@@ -411,7 +636,7 @@ export class ModerationEngineService {
         messages: [
           {
             role: 'system',
-            content: `${aiConfig.prompt}\nTra ve duy nhat mot object JSON hop le voi cac truong: label, risk_score, reason. Khong boc trong markdown, khong giai thich them.`,
+            content: `${aiConfig.prompt}\nTra ve duy nhat mot object JSON hop le voi cac truong: label, risk_score, confidence, reason, suggested_decision. suggested_decision chi duoc la ALLOW, REVIEW, WARN, RESTRICT hoac BAN. Khong boc trong markdown, khong giai thich them.`,
           },
           {
             role: 'user',
@@ -432,7 +657,14 @@ export class ModerationEngineService {
     });
 
     if (!response.ok) {
-      return this.getMockAiResult(input);
+      return {
+        provider: 'disabled',
+        label: 'error',
+        riskScore: 0,
+        reason: `AI endpoint returned HTTP ${response.status}.`,
+        confidence: 0,
+        suggestedDecision: null,
+      };
     }
 
     const body = (await response.json()) as {
@@ -445,14 +677,23 @@ export class ModerationEngineService {
 
     const content = String(body.choices?.[0]?.message?.content || '').trim();
     if (!content) {
-      return this.getMockAiResult(input);
+      return {
+        provider: 'disabled',
+        label: 'empty',
+        riskScore: 0,
+        reason: 'AI endpoint returned empty content.',
+        confidence: 0,
+        suggestedDecision: null,
+      };
     }
 
     try {
       const parsed = JSON.parse(this.extractJsonObject(content)) as {
         label?: string;
         risk_score?: number;
+        confidence?: number;
         reason?: string;
+        suggested_decision?: string;
       };
 
       return {
@@ -460,9 +701,18 @@ export class ModerationEngineService {
         label: String(parsed.label || 'review'),
         riskScore: clampScore(Number(parsed.risk_score || 0)),
         reason: String(parsed.reason || 'AI moderation completed.'),
+        confidence: Math.max(0, Math.min(1, Number(parsed.confidence ?? 0.5))),
+        suggestedDecision: this.mapSuggestedDecision(parsed.suggested_decision),
       };
     } catch {
-      return this.getMockAiResult(input);
+      return {
+        provider: 'disabled',
+        label: 'invalid_json',
+        riskScore: 0,
+        reason: 'AI endpoint did not return valid JSON.',
+        confidence: 0,
+        suggestedDecision: null,
+      };
     }
   }
 
@@ -489,6 +739,100 @@ export class ModerationEngineService {
     return trimmed;
   }
 
+  private buildActionTimeline(event: any) {
+    const steps: Array<{
+      at: string | null;
+      tone: 'info' | 'warn' | 'danger' | 'success';
+      title: string;
+      detail: string;
+    }> = [
+      {
+        at: event.createdAt?.toISOString?.() ?? null,
+        tone: 'info',
+        title: 'Ghi nhận sự kiện',
+        detail: `${event.eventType} · ${event.groupTitle}`,
+      },
+    ];
+
+    const matchedRules = Array.isArray(event.matchedRules)
+      ? event.matchedRules
+      : [];
+    if (matchedRules.length) {
+      steps.push({
+        at: event.createdAt?.toISOString?.() ?? null,
+        tone:
+          event.decision === 'BAN' || event.decision === 'RESTRICT'
+            ? 'warn'
+            : 'info',
+        title: 'Rule trúng',
+        detail: matchedRules.slice(0, 5).join(', '),
+      });
+    }
+
+    if (event.aiScore || event.aiLabel || event.aiReason) {
+      steps.push({
+        at: event.createdAt?.toISOString?.() ?? null,
+        tone: 'info',
+        title: 'AI moderation',
+        detail: [
+          event.aiLabel,
+          event.aiScore ? `score ${event.aiScore}` : null,
+          event.aiReason,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      });
+    }
+
+    if (event.manualDecision && event.reviewedAt) {
+      steps.push({
+        at: event.reviewedAt.toISOString(),
+        tone: 'success',
+        title: 'Review thủ công',
+        detail: `${event.manualDecision}${event.manualNote ? ` · ${event.manualNote}` : ''}`,
+      });
+    }
+
+    const actionLogs = Array.isArray(event.actionLogs) ? event.actionLogs : [];
+    for (const item of actionLogs) {
+      const entry = item as {
+        executedAt?: string;
+        actionVariant?: string;
+        decision?: string;
+        result?: {
+          enforced?: boolean;
+          skipped?: boolean;
+          reason?: string;
+        };
+      };
+
+      const statusLabel = entry.result?.enforced
+        ? 'Đã thực thi'
+        : entry.result?.skipped
+          ? 'Bỏ qua'
+          : 'Đã thử';
+
+      steps.push({
+        at: entry.executedAt ?? null,
+        tone: entry.result?.enforced
+          ? 'danger'
+          : entry.result?.skipped
+            ? 'info'
+            : 'warn',
+        title: 'Action Telegram',
+        detail: [
+          entry.actionVariant ?? entry.decision,
+          statusLabel,
+          entry.result?.reason,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      });
+    }
+
+    return steps;
+  }
+
   private getMockAiResult(input: {
     text: string;
     matchedRules: string[];
@@ -502,6 +846,15 @@ export class ModerationEngineService {
       provider: 'mock',
       label: riskScore >= 70 ? 'spam' : riskScore >= 45 ? 'suspicious' : 'safe',
       riskScore,
+      confidence: riskScore >= 70 ? 0.92 : riskScore >= 45 ? 0.74 : 0.61,
+      suggestedDecision:
+        riskScore >= 85
+          ? SpamDecision.BAN
+          : riskScore >= 60
+            ? SpamDecision.RESTRICT
+            : riskScore >= 40
+              ? SpamDecision.WARN
+              : SpamDecision.ALLOW,
       reason:
         input.matchedRules.length > 0
           ? `Mock AI nâng cảnh báo vì trúng ${input.matchedRules.length} rule.`

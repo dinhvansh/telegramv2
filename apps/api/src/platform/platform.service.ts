@@ -20,6 +20,15 @@ const campaignStatusMap: Record<
   REVIEW: 'Review',
 };
 
+function parseTargetCount(value: string | null | undefined) {
+  if (!value) {
+    return 0;
+  }
+
+  const matched = value.match(/(\d+)/);
+  return matched ? Number(matched[1]) : 0;
+}
+
 @Injectable()
 export class PlatformService {
   constructor(private readonly prisma: PrismaService) {}
@@ -61,7 +70,12 @@ export class PlatformService {
         settings,
       ] = await Promise.all([
         this.prisma.metricCard.findMany({ orderBy: { label: 'asc' } }),
-        this.prisma.campaign.findMany({ orderBy: { createdAt: 'asc' } }),
+        this.prisma.campaign.findMany({
+          orderBy: { createdAt: 'asc' },
+          include: {
+            communityMembers: true,
+          },
+        }),
         this.prisma.eventFeedItem.findMany({ orderBy: { createdAt: 'desc' } }),
         this.prisma.moderationRule.findMany({ orderBy: { sortOrder: 'asc' } }),
         this.prisma.roadmapPhase.findMany({
@@ -81,13 +95,25 @@ export class PlatformService {
           trend: metric.trend,
           tone: toneMap[metric.tone],
         })),
-        campaigns: campaigns.map((campaign) => ({
-          name: campaign.name,
-          channel: campaign.channel,
-          inviteCode: campaign.inviteCode,
-          joinRate: campaign.joinRate,
-          status: campaignStatusMap[campaign.status],
-        })),
+        campaigns: campaigns.map((campaign) => {
+          const joinedCount = campaign.communityMembers.length;
+          const leftCount = campaign.communityMembers.filter(
+            (member) => member.leftAt,
+          ).length;
+          const activeCount = joinedCount - leftCount;
+          const targetCount = parseTargetCount(campaign.joinRate);
+
+          return {
+            name: campaign.name,
+            channel: campaign.channel,
+            inviteCode: campaign.inviteCode,
+            targetCount,
+            joinedCount,
+            activeCount,
+            leftCount,
+            status: campaignStatusMap[campaign.status],
+          };
+        }),
         eventFeed: eventFeed.map((event) => ({
           time: event.timeLabel,
           title: event.title,

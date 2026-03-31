@@ -20,9 +20,9 @@ type AiModelRecord = {
 };
 
 const fallbackAiModels = [
-  { id: 'nexus-guard-mini', label: 'nexus-guard-mini' },
-  { id: 'nexus-guard-pro', label: 'nexus-guard-pro' },
-  { id: 'nexus-routing-fast', label: 'nexus-routing-fast' },
+  { id: 'gpt-5-mini', label: 'gpt-5-mini' },
+  { id: 'gpt-5.4-mini', label: 'gpt-5.4-mini' },
+  { id: 'gpt-4.1-mini', label: 'gpt-4.1-mini' },
 ];
 
 const sensitiveSettingKeys = new Set(['ai.api_token']);
@@ -237,13 +237,23 @@ export class SettingsService {
   private getEnvDefaults() {
     return {
       'ai.base_url': (
-        process.env.AI_DEFAULT_BASE_URL || 'https://v98store.com/v1'
+        process.env.AI_DEFAULT_BASE_URL ||
+        process.env.OPENAI_BASE_URL ||
+        'https://api.openai.com/v1'
       ).trim(),
-      'ai.model': (process.env.AI_DEFAULT_MODEL || 'nexus-guard-mini').trim(),
-      'ai.api_token': (process.env.AI_DEFAULT_API_TOKEN || '').trim(),
+      'ai.model': (
+        process.env.AI_DEFAULT_MODEL ||
+        process.env.OPENAI_MODEL ||
+        'gpt-5-mini'
+      ).trim(),
+      'ai.api_token': (
+        process.env.AI_DEFAULT_API_TOKEN ||
+        process.env.OPENAI_API_KEY ||
+        ''
+      ).trim(),
       'ai.prompt': (
         process.env.AI_DEFAULT_PROMPT ||
-        'Ban la AI moderation assistant. Tra ve JSON ngan gon voi risk_score va action_goi_y.'
+        'Bạn là AI moderation assistant cho Telegram CRM. Hãy phân loại tin nhắn/join request thành safe, suspicious, spam, sexual_bait, phishing, impersonation hoặc raid_signal. Trả về JSON ngắn gọn và bảo thủ.'
       ).trim(),
       'system.name': (
         process.env.SYSTEM_DEFAULT_NAME ||

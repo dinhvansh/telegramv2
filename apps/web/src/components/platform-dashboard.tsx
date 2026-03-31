@@ -20,8 +20,10 @@ type SessionUser = {
 type CreateCampaignInput = {
   name: string;
   telegramGroupId: string;
-  joinRate: string;
+  targetCount: string;
   status: "Active" | "Paused" | "Review";
+  inviteMemberLimit: string;
+  inviteRequiresApproval: boolean;
 };
 
 type TelegramGroupOption = {
@@ -48,98 +50,6 @@ type PlatformDashboardProps = {
     | "settings";
   entryMode?: boolean;
 };
-
-function decodeLegacyString(value: string) {
-  if (!/[ÃÄÆá»âœâ—â†âŒâš]/.test(value)) {
-    return value;
-  }
-
-  try {
-    const bytes = Uint8Array.from([...value].map((char) => char.charCodeAt(0)));
-    const decoded = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-    return decoded.includes("�") ? value : decoded;
-  } catch {
-    return value;
-  }
-}
-
-function normalizeText<T>(value: T): T {
-  if (typeof value === "string") {
-    return decodeLegacyString(value) as T;
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((item) => normalizeText(item)) as T;
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [key, normalizeText(entry)]),
-    ) as T;
-  }
-
-  return value;
-}
-
-function normalizeDomText(root: ParentNode | Node | null) {
-  if (!root || typeof document === "undefined") {
-    return;
-  }
-
-  const shouldSkipNode = (node: Node) => {
-    const parent = node.parentElement;
-    if (!parent) {
-      return false;
-    }
-
-    return Boolean(parent.closest(".material-symbols-outlined, script, style, noscript"));
-  };
-
-  const normalizeAttributes = (element: Element) => {
-    ["placeholder", "title", "aria-label"].forEach((attribute) => {
-      const currentValue = element.getAttribute(attribute);
-      if (!currentValue) {
-        return;
-      }
-
-      const decodedValue = decodeLegacyString(currentValue);
-      if (decodedValue !== currentValue) {
-        element.setAttribute(attribute, decodedValue);
-      }
-    });
-  };
-
-  if (root instanceof Element) {
-    normalizeAttributes(root);
-  }
-
-  if (root.nodeType === Node.TEXT_NODE) {
-    if (!shouldSkipNode(root)) {
-      const decodedText = decodeLegacyString(root.textContent ?? "");
-      if (decodedText !== root.textContent) {
-        root.textContent = decodedText;
-      }
-    }
-    return;
-  }
-
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
-  while (walker.nextNode()) {
-    const currentNode = walker.currentNode;
-
-    if (currentNode.nodeType === Node.ELEMENT_NODE) {
-      normalizeAttributes(currentNode as Element);
-      continue;
-    }
-
-    if (currentNode.nodeType === Node.TEXT_NODE && !shouldSkipNode(currentNode)) {
-      const decodedText = decodeLegacyString(currentNode.textContent ?? "");
-      if (decodedText !== currentNode.textContent) {
-        currentNode.textContent = decodedText;
-      }
-    }
-  }
-}
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -177,7 +87,7 @@ export function PlatformDashboard({
   entryMode = false,
 }: PlatformDashboardProps) {
   const router = useRouter();
-  const [snapshot, setSnapshot] = useState<PlatformSnapshot>(normalizeText(fallbackPlatformSnapshot));
+  const [snapshot, setSnapshot] = useState<PlatformSnapshot>(fallbackPlatformSnapshot);
   const [status, setStatus] = useState<"connected" | "fallback">("fallback");
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -194,8 +104,10 @@ export function PlatformDashboard({
   const [campaignForm, setCampaignForm] = useState<CreateCampaignInput>({
     name: "Spring Operator Push",
     telegramGroupId: "",
-    joinRate: "0% conversion",
+    targetCount: "100",
     status: "Active",
+    inviteMemberLimit: "",
+    inviteRequiresApproval: false,
   });
 
   const canCreateCampaign = user?.permissions.includes("campaign.manage") ?? false;
@@ -210,27 +122,10 @@ export function PlatformDashboard({
   }, []);
 
   useEffect(() => {
-    normalizeDomText(document.body);
-
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === "characterData") {
-          normalizeDomText(mutation.target);
-          continue;
-        }
-
-        mutation.addedNodes.forEach((node) => normalizeDomText(node));
-      }
-    });
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
-
-    return () => observer.disconnect();
-  }, []);
+    if (!entryMode && !isLoading && (!token || !user)) {
+      router.replace("/");
+    }
+  }, [entryMode, isLoading, router, token, user]);
 
   useEffect(() => {
     let isMounted = true;
@@ -248,7 +143,7 @@ export function PlatformDashboard({
 
         if (isMounted) {
           setUser(profile);
-          setSnapshot(normalizeText(data));
+          setSnapshot(data);
           setStatus("connected");
           setAuthError(null);
           if (entryMode) {
@@ -327,7 +222,7 @@ export function PlatformDashboard({
 
   async function reloadSnapshot() {
     const data = await fetchJson<PlatformSnapshot>(`${apiBaseUrl}/platform`);
-    setSnapshot(normalizeText(data));
+    setSnapshot(data);
     setStatus("connected");
   }
 
@@ -361,6 +256,7 @@ export function PlatformDashboard({
     setUser(null);
     setStatus("fallback");
     setIsLoading(false);
+    router.replace("/");
   }
 
   async function handleCopyInviteLink(inviteUrl: string) {
@@ -402,7 +298,17 @@ export function PlatformDashboard({
         headers: {
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(campaignForm),
+        body: JSON.stringify({
+          name: campaignForm.name,
+          telegramGroupId: campaignForm.telegramGroupId,
+          joinRate: campaignForm.targetCount,
+          status: campaignForm.status,
+          inviteRequiresApproval: campaignForm.inviteRequiresApproval,
+          inviteMemberLimit:
+            campaignForm.inviteRequiresApproval || !campaignForm.inviteMemberLimit
+              ? null
+              : Number(campaignForm.inviteMemberLimit),
+        }),
       });
 
       await reloadSnapshot();
@@ -414,8 +320,10 @@ export function PlatformDashboard({
       setCampaignForm({
         name: "",
         telegramGroupId: telegramGroups[0]?.id || "",
-        joinRate: "0% conversion",
+        targetCount: "100",
         status: "Active",
+        inviteMemberLimit: "",
+        inviteRequiresApproval: false,
       });
     } catch (createError) {
       setCampaignError(
@@ -442,13 +350,26 @@ export function PlatformDashboard({
   }
 
   if (!token || !user) {
+    if (!entryMode) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-[color:var(--surface)] text-[color:var(--on-surface)]">
+          <div className="rounded-[28px] bg-[color:var(--surface-card)] px-8 py-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">
+              Redirecting
+            </p>
+            <p className="mt-3 text-lg font-black">Đang quay về màn đăng nhập...</p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[color:var(--surface)] px-5 py-10 text-[color:var(--on-surface)]">
         <div className="absolute inset-x-0 top-0 -z-10 h-[28rem] bg-[radial-gradient(circle_at_top_left,_rgba(0,83,219,0.18),_transparent_40%),radial-gradient(circle_at_top_right,_rgba(0,107,98,0.12),_transparent_28%)]" />
         <div className="grid w-full max-w-6xl gap-8 lg:grid-cols-[1.1fr_0.9fr]">
           <section className="rounded-[32px] bg-[color:var(--surface-card)] p-8 shadow-[0_8px_32px_rgba(42,52,57,0.04)] lg:p-10">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[color:var(--on-surface-variant)]">
-              Telegram Operations Platform
+              Skynet Telegram CRM
             </p>
             <h1 className="mt-3 text-4xl font-black leading-tight tracking-tight">
               Đăng nhập vào command center để quản lý campaign, moderation và autopost.
@@ -679,19 +600,83 @@ export function PlatformDashboard({
 
               <label className="block">
                 <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                  Join rate label
+                  Số lượng mục tiêu chiến dịch
                 </span>
                 <input
-                  value={campaignForm.joinRate}
+                  type="number"
+                  min={0}
+                  value={campaignForm.targetCount}
                   onChange={(event) =>
                     setCampaignForm((current) => ({
                       ...current,
-                      joinRate: event.target.value,
+                      targetCount: event.target.value,
                     }))
                   }
                   className="w-full rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
                 />
+                <p className="mt-2 text-xs leading-5 text-[color:var(--on-surface-variant)]">
+                  Dashboard sẽ lấy số người đã tham gia chia cho mục tiêu này để tính tiến độ chiến dịch.
+                </p>
               </label>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
+                    Giới hạn số người
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={99999}
+                    disabled={campaignForm.inviteRequiresApproval}
+                    value={campaignForm.inviteMemberLimit}
+                    onChange={(event) =>
+                      setCampaignForm((current) => ({
+                        ...current,
+                        inviteMemberLimit: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none disabled:opacity-50"
+                    placeholder="Để trống nếu không giới hạn"
+                  />
+                  <p className="mt-2 text-xs leading-5 text-[color:var(--on-surface-variant)]">
+                    Telegram cho phép đặt giới hạn số người vào qua link mời.
+                  </p>
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
+                    Cần admin duyệt
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCampaignForm((current) => ({
+                        ...current,
+                        inviteRequiresApproval: !current.inviteRequiresApproval,
+                        inviteMemberLimit: !current.inviteRequiresApproval
+                          ? ""
+                          : current.inviteMemberLimit,
+                      }))
+                    }
+                    className={`flex w-full items-center justify-between rounded-[18px] px-4 py-4 text-sm font-semibold ${
+                      campaignForm.inviteRequiresApproval
+                        ? "bg-[color:var(--primary-soft)] text-[color:var(--primary)]"
+                        : "bg-[color:var(--surface-low)] text-[color:var(--on-surface)]"
+                    }`}
+                  >
+                    <span>
+                      {campaignForm.inviteRequiresApproval ? "Bật" : "Tắt"}
+                    </span>
+                    <span className="text-xs uppercase tracking-[0.18em]">
+                      join request
+                    </span>
+                  </button>
+                  <p className="mt-2 text-xs leading-5 text-[color:var(--on-surface-variant)]">
+                    Khi bật, user vào bằng link sẽ phải được admin duyệt và Telegram không cho dùng cùng lúc với giới hạn số người.
+                  </p>
+                </label>
+              </div>
 
               {campaignError ? (
                 <div className="rounded-[18px] bg-[color:var(--danger-soft)] px-4 py-3 text-sm text-[color:var(--danger)]">
@@ -721,3 +706,5 @@ export function PlatformDashboard({
     </>
   );
 }
+
+

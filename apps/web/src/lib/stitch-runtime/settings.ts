@@ -23,7 +23,7 @@ async function hydrateSettings() {
   const languageSelect = appearanceSection && appearanceSection.querySelector('select');
   const notificationInputs = notificationsSection ? notificationsSection.querySelectorAll('input[type="checkbox"]') : [];
   const saveButton = main && Array.from(main.querySelectorAll('button')).find(function(button) {
-    return /Lưu cấu hình|LÆ°u cáº¥u hÃ¬nh|save/i.test(String(button.textContent || ''));
+    return /Lưu cấu hình|save/i.test(String(button.textContent || ''));
   });
 
   if (systemNameInput) {
@@ -32,7 +32,7 @@ async function hydrateSettings() {
 
   if (botTokenInput) {
     botTokenInput.value = '';
-    botTokenInput.placeholder = telegramStatus.tokenPreview || 'ChÆ°a cáº¥u hÃ¬nh bot token';
+    botTokenInput.placeholder = telegramStatus.tokenPreview || 'Chưa cấu hình bot token';
   }
 
   if (twoFaInput) {
@@ -40,7 +40,7 @@ async function hydrateSettings() {
   }
 
   if (languageSelect) {
-    languageSelect.value = settings['ui.language'] === 'en' ? 'English' : 'Tiáº¿ng Viá»‡t';
+    languageSelect.value = settings['ui.language'] === 'en' ? 'English' : 'Tiếng Việt';
   }
 
   if (notificationInputs.length >= 4) {
@@ -51,7 +51,7 @@ async function hydrateSettings() {
   }
 
   if (ipTableBody) {
-    ipTableBody.innerHTML = String(settings['security.ip_whitelist'] || '192.168.1.1|VÄƒn phÃ²ng chÃ­nh\\n42.115.32.11|Home Network')
+    ipTableBody.innerHTML = String(settings['security.ip_whitelist'] || '192.168.1.1|Văn phòng chính\\n42.115.32.11|Home Network')
       .split(/\\r?\\n/)
       .map(function(line) {
         return line.trim();
@@ -62,7 +62,7 @@ async function hydrateSettings() {
         return \`
           <tr class="\${index % 2 === 1 ? 'bg-surface-container/30' : ''}">
             <td class="px-6 py-4 text-sm font-mono font-medium">\${escapeHtml(parts[0] || '0.0.0.0')}</td>
-            <td class="px-6 py-4 text-sm text-on-surface-variant">\${escapeHtml(parts[1] || 'KhÃ´ng cÃ³ ghi chÃº')}</td>
+            <td class="px-6 py-4 text-sm text-on-surface-variant">\${escapeHtml(parts[1] || 'Không có ghi chú')}</td>
             <td class="px-6 py-4 text-right">
               <button class="text-on-surface-variant hover:bg-surface-container-high p-1.5 rounded-lg transition-colors" type="button">
                 <span class="material-symbols-outlined text-sm">visibility</span>
@@ -244,7 +244,7 @@ async function hydrateSettings() {
           });
           if (botTokenInput) {
             botTokenInput.value = '';
-            botTokenInput.placeholder = config.tokenPreview || 'Bot token Ä‘Ã£ cáº­p nháº­t';
+            botTokenInput.placeholder = config.tokenPreview || 'Bot token đã cập nhật';
           }
         }
 

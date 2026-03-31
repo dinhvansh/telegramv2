@@ -40,6 +40,21 @@ type CreateUserForm = {
   status: "ACTIVE" | "AWAY" | "DISABLED";
 };
 
+type EditUserForm = {
+  id: string;
+  name: string;
+  username: string;
+  department: string;
+  roleId: string;
+  status: "ACTIVE" | "AWAY" | "DISABLED";
+};
+
+type ResetPasswordForm = {
+  id: string;
+  email: string;
+  password: string;
+};
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -84,8 +99,15 @@ export function RolesWorkbench({
   const [users, setUsers] = useState<UserItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [isSavingUser, setIsSavingUser] = useState(false);
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+  const [editingUser, setEditingUser] = useState<EditUserForm | null>(null);
+  const [resetPasswordUser, setResetPasswordUser] =
+    useState<ResetPasswordForm | null>(null);
   const [form, setForm] = useState<CreateUserForm>({
     name: "Người dùng mới",
     email: "new.user@nexus.local",
@@ -177,6 +199,7 @@ export function RolesWorkbench({
     setIsCreating(true);
     setError(null);
     setNotice(null);
+    setTemporaryPassword(null);
 
     try {
       await fetchJson(`${apiBaseUrl}/users`, {
@@ -203,6 +226,113 @@ export function RolesWorkbench({
       );
     } finally {
       setIsCreating(false);
+    }
+  }
+
+  async function handleToggleUser(user: UserItem) {
+    if (!token) {
+      return;
+    }
+
+    const nextStatus = user.status === "DISABLED" ? "ACTIVE" : "DISABLED";
+
+    setUpdatingUserId(user.id);
+    setError(null);
+    setNotice(null);
+    setTemporaryPassword(null);
+
+    try {
+      await fetchJson(`${apiBaseUrl}/users/${user.id}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      await refreshData();
+      setNotice(
+        nextStatus === "DISABLED"
+          ? `Đã khóa user ${user.email}.`
+          : `Đã mở lại user ${user.email}.`,
+      );
+    } catch (updateError) {
+      setError(
+        updateError instanceof Error
+          ? updateError.message
+          : "Không thể cập nhật trạng thái user.",
+      );
+    } finally {
+      setUpdatingUserId(null);
+    }
+  }
+
+  async function handleResetPassword() {
+    if (!token || !resetPasswordUser) {
+      return;
+    }
+
+    setResettingUserId(resetPasswordUser.id);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const result = await fetchJson<{
+        reset: boolean;
+        userId: string;
+        temporaryPassword: string;
+      }>(`${apiBaseUrl}/users/${resetPasswordUser.id}/reset-password`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          password: resetPasswordUser.password.trim() || undefined,
+        }),
+      });
+
+      setTemporaryPassword(result.temporaryPassword);
+      setNotice(`Đã reset mật khẩu cho ${resetPasswordUser.email}.`);
+      setResetPasswordUser(null);
+    } catch (resetError) {
+      setError(
+        resetError instanceof Error
+          ? resetError.message
+          : "Không thể reset mật khẩu.",
+      );
+    } finally {
+      setResettingUserId(null);
+    }
+  }
+
+  async function handleSaveUser() {
+    if (!token || !editingUser) {
+      return;
+    }
+
+    setIsSavingUser(true);
+    setError(null);
+    setNotice(null);
+    setTemporaryPassword(null);
+
+    try {
+      await fetchJson(`${apiBaseUrl}/users/${editingUser.id}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          name: editingUser.name,
+          username: editingUser.username,
+          department: editingUser.department,
+          roleId: editingUser.roleId,
+          status: editingUser.status,
+        }),
+      });
+      await refreshData();
+      setNotice(`Đã cập nhật user ${editingUser.name}.`);
+      setEditingUser(null);
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Không thể cập nhật user.",
+      );
+    } finally {
+      setIsSavingUser(false);
     }
   }
 
@@ -237,6 +367,11 @@ export function RolesWorkbench({
       {notice ? (
         <div className="rounded-[18px] bg-[color:var(--success-soft)] px-4 py-3 text-sm text-[color:var(--success)]">
           {notice}
+          {temporaryPassword ? (
+            <span className="ml-2 font-bold text-[color:var(--on-surface)]">
+              Mật khẩu mới: {temporaryPassword}
+            </span>
+          ) : null}
         </div>
       ) : null}
 
@@ -280,8 +415,12 @@ export function RolesWorkbench({
           </p>
           <div className="mt-5 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4 text-sm leading-7">
             <p className="font-bold">{currentUser?.name ?? "Chưa có session"}</p>
-            <p className="text-[color:var(--on-surface-variant)]">{currentUser?.email ?? "-"}</p>
-            <p className="mt-3 font-semibold">Roles: {currentUser?.roles.join(", ") ?? "-"}</p>
+            <p className="text-[color:var(--on-surface-variant)]">
+              {currentUser?.email ?? "-"}
+            </p>
+            <p className="mt-3 font-semibold">
+              Roles: {currentUser?.roles.join(", ") ?? "-"}
+            </p>
             <p className="text-[color:var(--on-surface-variant)]">
               Permissions: {currentUser?.permissions?.join(", ") ?? "-"}
             </p>
@@ -388,13 +527,14 @@ export function RolesWorkbench({
         </h3>
 
         <div className="mt-6 overflow-x-auto rounded-[24px] bg-[color:var(--surface-low)]">
-          <table className="min-w-[760px] w-full border-collapse text-left">
+          <table className="min-w-[1040px] w-full border-collapse text-left">
             <thead>
               <tr className="text-xs uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
                 <th className="px-5 py-4 font-semibold">Người dùng</th>
                 <th className="px-5 py-4 font-semibold">Phòng ban</th>
                 <th className="px-5 py-4 font-semibold">Vai trò</th>
                 <th className="px-5 py-4 font-semibold">Trạng thái</th>
+                <th className="px-5 py-4 font-semibold">Quản lý</th>
               </tr>
             </thead>
             <tbody>
@@ -418,14 +558,17 @@ export function RolesWorkbench({
                       {user.permissionCount} permission
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {user.roles.map((role) => (
-                        <span
-                          key={`${user.id}-${role.id}`}
-                          className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-[color:var(--on-surface)]"
-                        >
-                          {role.name}
-                        </span>
-                      ))}
+                      {user.roles
+                        .flatMap((role) => role.permissions)
+                        .slice(0, 4)
+                        .map((permission) => (
+                          <span
+                            key={`${user.id}-${permission}`}
+                            className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-[color:var(--on-surface)]"
+                          >
+                            {permission}
+                          </span>
+                        ))}
                     </div>
                   </td>
                   <td className="px-5 py-4 align-top">
@@ -437,12 +580,245 @@ export function RolesWorkbench({
                       {user.statusLabel}
                     </span>
                   </td>
+                  <td className="px-5 py-4 align-top text-sm">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        title="Sửa user"
+                        aria-label={`Sửa user ${user.email}`}
+                        onClick={() =>
+                          setEditingUser({
+                            id: user.id,
+                            name: user.name,
+                            username: user.username ?? "",
+                            department: user.department,
+                            roleId: user.roles[0]?.id || roles[0]?.id || "",
+                            status: user.status,
+                          })
+                        }
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-sm font-bold text-[color:var(--primary)] shadow-[0_4px_14px_rgba(42,52,57,0.08)]"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleToggleUser(user)}
+                        disabled={updatingUserId === user.id}
+                        className={`inline-flex rounded-full px-4 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+                          user.status === "DISABLED"
+                            ? "bg-[color:var(--success-soft)] text-[color:var(--success)]"
+                            : "bg-[color:var(--danger-soft)] text-[color:var(--danger)]"
+                        }`}
+                      >
+                        {updatingUserId === user.id
+                          ? "Đang cập nhật..."
+                          : user.status === "DISABLED"
+                            ? "Active"
+                            : "Inactive"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setResetPasswordUser({
+                            id: user.id,
+                            email: user.email,
+                            password: "",
+                          })
+                        }
+                        disabled={resettingUserId === user.id}
+                        className="inline-flex rounded-full bg-[color:var(--warning-soft)] px-4 py-2 font-semibold text-[color:var(--warning)] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {resettingUserId === user.id
+                          ? "Đang reset..."
+                          : "Reset mật khẩu"}
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </section>
+
+      {editingUser ? (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/35 px-4">
+          <div className="w-full max-w-xl rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">
+                  User editor
+                </p>
+                <h2 className="mt-2 text-2xl font-black tracking-tight">
+                  Sửa user
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingUser(null)}
+                className="rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold"
+              >
+                Đóng
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <input
+                  value={editingUser.name}
+                  onChange={(event) =>
+                    setEditingUser((current) =>
+                      current ? { ...current, name: event.target.value } : current,
+                    )
+                  }
+                  className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
+                  placeholder="Họ tên"
+                />
+                <input
+                  value={editingUser.username}
+                  onChange={(event) =>
+                    setEditingUser((current) =>
+                      current ? { ...current, username: event.target.value } : current,
+                    )
+                  }
+                  className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
+                  placeholder="Username"
+                />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <input
+                  value={editingUser.department}
+                  onChange={(event) =>
+                    setEditingUser((current) =>
+                      current ? { ...current, department: event.target.value } : current,
+                    )
+                  }
+                  className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
+                  placeholder="Phòng ban"
+                />
+                <select
+                  value={editingUser.roleId}
+                  onChange={(event) =>
+                    setEditingUser((current) =>
+                      current ? { ...current, roleId: event.target.value } : current,
+                    )
+                  }
+                  className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
+                >
+                  {roles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={editingUser.status}
+                  onChange={(event) =>
+                    setEditingUser((current) =>
+                      current
+                        ? {
+                            ...current,
+                            status: event.target.value as EditUserForm["status"],
+                          }
+                        : current,
+                    )
+                  }
+                  className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
+                >
+                  <option value="ACTIVE">Hoạt động</option>
+                  <option value="AWAY">Vắng mặt</option>
+                  <option value="DISABLED">Tạm khóa</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="rounded-full bg-[color:var(--surface-low)] px-5 py-3 text-sm font-semibold"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveUser()}
+                  disabled={isSavingUser}
+                  className="rounded-full bg-[color:var(--primary)] px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSavingUser ? "Đang lưu..." : "Lưu user"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {resetPasswordUser ? (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/35 px-4">
+          <div className="w-full max-w-lg rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">
+                  Password reset
+                </p>
+                <h2 className="mt-2 text-2xl font-black tracking-tight">
+                  Reset mật khẩu
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setResetPasswordUser(null)}
+                className="rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold"
+              >
+                Đóng
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              <div className="rounded-[20px] bg-[color:var(--surface-low)] px-4 py-4 text-sm">
+                <p className="font-semibold">{resetPasswordUser.email}</p>
+                <p className="mt-2 leading-6 text-[color:var(--on-surface-variant)]">
+                  Nhập mật khẩu mới nếu muốn đặt thủ công. Để trống nếu muốn hệ
+                  thống tự sinh mật khẩu tạm.
+                </p>
+              </div>
+
+              <input
+                value={resetPasswordUser.password}
+                onChange={(event) =>
+                  setResetPasswordUser((current) =>
+                    current ? { ...current, password: event.target.value } : current,
+                  )
+                }
+                className="w-full rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
+                placeholder="Nhập mật khẩu mới hoặc để trống"
+                type="password"
+              />
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setResetPasswordUser(null)}
+                  className="rounded-full bg-[color:var(--surface-low)] px-5 py-3 text-sm font-semibold"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleResetPassword()}
+                  disabled={resettingUserId === resetPasswordUser.id}
+                  className="rounded-full bg-[color:var(--warning)] px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {resettingUserId === resetPasswordUser.id
+                    ? "Đang reset..."
+                    : "Lưu mật khẩu mới"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

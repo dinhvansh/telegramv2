@@ -1,4 +1,5 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { UserStatus } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { fallbackSnapshot } from '../platform/fallback-snapshot';
@@ -76,6 +77,7 @@ export class AuthService {
         id: true,
         email: true,
         name: true,
+        status: true,
         passwordHash: true,
         userRoles: {
           include: {
@@ -95,6 +97,10 @@ export class AuthService {
 
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (user.status === UserStatus.DISABLED) {
+      throw new UnauthorizedException('User is disabled');
     }
 
     const passwordMatches = await bcrypt.compare(
@@ -153,6 +159,7 @@ export class AuthService {
         id: true,
         email: true,
         name: true,
+        status: true,
         userRoles: {
           include: {
             role: {
@@ -171,6 +178,10 @@ export class AuthService {
 
     if (!user) {
       throw new UnauthorizedException('User not found');
+    }
+
+    if (user.status === UserStatus.DISABLED) {
+      throw new UnauthorizedException('User is disabled');
     }
 
     const roles = user.userRoles.map((item) => item.role.name);

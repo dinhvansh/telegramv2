@@ -1,6 +1,11 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { UserStatus } from '@prisma/client';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
 type FallbackUserRecord = {
@@ -138,33 +143,7 @@ export class UsersService {
       },
     });
 
-    return users.map((user) => ({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      username: user.username,
-      department: user.department || 'Chưa gán',
-      status: user.status,
-      statusLabel: getStatusLabel(user.status),
-      statusTone: getStatusTone(user.status),
-      roles: user.userRoles.map((item) => ({
-        id: item.role.id,
-        name: item.role.name,
-        permissions: item.role.rolePermissions.map(
-          (permissionItem) => permissionItem.permission.code,
-        ),
-      })),
-      primaryRole: user.userRoles[0]?.role.name || 'Chưa gán',
-      permissionCount: [
-        ...new Set(
-          user.userRoles.flatMap((item) =>
-            item.role.rolePermissions.map(
-              (permissionItem) => permissionItem.permission.code,
-            ),
-          ),
-        ),
-      ].length,
-    }));
+    return users.map((user) => this.serializeDatabaseUser(user));
   }
 
   async create(input: {
@@ -255,26 +234,223 @@ export class UsersService {
       },
     });
 
+    return this.serializeDatabaseUser(created);
+  }
+
+  async update(
+    userId: string,
+    input: {
+      name?: string;
+      username?: string;
+      department?: string;
+      roleId?: string;
+      status?: string;
+    },
+  ) {
+    const normalizedRoleId = input.roleId?.trim();
+    const normalizedStatus = input.status?.trim().toUpperCase() as
+      | keyof typeof UserStatus
+      | undefined;
+
+    if (!process.env.DATABASE_URL) {
+      const target = this.fallbackUsers.find((user) => user.id === userId);
+      if (!target) {
+        throw new NotFoundException('User not found');
+      }
+
+      if (input.name !== undefined) {
+        target.name = input.name.trim() || target.name;
+      }
+      if (input.username !== undefined) {
+        target.username = input.username.trim() || null;
+      }
+      if (input.department !== undefined) {
+        target.department = input.department.trim() || 'Chưa gán';
+      }
+      if (
+        normalizedStatus &&
+        (normalizedStatus === 'ACTIVE' ||
+          normalizedStatus === 'AWAY' ||
+          normalizedStatus === 'DISABLED')
+      ) {
+        target.status = normalizedStatus;
+      }
+      if (normalizedRoleId) {
+        const fallbackRole = fallbackRoleCatalog.find(
+          (role) => role.id === normalizedRoleId,
+        );
+        if (!fallbackRole) {
+          throw new UnauthorizedException('Role not found');
+        }
+        target.roles = [
+          {
+            id: fallbackRole.id,
+            name: fallbackRole.name,
+            permissions: [...fallbackRole.permissions],
+          },
+        ];
+      }
+
+      return this.serializeFallbackUser(target);
+    }
+
+    if (normalizedRoleId) {
+      const existingRole = await this.prisma.role.findUnique({
+        where: { id: normalizedRoleId },
+      });
+      if (!existingRole) {
+        throw new UnauthorizedException('Role not found');
+      }
+    }
+
+    const existingUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true },
+    });
+
+    if (!existingUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.user.update({
+        where: { id: userId },
+        data: {
+          ...(input.name !== undefined
+            ? { name: input.name.trim() || existingUser.name }
+            : {}),
+          ...(input.username !== undefined
+            ? { username: input.username.trim() || null }
+            : {}),
+          ...(input.department !== undefined
+            ? { department: input.department.trim() || 'Chưa gán' }
+            : {}),
+          ...(normalizedStatus && UserStatus[normalizedStatus]
+            ? { status: UserStatus[normalizedStatus] }
+            : {}),
+        },
+      });
+
+      if (normalizedRoleId) {
+        await transaction.userRole.deleteMany({
+          where: { userId },
+        });
+        await transaction.userRole.create({
+          data: {
+            userId,
+            roleId: normalizedRoleId,
+          },
+        });
+      }
+    });
+
+    const updated = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        userRoles: {
+          include: {
+            role: {
+              include: {
+                rolePermissions: {
+                  include: {
+                    permission: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!updated) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.serializeDatabaseUser(updated);
+  }
+
+  async resetPassword(userId: string, nextPassword?: string) {
+    const normalizedPassword = nextPassword?.trim();
+    const temporaryPassword =
+      normalizedPassword || `Temp${randomBytes(4).toString('hex')}!`;
+
+    if (!process.env.DATABASE_URL) {
+      const target = this.fallbackUsers.find((user) => user.id === userId);
+      if (!target) {
+        throw new NotFoundException('User not found');
+      }
+
+      target.passwordHash = await bcrypt.hash(temporaryPassword, 10);
+      return {
+        reset: true,
+        userId,
+        temporaryPassword,
+      };
+    }
+
+    const existingUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+
+    if (!existingUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: await bcrypt.hash(temporaryPassword, 10),
+      },
+    });
+
     return {
-      id: created.id,
-      name: created.name,
-      email: created.email,
-      username: created.username,
-      department: created.department || 'Chưa gán',
-      status: created.status,
-      statusLabel: getStatusLabel(created.status),
-      statusTone: getStatusTone(created.status),
-      roles: created.userRoles.map((item) => ({
+      reset: true,
+      userId,
+      temporaryPassword,
+    };
+  }
+
+  private serializeDatabaseUser(user: {
+    id: string;
+    name: string;
+    email: string;
+    username: string | null;
+    department: string | null;
+    status: string;
+    userRoles: Array<{
+      role: {
+        id: string;
+        name: string;
+        rolePermissions: Array<{
+          permission: {
+            code: string;
+          };
+        }>;
+      };
+    }>;
+  }) {
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      username: user.username,
+      department: user.department || 'Chưa gán',
+      status: user.status,
+      statusLabel: getStatusLabel(user.status),
+      statusTone: getStatusTone(user.status),
+      roles: user.userRoles.map((item) => ({
         id: item.role.id,
         name: item.role.name,
         permissions: item.role.rolePermissions.map(
           (permissionItem) => permissionItem.permission.code,
         ),
       })),
-      primaryRole: created.userRoles[0]?.role.name || 'Chưa gán',
+      primaryRole: user.userRoles[0]?.role.name || 'Chưa gán',
       permissionCount: [
         ...new Set(
-          created.userRoles.flatMap((item) =>
+          user.userRoles.flatMap((item) =>
             item.role.rolePermissions.map(
               (permissionItem) => permissionItem.permission.code,
             ),

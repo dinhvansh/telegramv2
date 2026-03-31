@@ -16,7 +16,10 @@ export type Campaign = {
   name: string;
   channel: string;
   inviteCode: string;
-  joinRate: string;
+  targetCount: number;
+  joinedCount: number;
+  activeCount: number;
+  leftCount: number;
   status: "Active" | "Paused" | "Review";
 };
 
@@ -105,28 +108,40 @@ export const fallbackPlatformSnapshot: PlatformSnapshot = {
       name: "Summer Growth 2026",
       channel: "Nexus Global",
       inviteCode: "t.me/+AbX92Nexus",
-      joinRate: "84% conversion",
+      targetCount: 100,
+      joinedCount: 84,
+      activeCount: 72,
+      leftCount: 12,
       status: "Active",
     },
     {
       name: "Partner Referral East",
       channel: "Partner Circle",
       inviteCode: "t.me/+KqP11Orbit",
-      joinRate: "61% conversion",
+      targetCount: 100,
+      joinedCount: 61,
+      activeCount: 52,
+      leftCount: 9,
       status: "Active",
     },
     {
       name: "VIP Re-engagement",
       channel: "Inner Room",
       inviteCode: "t.me/+R9s11Pulse",
-      joinRate: "Manual approval",
+      targetCount: 24,
+      joinedCount: 10,
+      activeCount: 6,
+      leftCount: 4,
       status: "Review",
     },
     {
       name: "Flash Promo Hold",
       channel: "Alpha Testers",
       inviteCode: "t.me/+M2c44Queue",
-      joinRate: "12% conversion",
+      targetCount: 50,
+      joinedCount: 12,
+      activeCount: 8,
+      leftCount: 4,
       status: "Paused",
     },
   ],

@@ -13,6 +13,14 @@ type CreateCampaignInput = {
   telegramGroupId: string;
   joinRate?: string;
   status?: 'Active' | 'Paused' | 'Review';
+  inviteMemberLimit?: number | null;
+  inviteRequiresApproval?: boolean;
+};
+
+type UpdateCampaignInput = {
+  name?: string;
+  joinRate?: string;
+  status?: 'Active' | 'Paused' | 'Review';
 };
 
 const statusToDb: Record<
@@ -82,11 +90,15 @@ export class CampaignsService {
     if (!process.env.DATABASE_URL) {
       return fallbackSnapshot.campaigns.map((campaign, index) => ({
         id: `fallback-${index + 1}`,
-        ...campaign,
+        name: campaign.name,
+        channel: campaign.channel,
+        inviteCode: campaign.inviteCode,
+        joinRate: String(campaign.targetCount),
+        status: campaign.status,
         conversionRate: 0,
-        joinedCount: 0,
-        leftCount: 0,
-        activeCount: 0,
+        joinedCount: campaign.joinedCount,
+        leftCount: campaign.leftCount,
+        activeCount: campaign.activeCount,
       }));
     }
 
@@ -159,12 +171,12 @@ export class CampaignsService {
         channel: campaign.channel,
         inviteCode: campaign.inviteCode,
         status: campaign.status,
-        joinRate: campaign.joinRate,
+        joinRate: String(campaign.targetCount),
         conversionRate: 0,
         summary: {
-          joinedCount: 0,
-          activeCount: 0,
-          leftCount: 0,
+          joinedCount: campaign.joinedCount,
+          activeCount: campaign.activeCount,
+          leftCount: campaign.leftCount,
         },
         inviteLinks: [],
         members: [],
@@ -278,6 +290,12 @@ export class CampaignsService {
       };
     }
 
+    if (input.inviteRequiresApproval && input.inviteMemberLimit) {
+      throw new BadRequestException(
+        'Link yêu cầu admin duyệt không thể đặt giới hạn số người cùng lúc.',
+      );
+    }
+
     const inviteCode = `t.me/+${Math.random().toString(36).slice(2, 10)}`;
     const status = input.status
       ? statusToDb[input.status]
@@ -308,7 +326,11 @@ export class CampaignsService {
       groupExternalId: telegramGroup.externalId,
       groupTitle: telegramGroup.title,
       name: input.name,
-      createsJoinRequest: false,
+      memberLimit:
+        input.inviteRequiresApproval || !input.inviteMemberLimit
+          ? undefined
+          : Math.max(1, Math.min(99999, Math.round(input.inviteMemberLimit))),
+      createsJoinRequest: Boolean(input.inviteRequiresApproval),
       expireHours: 24 * 30,
     });
 
@@ -378,6 +400,81 @@ export class CampaignsService {
       joinedCount: 0,
       leftCount: 0,
       activeCount: 0,
+    };
+  }
+
+  async update(campaignId: string, input: UpdateCampaignInput) {
+    if (!process.env.DATABASE_URL) {
+      return {
+        updated: true,
+        id: campaignId,
+        name: input.name ?? 'Fallback campaign',
+        joinRate: input.joinRate ?? '0% conversion',
+        status: input.status ?? 'Active',
+      };
+    }
+
+    const existingCampaign = await this.prisma.campaign.findUnique({
+      where: { id: campaignId },
+    });
+
+    if (!existingCampaign) {
+      throw new NotFoundException('Không tìm thấy campaign.');
+    }
+
+    const updatedCampaign = await this.prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+        ...(input.joinRate !== undefined ? { joinRate: input.joinRate } : {}),
+        ...(input.status !== undefined
+          ? { status: statusToDb[input.status] }
+          : {}),
+      },
+    });
+
+    return {
+      updated: true,
+      id: updatedCampaign.id,
+      name: updatedCampaign.name,
+      joinRate: updatedCampaign.joinRate,
+      status: statusFromDb[updatedCampaign.status],
+    };
+  }
+
+  async delete(campaignId: string) {
+    if (!process.env.DATABASE_URL) {
+      return {
+        deleted: true,
+        id: campaignId,
+      };
+    }
+
+    const existingCampaign = await this.prisma.campaign.findUnique({
+      where: { id: campaignId },
+    });
+
+    if (!existingCampaign) {
+      throw new NotFoundException('Không tìm thấy campaign.');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.communityMember.updateMany({
+        where: { campaignId },
+        data: {
+          campaignId: null,
+          campaignLabel: 'Không gắn campaign',
+        },
+      });
+
+      await tx.campaign.delete({
+        where: { id: campaignId },
+      });
+    });
+
+    return {
+      deleted: true,
+      id: campaignId,
     };
   }
 

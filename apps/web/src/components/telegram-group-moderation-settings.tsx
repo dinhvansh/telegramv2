@@ -327,7 +327,7 @@ export function TelegramGroupModerationSettings({
     return (
       <div className="flex min-h-screen items-center justify-center bg-[color:var(--surface)]">
         <div className="rounded-[24px] bg-[color:var(--surface-card)] px-8 py-6 shadow-[0_8px_32px_rgba(42,52,57,0.08)]">
-          <p className="text-sm font-bold">Loading moderation settings...</p>
+          <p className="text-sm font-bold">Đang tải cấu hình moderation...</p>
         </div>
       </div>
     );
@@ -337,9 +337,9 @@ export function TelegramGroupModerationSettings({
     return (
       <div className="flex min-h-screen items-center justify-center bg-[color:var(--surface)] px-6 text-center">
         <div className="rounded-[24px] bg-[color:var(--surface-card)] px-8 py-6 shadow-[0_8px_32px_rgba(42,52,57,0.08)]">
-          <p className="text-sm font-bold">You need to sign in first.</p>
+          <p className="text-sm font-bold">Cần đăng nhập trước khi cấu hình group.</p>
           <Link href="/telegram" className="mt-4 inline-flex text-sm font-semibold text-[color:var(--primary)]">
-            Back to Telegram CRM
+            Quay lại Telegram CRM
           </Link>
         </div>
       </div>
@@ -350,9 +350,9 @@ export function TelegramGroupModerationSettings({
     return (
       <div className="flex min-h-screen items-center justify-center bg-[color:var(--surface)] px-6 text-center">
         <div className="rounded-[24px] bg-[color:var(--surface-card)] px-8 py-6 shadow-[0_8px_32px_rgba(42,52,57,0.08)]">
-          <p className="text-sm font-bold">Group not found.</p>
+          <p className="text-sm font-bold">Không tìm thấy group.</p>
           <Link href="/telegram" className="mt-4 inline-flex text-sm font-semibold text-[color:var(--primary)]">
-            Back to Telegram CRM
+            Quay lại Telegram CRM
           </Link>
         </div>
       </div>
@@ -360,32 +360,32 @@ export function TelegramGroupModerationSettings({
   }
 
   const toggleFieldKeys = [
-    ["moderationEnabled", "Moderation enabled"],
-    ["lockUrl", "Lock URL"],
-    ["lockInvitelink", "Lock Telegram invite link"],
-    ["lockForward", "Lock forwarded message"],
-    ["lockEmail", "Lock email"],
-    ["lockPhone", "Lock phone number"],
-    ["lockBot", "Lock bot sender"],
-    ["lockPhoto", "Lock photo"],
-    ["lockVideo", "Lock video"],
-    ["lockDocument", "Lock document"],
-    ["lockSticker", "Lock sticker"],
-    ["lockInlineButtons", "Lock inline buttons"],
-    ["lockInlineButtonUrls", "Lock inline button URLs"],
-    ["exemptAdmins", "Exempt Telegram admins"],
-    ["exemptOwners", "Exempt CRM owners"],
-    ["lockWarns", "Warn on lock violation"],
-    ["antifloodEnabled", "Enable antiflood"],
-    ["antifloodDeleteAll", "Delete all flooded messages"],
-    ["resetAntifloodOnRejoin", "Reset antiflood on rejoin"],
-    ["probationEnabled", "Enable probation for new members"],
-    ["antiRaidEnabled", "Enable anti-raid mode"],
-    ["aiModerationEnabled", "Enable AI moderation"],
-    ["aiOverrideAction", "Allow AI override action"],
-    ["silentActions", "Silent actions"],
-    ["rawLoggingEnabled", "Raw logging"],
-    ["detailedLoggingEnabled", "Detailed logging"],
+    ["moderationEnabled", "Bật moderation"],
+    ["lockUrl", "Chặn URL"],
+    ["lockInvitelink", "Chặn link mời Telegram"],
+    ["lockForward", "Chặn tin chuyển tiếp"],
+    ["lockEmail", "Chặn email"],
+    ["lockPhone", "Chặn số điện thoại"],
+    ["lockBot", "Chặn tin gửi qua bot"],
+    ["lockPhoto", "Chặn ảnh"],
+    ["lockVideo", "Chặn video"],
+    ["lockDocument", "Chặn tài liệu"],
+    ["lockSticker", "Chặn sticker"],
+    ["lockInlineButtons", "Chặn nút inline"],
+    ["lockInlineButtonUrls", "Chặn link trong nút inline"],
+    ["exemptAdmins", "Miễn trừ admin Telegram"],
+    ["exemptOwners", "Miễn trừ owner CRM"],
+    ["lockWarns", "Ghi cảnh báo khi vi phạm lock"],
+    ["antifloodEnabled", "Bật antiflood"],
+    ["antifloodDeleteAll", "Xóa toàn bộ chuỗi spam"],
+    ["resetAntifloodOnRejoin", "Reset antiflood khi vào lại"],
+    ["probationEnabled", "Theo dõi gắt user mới"],
+    ["antiRaidEnabled", "Bật anti-raid"],
+    ["aiModerationEnabled", "Bật AI moderation"],
+    ["aiOverrideAction", "Cho AI nâng mức xử lý"],
+    ["silentActions", "Không announce lên group"],
+    ["rawLoggingEnabled", "Lưu raw webhook"],
+    ["detailedLoggingEnabled", "Lưu log chi tiết"],
   ] as const;
 
   return (
@@ -415,18 +415,18 @@ export function TelegramGroupModerationSettings({
 
         <form
           onSubmit={handleSubmit}
-          className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.08)]"
+          className="rounded-[32px] bg-[color:var(--surface-card)] p-5 shadow-[0_8px_32px_rgba(42,52,57,0.08)] sm:p-7"
         >
-          <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+          <div className="grid gap-6 2xl:grid-cols-[1.05fr_0.95fr]">
             <section>
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
                 Lock Matrix
               </p>
-              <div className="mt-5 grid gap-3 md:grid-cols-2">
+              <div className="mt-5 grid gap-3 lg:grid-cols-2">
                 {toggleFieldKeys.map(([key, label]) => (
                   <label
                     key={key}
-                    className="flex items-center justify-between rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4"
+                    className="flex flex-col gap-3 rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <span className="text-sm font-semibold">{label}</span>
                     <input
@@ -821,10 +821,13 @@ export function TelegramGroupModerationSettings({
 
               <div className="rounded-[24px] bg-[color:var(--surface-low)] p-5">
                 <p className="text-sm font-bold">AI moderation</p>
+                <p className="mt-2 text-sm text-[color:var(--on-surface-variant)]">
+                  Chỉ nên bật khi đã cấu hình AI provider thật trong phần settings hoặc env production.
+                </p>
                 <div className="mt-4 grid gap-4">
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      AI mode
+                      Chế độ AI
                     </span>
                     <select
                       value={form.aiMode}
@@ -847,7 +850,7 @@ export function TelegramGroupModerationSettings({
                   </label>
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      Confidence threshold
+                      Ngưỡng tin cậy
                     </span>
                     <input
                       type="number"
@@ -878,16 +881,16 @@ export function TelegramGroupModerationSettings({
                   sẽ chỉ còn vai trò theo dõi.
                 </p>
 
-                <div className="mt-4 grid gap-5 xl:grid-cols-2">
-                  <div>
+                <div className="mt-4 space-y-5">
+                  <div className="rounded-[20px] bg-white/55 p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
                       Từ khóa bổ sung
                     </p>
-                    <div className="mt-3 flex gap-3">
+                    <div className="mt-3 flex flex-col gap-3 sm:flex-row">
                       <input
                         value={keywordInput}
                         onChange={(event) => setKeywordInput(event.target.value)}
-                        className="flex-1 rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
+                        className="min-w-0 flex-1 rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
                         placeholder="Ví dụ: fake support"
                       />
                       <button
@@ -919,35 +922,42 @@ export function TelegramGroupModerationSettings({
                     </div>
                   </div>
 
-                  <div>
+                  <div className="rounded-[20px] bg-white/55 p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
                       Domain allow / block
                     </p>
-                    <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_140px] xl:grid-cols-[minmax(0,1fr)_140px_100px]">
+                    <label className="mt-3 block">
+                      <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">
+                        Domain cần thêm
+                      </span>
                       <input
                         value={domainInput}
                         onChange={(event) => setDomainInput(event.target.value)}
-                        className="rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
+                        className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
                         placeholder="Ví dụ: tinyurl.com"
                       />
-                      <select
-                        value={domainMode}
-                        onChange={(event) =>
-                          setDomainMode(event.target.value as "BLOCK" | "ALLOW")
-                        }
-                        className="rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
-                      >
-                        <option value="BLOCK">Block</option>
-                        <option value="ALLOW">Allow</option>
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => void handleAddDomain()}
-                        disabled={isUpdatingRules}
-                        className="rounded-[16px] bg-[color:var(--primary)] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60 md:col-span-2 xl:col-span-1"
-                      >
-                        Thêm
-                      </button>
+                    </label>
+                    <div className="mt-3 flex flex-col gap-3">
+                      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
+                        <select
+                          value={domainMode}
+                          onChange={(event) =>
+                            setDomainMode(event.target.value as "BLOCK" | "ALLOW")
+                          }
+                          className="rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
+                        >
+                          <option value="BLOCK">Block</option>
+                          <option value="ALLOW">Allow</option>
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => void handleAddDomain()}
+                          disabled={isUpdatingRules}
+                          className="rounded-[16px] bg-[color:var(--primary)] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                        >
+                          Thêm
+                        </button>
+                      </div>
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2">
                       {scope?.domains.length ? (
@@ -989,10 +999,10 @@ export function TelegramGroupModerationSettings({
             </div>
           ) : null}
 
-          <div className="mt-6 flex justify-end">
+          <div className="mt-6 flex justify-stretch sm:justify-end">
             <button
               disabled={isSaving}
-              className="rounded-[18px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white disabled:opacity-60"
+              className="w-full rounded-[18px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white disabled:opacity-60 sm:w-auto"
             >
               {isSaving ? "Saving..." : "Save Moderation Settings"}
             </button>

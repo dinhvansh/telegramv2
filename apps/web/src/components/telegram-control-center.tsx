@@ -4,7 +4,6 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
 const apiBaseUrl = "/api";
-
 const authStorageKey = "telegram-ops-access-token";
 
 type SessionUser = {
@@ -71,7 +70,8 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed with status ${response.status}`);
+    const message = await response.text();
+    throw new Error(message || `Request failed with status ${response.status}`);
   }
 
   return (await response.json()) as T;
@@ -79,7 +79,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 function formatDateTime(value: string | null) {
   if (!value) {
-    return "Never";
+    return "Chưa có";
   }
 
   const date = new Date(value);
@@ -92,13 +92,13 @@ function formatDateTime(value: string | null) {
 
 function rightsSummary(group: TelegramGroupItem) {
   const rights = [
-    group.botRights.canDeleteMessages ? "delete" : null,
+    group.botRights.canDeleteMessages ? "xóa tin" : null,
     group.botRights.canRestrictMembers ? "restrict" : null,
-    group.botRights.canInviteUsers ? "invite" : null,
-    group.botRights.canManageTopics ? "topics" : null,
+    group.botRights.canInviteUsers ? "tạo link" : null,
+    group.botRights.canManageTopics ? "topic" : null,
   ].filter(Boolean);
 
-  return rights.length ? rights.join(", ") : "none";
+  return rights.length ? rights.join(", ") : "chưa có quyền";
 }
 
 function generateWebhookSecret() {
@@ -182,7 +182,7 @@ export function TelegramControlCenter({
         setUser(null);
         setStatus(null);
         setGroups([]);
-        setAuthError("Session is invalid or API is unavailable.");
+        setAuthError("Phiên đăng nhập không hợp lệ hoặc API chưa sẵn sàng.");
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -233,7 +233,7 @@ export function TelegramControlCenter({
       window.localStorage.setItem(authStorageKey, response.accessToken);
       setToken(response.accessToken);
     } catch {
-      setAuthError("Login failed. Check email or password.");
+      setAuthError("Đăng nhập thất bại. Kiểm tra email hoặc mật khẩu.");
     } finally {
       setIsSubmitting(false);
     }
@@ -268,13 +268,13 @@ export function TelegramControlCenter({
         tone: result && result.ok === false ? "danger" : "success",
         message:
           result && result.ok === false
-            ? result.description || "Action failed."
+            ? result.description || "Thao tác thất bại."
             : successMessage,
       });
     } catch (error) {
       setNotice({
         tone: "danger",
-        message: error instanceof Error ? error.message : "Action failed.",
+        message: error instanceof Error ? error.message : "Thao tác thất bại.",
       });
     } finally {
       setIsActionRunning(null);
@@ -292,7 +292,7 @@ export function TelegramControlCenter({
           headers: { Authorization: `Bearer ${token}` },
           body: JSON.stringify(form),
         }),
-      "Telegram configuration saved.",
+      "Đã lưu cấu hình Telegram.",
     );
   }
 
@@ -309,7 +309,7 @@ export function TelegramControlCenter({
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">
             Telegram CRM
           </p>
-          <p className="mt-3 text-lg font-black">Loading control center...</p>
+          <p className="mt-3 text-lg font-black">Đang tải control center...</p>
         </div>
       </div>
     );
@@ -323,10 +323,10 @@ export function TelegramControlCenter({
             Telegram CRM
           </p>
           <h2 className="mt-2 text-2xl font-black tracking-tight">
-            Session chua san sang
+            Phiên đăng nhập chưa sẵn sàng
           </h2>
           <p className="mt-3 text-sm leading-7 text-[color:var(--on-surface-variant)]">
-            Dang nhap bang flow chinh, sau do mo menu Telegram ben trai.
+            Đăng nhập bằng flow chính, sau đó mở menu Telegram bên trái.
           </p>
         </div>
       );
@@ -341,19 +341,17 @@ export function TelegramControlCenter({
               Telegram CRM
             </p>
             <h1 className="mt-3 text-4xl font-black leading-tight tracking-tight">
-              Bot configuration, webhook lifecycle, and group sync in one control
-              plane.
+              Quản lý bot, webhook và group sync trong một màn hình.
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-8 text-[color:var(--on-surface-variant)]">
-              This screen is the first real CRM phase for Telegram: save bot
-              config, verify the bot, register webhook, discover groups, and
-              inspect the groups the bot currently belongs to.
+              Đây là control center để lưu bot token, verify bot, đăng ký webhook
+              và xem những group mà CRM đã đồng bộ được.
             </p>
           </section>
 
           <section className="rounded-[32px] bg-[color:var(--surface-card)] p-8 shadow-[0_8px_32px_rgba(42,52,57,0.08)] lg:p-10">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-              Sign in
+              Đăng nhập
             </p>
             <form onSubmit={handleLogin} className="mt-6 space-y-5">
               <label className="block">
@@ -370,7 +368,7 @@ export function TelegramControlCenter({
 
               <label className="block">
                 <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                  Password
+                  Mật khẩu
                 </span>
                 <input
                   value={password}
@@ -390,7 +388,7 @@ export function TelegramControlCenter({
                 disabled={isSubmitting}
                 className="w-full rounded-[18px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-4 text-sm font-bold text-white shadow-[0_16px_40px_rgba(0,83,219,0.24)] disabled:opacity-60"
               >
-                {isSubmitting ? "Signing in..." : "Sign in"}
+                {isSubmitting ? "Đang đăng nhập..." : "Đăng nhập"}
               </button>
             </form>
           </section>
@@ -419,16 +417,15 @@ export function TelegramControlCenter({
                 Telegram Control Center
               </p>
               <h1 className={`mt-2 font-black tracking-tight ${embedded ? "text-2xl sm:text-3xl" : "text-3xl"}`}>
-                CRM-first bot onboarding and group sync
+                CRM-first bot onboarding và group sync
               </h1>
               <p
                 className={`mt-3 max-w-3xl text-sm leading-7 text-[color:var(--on-surface-variant)] ${
                   embedded ? "hidden sm:block" : ""
                 }`}
               >
-                Configure the bot from CRM, verify it against Telegram, register
-                webhook, then discover the groups where the bot is currently
-                active.
+                Cấu hình bot từ CRM, verify với Telegram, đăng ký webhook rồi
+                đồng bộ những group mà bot đang hoạt động.
               </p>
             </div>
 
@@ -441,7 +438,7 @@ export function TelegramControlCenter({
                   onClick={handleLogout}
                   className="rounded-full bg-[color:var(--surface-low)] px-4 py-3 text-sm font-semibold"
                 >
-                  Logout
+                  Đăng xuất
                 </button>
               ) : null}
             </div>
@@ -468,7 +465,7 @@ export function TelegramControlCenter({
             className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.08)]"
           >
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-              Bot Configuration
+              Cấu hình bot
             </p>
             <div className="mt-6 grid gap-4">
               <label className="block">
@@ -548,7 +545,7 @@ export function TelegramControlCenter({
                       publicBaseUrl: event.target.value,
                     }))
                   }
-                  placeholder="https://demo-telegram.ngrok.app"
+                  placeholder="https://tele.blogthethao.org"
                   className="w-full rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
                 />
               </label>
@@ -559,7 +556,7 @@ export function TelegramControlCenter({
                 disabled={isActionRunning !== null}
                 className="rounded-[18px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white disabled:opacity-60"
               >
-                {isActionRunning === "save" ? "Saving..." : "Save Config"}
+                {isActionRunning === "save" ? "Đang lưu..." : "Lưu cấu hình"}
               </button>
 
               <button
@@ -572,13 +569,13 @@ export function TelegramControlCenter({
                         method: "POST",
                         headers: { Authorization: `Bearer ${token}` },
                       }),
-                    "Bot verification finished.",
+                    "Đã verify bot.",
                   )
                 }
                 disabled={isActionRunning !== null}
                 className="rounded-[18px] bg-[color:var(--surface-low)] px-5 py-3 text-sm font-semibold disabled:opacity-60"
               >
-                {isActionRunning === "verify" ? "Verifying..." : "Verify Bot"}
+                {isActionRunning === "verify" ? "Đang verify..." : "Verify bot"}
               </button>
 
               <button
@@ -591,15 +588,15 @@ export function TelegramControlCenter({
                         method: "POST",
                         headers: { Authorization: `Bearer ${token}` },
                       }),
-                    "Webhook registration finished.",
+                    "Đã đăng ký webhook.",
                   )
                 }
                 disabled={isActionRunning !== null}
                 className="rounded-[18px] bg-[color:var(--surface-low)] px-5 py-3 text-sm font-semibold disabled:opacity-60"
               >
                 {isActionRunning === "webhook"
-                  ? "Registering..."
-                  : "Register Webhook"}
+                  ? "Đang đăng ký..."
+                  : "Đăng ký webhook"}
               </button>
 
               <button
@@ -612,22 +609,22 @@ export function TelegramControlCenter({
                         method: "POST",
                         headers: { Authorization: `Bearer ${token}` },
                       }),
-                    "Group discovery finished.",
+                    "Đã đồng bộ group.",
                   )
                 }
                 disabled={isActionRunning !== null}
                 className="rounded-[18px] bg-[color:var(--surface-low)] px-5 py-3 text-sm font-semibold disabled:opacity-60"
               >
                 {isActionRunning === "discover"
-                  ? "Discovering..."
-                  : "Discover Groups"}
+                  ? "Đang đồng bộ..."
+                  : "Đồng bộ group"}
               </button>
             </div>
           </form>
 
           <aside className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.08)]">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-              Runtime Status
+              Trạng thái runtime
             </p>
             <div className="mt-5 grid gap-3">
               {[
@@ -638,8 +635,8 @@ export function TelegramControlCenter({
                 ["Bot ID", status?.botId ?? "n/a"],
                 ["Bot", status?.botUsername ?? status?.botDisplayName ?? "n/a"],
                 ["Webhook URL", status?.webhookUrl ?? "n/a"],
-                ["Last verified", formatDateTime(status?.lastVerifiedAt ?? null)],
-                ["Last discovery", formatDateTime(status?.lastDiscoveredAt ?? null)],
+                ["Lần verify gần nhất", formatDateTime(status?.lastVerifiedAt ?? null)],
+                ["Lần đồng bộ gần nhất", formatDateTime(status?.lastDiscoveredAt ?? null)],
               ].map(([label, value]) => (
                 <div
                   key={label}
@@ -662,11 +659,11 @@ export function TelegramControlCenter({
                 Telegram Groups
               </p>
               <h2 className="mt-2 text-2xl font-black tracking-tight">
-                Groups discovered from CRM-controlled bot lifecycle
+                Danh sách group đã được CRM ghi nhận
               </h2>
             </div>
             <div className="rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold text-[color:var(--on-surface-variant)]">
-              {groups.length} group(s)
+              {groups.length} group
             </div>
           </div>
 
@@ -676,11 +673,11 @@ export function TelegramControlCenter({
                 <tr className="text-xs uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
                   <th className="px-5 py-4 font-semibold">Group</th>
                   <th className="px-5 py-4 font-semibold">Chat ID</th>
-                  <th className="px-5 py-4 font-semibold">State</th>
-                  <th className="px-5 py-4 font-semibold">Rights</th>
+                  <th className="px-5 py-4 font-semibold">Trạng thái</th>
+                  <th className="px-5 py-4 font-semibold">Quyền bot</th>
                   <th className="px-5 py-4 font-semibold">Moderation</th>
-                  <th className="px-5 py-4 font-semibold">Last Sync</th>
-                  <th className="px-5 py-4 font-semibold">Actions</th>
+                  <th className="px-5 py-4 font-semibold">Lần sync cuối</th>
+                  <th className="px-5 py-4 font-semibold">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -728,7 +725,7 @@ export function TelegramControlCenter({
                         href={`/telegram/groups/${group.id}/moderation`}
                         className="inline-flex rounded-full bg-[color:var(--surface-card)] px-4 py-2 font-semibold text-[color:var(--primary)] shadow-[0_4px_14px_rgba(42,52,57,0.08)]"
                       >
-                        Open settings
+                        Mở cấu hình
                       </Link>
                     </td>
                   </tr>
@@ -739,8 +736,7 @@ export function TelegramControlCenter({
                       colSpan={7}
                       className="px-5 py-10 text-center text-sm text-[color:var(--on-surface-variant)]"
                     >
-                      No groups discovered yet. Verify the bot and run group
-                      discovery first.
+                      Chưa có group nào được đồng bộ. Hãy verify bot và chạy đồng bộ group trước.
                     </td>
                   </tr>
                 ) : null}

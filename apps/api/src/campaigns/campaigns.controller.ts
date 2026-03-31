@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -7,6 +16,14 @@ import { CampaignsService } from './campaigns.service';
 type CreateCampaignBody = {
   name: string;
   telegramGroupId: string;
+  joinRate?: string;
+  status?: 'Active' | 'Paused' | 'Review';
+  inviteMemberLimit?: number | null;
+  inviteRequiresApproval?: boolean;
+};
+
+type UpdateCampaignBody = {
+  name?: string;
   joinRate?: string;
   status?: 'Active' | 'Paused' | 'Review';
 };
@@ -40,5 +57,22 @@ export class CampaignsController {
   @Permissions('campaign.manage')
   createCampaign(@Body() body: CreateCampaignBody) {
     return this.campaignsService.create(body);
+  }
+
+  @Put(':campaignId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('campaign.manage')
+  updateCampaign(
+    @Param('campaignId') campaignId: string,
+    @Body() body: UpdateCampaignBody,
+  ) {
+    return this.campaignsService.update(campaignId, body);
+  }
+
+  @Delete(':campaignId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('campaign.manage')
+  deleteCampaign(@Param('campaignId') campaignId: string) {
+    return this.campaignsService.delete(campaignId);
   }
 }

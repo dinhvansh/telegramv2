@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Telegram Operations Platform",
+  title: "Skynet Telegram CRM",
   description:
-    "Admin command center for campaigns, moderation, autopost, analytics, and Telegram operations.",
+    "CRM điều hành Telegram cho campaign, moderation, autopost và vận hành group.",
 };
 
 export default function RootLayout({
