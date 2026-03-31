@@ -89,6 +89,24 @@ export class TelegramActionsService {
 
     const config = await this.getResolvedConfig();
     const actionVariant = this.resolveActionVariant(input);
+    if (
+      input.decision === SpamDecision.ALLOW &&
+      input.eventType !== 'join_request'
+    ) {
+      const result = {
+        enforced: false,
+        skipped: true,
+        reason: 'Decision ALLOW does not execute Telegram moderation actions',
+        decision: input.decision,
+        actionVariant: 'allow' as const,
+        missingPermissions: [],
+        userGuidance: null,
+        operations: [],
+      } satisfies PersistedActionResult;
+      await this.persistActionLog(input.spamEventId, result, input);
+      return result;
+    }
+
     if (!config.botToken) {
       const result = {
         enforced: false,
@@ -147,11 +165,10 @@ export class TelegramActionsService {
         method,
         body,
       );
-      const permissionIssue = this.getPermissionRequirement(
-        method,
-        response.description ?? null,
-      );
       const ok = Boolean(response.ok);
+      const permissionIssue = ok
+        ? null
+        : this.getPermissionRequirement(method, response.description ?? null);
       operations.push({
         method,
         ok,
