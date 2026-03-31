@@ -71,10 +71,10 @@ type AutopostSnapshot = {
 };
 
 const autopostFrequencyOptions = [
-  { value: "ONCE", label: "M?t l?n" },
-  { value: "DAILY", label: "H?ng ng?y" },
-  { value: "WEEKLY", label: "H?ng tu?n" },
-  { value: "MONTHLY", label: "H?ng th?ng" },
+  { value: "ONCE", label: "Một lần" },
+  { value: "DAILY", label: "Hàng ngày" },
+  { value: "WEEKLY", label: "Hàng tuần" },
+  { value: "MONTHLY", label: "Hàng tháng" },
 ];
 
 
@@ -98,7 +98,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 function formatDateTime(value: string | null) {
   if (!value) {
-    return "ChÆ°a háº¹n giá»";
+    return "Chưa hẹn giờ";
   }
 
   try {
@@ -129,6 +129,21 @@ function toLocalDateTimeInputValue(value: string | null) {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+function toLocalTimeInputValue(value: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
 function toIsoFromLocalDateTime(value: string) {
   if (!value) {
     return null;
@@ -140,6 +155,37 @@ function toIsoFromLocalDateTime(value: string) {
   }
 
   return date.toISOString();
+}
+
+function resolveRecurringTimeToIso(value: string) {
+  if (!value) {
+    return null;
+  }
+
+  const [hoursText, minutesText] = value.split(":");
+  const hours = Number(hoursText);
+  const minutes = Number(minutesText);
+  if (
+    Number.isNaN(hours) ||
+    Number.isNaN(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    return null;
+  }
+
+  const now = new Date();
+  const scheduled = new Date(now);
+  scheduled.setSeconds(0, 0);
+  scheduled.setHours(hours, minutes, 0, 0);
+
+  if (scheduled.getTime() <= now.getTime()) {
+    scheduled.setDate(scheduled.getDate() + 1);
+  }
+
+  return scheduled.toISOString();
 }
 
 function getScheduleTone(status: string) {
@@ -179,11 +225,12 @@ export function AutopostWorkbench() {
   const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null);
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
-    title: "Báº£n tin tá»± Ä‘á»™ng",
-    message: "Ná»™i dung autopost Ä‘Æ°á»£c táº¡o tá»« CRM.",
+    title: "Bản tin tự động",
+    message: "Nội dung autopost được tạo từ CRM.",
     mediaUrl: "",
     frequency: "ONCE",
     scheduledFor: "",
+    scheduledTime: "",
     saveAsDraft: false,
   });
 
@@ -215,7 +262,7 @@ export function AutopostWorkbench() {
         }
 
         setError(
-          loadError instanceof Error ? loadError.message : "KhÃ´ng thá»ƒ táº£i dá»¯ liá»‡u autopost.",
+          loadError instanceof Error ? loadError.message : "Không thể tải dữ liệu autopost.",
         );
       } finally {
         if (active) {
@@ -270,7 +317,7 @@ export function AutopostWorkbench() {
     return new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => reject(new Error("KhÃ´ng thá»ƒ Ä‘á»c file hÃ¬nh."));
+      reader.onerror = () => reject(new Error("Không thể đọc file hình."));
       reader.readAsDataURL(file);
     });
   }
@@ -304,17 +351,20 @@ export function AutopostWorkbench() {
         headers: { Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           ...scheduleForm,
-          scheduledFor: toIsoFromLocalDateTime(scheduleForm.scheduledFor),
+          scheduledFor:
+            scheduleForm.frequency === "ONCE"
+              ? toIsoFromLocalDateTime(scheduleForm.scheduledFor)
+              : resolveRecurringTimeToIso(scheduleForm.scheduledTime),
           mediaUrl: scheduleForm.mediaUrl || null,
           telegramGroupIds: selectAllTelegramGroups ? [] : selectedTelegramGroupIds,
           selectAllTelegramGroups,
         }),
       });
       setSnapshot(result.snapshot);
-      setNotice(`ÄÃ£ táº¡o ${result.created} lá»‹ch autopost.`);
+      setNotice(`Đã tạo ${result.created} lịch autopost.`);
     } catch (scheduleError) {
       setError(
-        scheduleError instanceof Error ? scheduleError.message : "KhÃ´ng thá»ƒ táº¡o lá»‹ch autopost.",
+        scheduleError instanceof Error ? scheduleError.message : "Không thể tạo lịch autopost.",
       );
     } finally {
       setIsCreatingSchedule(false);
@@ -329,6 +379,7 @@ export function AutopostWorkbench() {
       mediaUrl: schedule.mediaUrl || "",
       frequency: schedule.frequency,
       scheduledFor: toLocalDateTimeInputValue(schedule.scheduledFor),
+      scheduledTime: toLocalTimeInputValue(schedule.scheduledFor),
       saveAsDraft: schedule.status === "DRAFT",
     });
     setSelectAllTelegramGroups(false);
@@ -341,11 +392,12 @@ export function AutopostWorkbench() {
   function resetScheduleForm() {
     setEditingScheduleId(null);
     setScheduleForm({
-      title: "Báº£n tin tá»± Ä‘á»™ng",
-      message: "Ná»™i dung autopost Ä‘Æ°á»£c táº¡o tá»« CRM.",
+      title: "Bản tin tự động",
+      message: "Nội dung autopost được tạo từ CRM.",
       mediaUrl: "",
       frequency: "ONCE",
       scheduledFor: "",
+      scheduledTime: "",
       saveAsDraft: false,
     });
   }
@@ -368,7 +420,10 @@ export function AutopostWorkbench() {
           headers: { Authorization: `Bearer ${token}` },
           body: JSON.stringify({
             ...scheduleForm,
-            scheduledFor: toIsoFromLocalDateTime(scheduleForm.scheduledFor),
+            scheduledFor:
+              scheduleForm.frequency === "ONCE"
+                ? toIsoFromLocalDateTime(scheduleForm.scheduledFor)
+                : resolveRecurringTimeToIso(scheduleForm.scheduledTime),
             mediaUrl: scheduleForm.mediaUrl || null,
             telegramGroupIds: selectAllTelegramGroups ? [] : selectedTelegramGroupIds,
             selectAllTelegramGroups,
@@ -376,11 +431,11 @@ export function AutopostWorkbench() {
         },
       );
       setSnapshot(result.snapshot);
-      setNotice("ÄÃ£ cáº­p nháº­t lá»‹ch autopost.");
+      setNotice("Đã cập nhật lịch autopost.");
       resetScheduleForm();
     } catch (updateError) {
       setError(
-        updateError instanceof Error ? updateError.message : "KhÃ´ng thá»ƒ cáº­p nháº­t lá»‹ch autopost.",
+        updateError instanceof Error ? updateError.message : "Không thể cập nhật lịch autopost.",
       );
     } finally {
       setIsUpdatingSchedule(false);
@@ -412,9 +467,9 @@ export function AutopostWorkbench() {
         }),
       });
       setSnapshot(result.snapshot);
-      setNotice(`ÄÃ£ gá»­i ngay tá»›i ${result.dispatched} group.`);
+      setNotice(`Đã gửi ngay tới ${result.dispatched} group.`);
     } catch (sendError) {
-      setError(sendError instanceof Error ? sendError.message : "KhÃ´ng thá»ƒ gá»­i ngay.");
+      setError(sendError instanceof Error ? sendError.message : "Không thể gửi ngay.");
     } finally {
       setIsSendingNow(false);
     }
@@ -439,9 +494,9 @@ export function AutopostWorkbench() {
         headers: { Authorization: `Bearer ${token}` },
       });
       setSnapshot(result.snapshot);
-      setNotice(`ÄÃ£ Ä‘á»•i tráº¡ng thÃ¡i lá»‹ch sang ${result.status}.`);
+      setNotice(`Đã đổi trạng thái lịch sang ${result.status}.`);
     } catch (toggleError) {
-      setError(toggleError instanceof Error ? toggleError.message : "KhÃ´ng thá»ƒ báº­t/táº¯t lá»‹ch.");
+      setError(toggleError instanceof Error ? toggleError.message : "Không thể bật/tắt lịch.");
     } finally {
       setTogglingScheduleId(null);
     }
@@ -465,12 +520,12 @@ export function AutopostWorkbench() {
         },
       );
       setSnapshot(result.snapshot);
-      setNotice("ÄÃ£ xÃ³a lá»‹ch autopost.");
+      setNotice("Đã xóa lịch autopost.");
       if (editingScheduleId === scheduleId) {
         resetScheduleForm();
       }
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "KhÃ´ng thá»ƒ xÃ³a lá»‹ch.");
+      setError(deleteError instanceof Error ? deleteError.message : "Không thể xóa lịch.");
     } finally {
       setDeletingScheduleId(null);
     }
@@ -480,7 +535,7 @@ export function AutopostWorkbench() {
     return (
       <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
         <p className="text-sm font-semibold text-[color:var(--on-surface-variant)]">
-          Äang táº£i dá»¯ liá»‡u autopost...
+          Đang tải dữ liệu autopost...
         </p>
       </section>
     );
@@ -490,7 +545,7 @@ export function AutopostWorkbench() {
     return (
       <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
         <p className="text-sm font-semibold text-[color:var(--warning)]">
-          Cáº§n Ä‘Äƒng nháº­p báº±ng tÃ i khoáº£n cÃ³ quyá»n autopost Ä‘á»ƒ thao tÃ¡c.
+          Cần đăng nhập bằng tài khoản có quyền autopost để thao tác.
         </p>
       </section>
     );
@@ -502,8 +557,8 @@ export function AutopostWorkbench() {
         {[
           ["Target Telegram", snapshot?.stats.telegramTargets ?? 0],
           ["Target Discord", snapshot?.stats.discordTargets ?? 0],
-          ["ÄÃ£ gá»­i", snapshot?.stats.sentCount ?? 0],
-          ["Äang chá»", snapshot?.stats.scheduledCount ?? 0],
+          ["Đã gửi", snapshot?.stats.sentCount ?? 0],
+          ["Đang chờ", snapshot?.stats.scheduledCount ?? 0],
         ].map(([label, value]) => (
           <article
             key={label}
@@ -535,11 +590,11 @@ export function AutopostWorkbench() {
             Group Telegram
           </p>
           <h3 className="mt-2 text-2xl font-black tracking-tight">
-            Láº¥y trá»±c tiáº¿p tá»« danh sÃ¡ch group Ä‘Ã£ sync
+            Lấy trực tiếp từ danh sách group đã sync
           </h3>
           <p className="mt-3 text-sm leading-6 text-[color:var(--on-surface-variant)]">
-            KhÃ´ng cáº§n khai bÃ¡o channel thá»§ cÃ´ng ná»¯a. Worker sáº½ tá»± táº¡o target Telegram tá»« group
-            anh chá»n khi lÃªn lá»‹ch.
+            Không cần khai báo channel thủ công nữa. Worker sẽ tự tạo target Telegram từ group
+            anh chọn khi lên lịch.
           </p>
 
           <div className="mt-6 flex flex-wrap gap-3">
@@ -555,7 +610,7 @@ export function AutopostWorkbench() {
                   : "bg-[color:var(--surface-low)]"
               }`}
             >
-              Chá»n táº¥t cáº£
+              Chọn tất cả
             </button>
             <button
               type="button"
@@ -565,18 +620,18 @@ export function AutopostWorkbench() {
               }}
               className="rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold"
             >
-              Bá» chá»n
+              Bỏ chọn
             </button>
             <span className="inline-flex items-center rounded-full bg-[color:var(--primary-soft)] px-4 py-2 text-sm font-semibold text-[color:var(--primary)]">
-              ÄÃ£ chá»n {selectedGroupCount} group
+              Đã chọn {selectedGroupCount} group
             </span>
           </div>
 
           <div className="mt-5 space-y-3">
             {snapshot?.telegramGroups.length ? null : (
               <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm text-[color:var(--on-surface-variant)]">
-                ChÆ°a cÃ³ group nÃ o Ä‘Æ°á»£c sync. HÃ£y vÃ o mÃ n Telegram Ä‘á»ƒ verify bot vÃ  Ä‘á»“ng bá»™
-                group trÆ°á»›c.
+                Chưa có group nào được sync. Hãy vào màn Telegram để verify bot và đồng bộ
+                group trước.
               </div>
             )}
 
@@ -597,8 +652,8 @@ export function AutopostWorkbench() {
                   <p className="text-sm font-bold">{group.title}</p>
                   <p className="mt-1 text-sm text-[color:var(--on-surface-variant)]">
                     {group.externalId}
-                    {group.username ? ` Â· ${group.username}` : ""}
-                    {group.type ? ` Â· ${group.type}` : ""}
+                    {group.username ? ` · ${group.username}` : ""}
+                    {group.type ? ` · ${group.type}` : ""}
                   </p>
                 </div>
               </label>
@@ -610,17 +665,17 @@ export function AutopostWorkbench() {
           <div className="flex items-end justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-                Lá»‹ch autopost
+                Lịch autopost
               </p>
               <h3 className="mt-2 text-2xl font-black tracking-tight">
-                LÃªn lá»‹ch post text hoáº·c áº£nh cho nhiá»u group cÃ¹ng lÃºc
+                Lên lịch post text hoặc ảnh cho nhiều group cùng lúc
               </h3>
             </div>
             <button
               onClick={() => void refreshSnapshot()}
               className="rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold"
             >
-              Táº£i láº¡i
+              Tải lại
             </button>
           </div>
 
@@ -630,28 +685,15 @@ export function AutopostWorkbench() {
             }
             className="mt-6 space-y-4"
           >
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4">
               <input
                 value={scheduleForm.title}
                 onChange={(event) =>
                   setScheduleForm((current) => ({ ...current, title: event.target.value }))
                 }
                 className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
-                placeholder="TiÃªu Ä‘á» bÃ i"
+                placeholder="Tiêu đề bài"
               />
-              <select
-                value={scheduleForm.frequency}
-                onChange={(event) =>
-                  setScheduleForm((current) => ({ ...current, frequency: event.target.value }))
-                }
-                className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
-              >
-                {autopostFrequencyOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
             </div>
 
             <textarea
@@ -661,23 +703,23 @@ export function AutopostWorkbench() {
               }
               rows={5}
               className="w-full rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
-              placeholder="Ná»™i dung gá»­i Ä‘i"
+              placeholder="Nội dung gửi đi"
             />
 
             <input
               value={
                 scheduleForm.mediaUrl.startsWith("data:")
-                  ? "ÄÃ£ chá»n áº£nh tá»« mÃ¡y"
+                  ? "Đã chọn ảnh từ máy"
                   : scheduleForm.mediaUrl
               }
               onChange={(event) =>
                 setScheduleForm((current) => ({ ...current, mediaUrl: event.target.value }))
               }
               className="w-full rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
-              placeholder="URL hÃ¬nh áº£nh (tÃ¹y chá»n)"
+              placeholder="URL hình ảnh (tùy chọn)"
             />
             <label className="flex cursor-pointer items-center justify-center rounded-[18px] border border-dashed border-[color:var(--outline)] bg-[color:var(--surface-low)] px-4 py-4 text-sm font-semibold text-[color:var(--on-surface)]">
-              Upload áº£nh tá»« mÃ¡y
+              Upload ảnh từ máy
               <input
                 type="file"
                 accept="image/*"
@@ -688,14 +730,14 @@ export function AutopostWorkbench() {
               />
             </label>
             <p className="text-sm text-[color:var(--on-surface-variant)]">
-              CÃ³ thá»ƒ dÃ¡n URL áº£nh hoáº·c upload áº£nh trá»±c tiáº¿p. Telegram sáº½ gá»­i áº£nh báº±ng `sendPhoto`.
-              TiÃªu Ä‘á» vÃ  ná»™i dung sáº½ Ä‘i vÃ o caption.
+              Có thể dán URL ảnh hoặc upload ảnh trực tiếp. Telegram sẽ gửi ảnh bằng `sendPhoto`.
+              Tiêu đề và nội dung sẽ đi vào caption.
             </p>
             {scheduleForm.mediaUrl ? (
               <div className="rounded-[18px] bg-[color:var(--surface-low)] p-3">
                 <Image
                   src={scheduleForm.mediaUrl}
-                  alt="áº¢nh autopost"
+                  alt="Ảnh autopost"
                   width={720}
                   height={420}
                   unoptimized
@@ -704,18 +746,53 @@ export function AutopostWorkbench() {
               </div>
             ) : null}
 
-            <div className="grid gap-4 md:grid-cols-[1fr_auto]">
-              <input
-                type="datetime-local"
-                value={scheduleForm.scheduledFor}
+            <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
+              <select
+                value={scheduleForm.frequency}
                 onChange={(event) =>
                   setScheduleForm((current) => ({
                     ...current,
-                    scheduledFor: event.target.value,
+                    frequency: event.target.value,
+                    scheduledTime:
+                      event.target.value === "ONCE"
+                        ? current.scheduledTime
+                        : current.scheduledTime || toLocalTimeInputValue(current.scheduledFor),
                   }))
                 }
                 className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
-              />
+              >
+                {autopostFrequencyOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {scheduleForm.frequency === "ONCE" ? (
+                <input
+                  type="datetime-local"
+                  value={scheduleForm.scheduledFor}
+                  onChange={(event) =>
+                    setScheduleForm((current) => ({
+                      ...current,
+                      scheduledFor: event.target.value,
+                      scheduledTime: toLocalTimeInputValue(event.target.value),
+                    }))
+                  }
+                  className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
+                />
+              ) : (
+                <input
+                  type="time"
+                  value={scheduleForm.scheduledTime}
+                  onChange={(event) =>
+                    setScheduleForm((current) => ({
+                      ...current,
+                      scheduledTime: event.target.value,
+                    }))
+                  }
+                  className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
+                />
+              )}
               <label className="flex items-center gap-3 rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm font-semibold">
                 <input
                   type="checkbox"
@@ -727,9 +804,14 @@ export function AutopostWorkbench() {
                     }))
                   }
                 />
-                LÆ°u draft
+                Lưu draft
               </label>
             </div>
+            <p className="text-sm text-[color:var(--on-surface-variant)]">
+              {scheduleForm.frequency === "ONCE"
+                ? "Lịch một lần cần chọn ngày và giờ cụ thể."
+                : "Lịch lặp chỉ cần chọn giờ. Hệ thống sẽ tự chạy vào khung giờ này mỗi kỳ."}
+            </p>
 
             <div className="flex flex-wrap gap-3">
               <button
@@ -744,11 +826,11 @@ export function AutopostWorkbench() {
               >
                 {editingScheduleId
                   ? isUpdatingSchedule
-                    ? "Äang cáº­p nháº­t..."
-                    : "LÆ°u chá»‰nh sá»­a"
+                    ? "Đang cập nhật..."
+                    : "Lưu chỉnh sửa"
                   : isCreatingSchedule
-                    ? "Äang táº¡o lá»‹ch..."
-                    : "Táº¡o lá»‹ch"}
+                    ? "Đang tạo lịch..."
+                    : "Tạo lịch"}
               </button>
               <button
                 type="button"
@@ -761,7 +843,7 @@ export function AutopostWorkbench() {
                 }
                 className="rounded-[18px] bg-[color:var(--primary-soft)] px-5 py-3 text-sm font-bold text-[color:var(--primary)] disabled:opacity-60"
               >
-                {isSendingNow ? "Äang gá»­i..." : "Gá»­i ngay"}
+                {isSendingNow ? "Đang gửi..." : "Gửi ngay"}
               </button>
               {editingScheduleId ? (
                 <button
@@ -769,7 +851,7 @@ export function AutopostWorkbench() {
                   onClick={() => resetScheduleForm()}
                   className="rounded-[18px] bg-[color:var(--surface-low)] px-5 py-3 text-sm font-bold"
                 >
-                  Há»§y sá»­a
+                  Hủy sửa
                 </button>
               ) : null}
             </div>
@@ -785,7 +867,7 @@ export function AutopostWorkbench() {
                   <div className="min-w-0">
                     <p className="text-sm font-bold">{schedule.title}</p>
                     <p className="mt-1 text-sm text-[color:var(--on-surface-variant)]">
-                      {schedule.target.displayName} Â· {schedule.frequency} Â·{" "}
+                      {schedule.target.displayName} · {getFrequencyLabel(schedule.frequency)} ·{" "}
                       {formatDateTime(schedule.scheduledFor)}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface)]">
@@ -793,13 +875,13 @@ export function AutopostWorkbench() {
                     </p>
                     {schedule.mediaUrl ? (
                       <p className="mt-2 text-xs text-[color:var(--on-surface-variant)]">
-                        áº¢nh: {schedule.mediaUrl}
+                        Ảnh: {schedule.mediaUrl}
                       </p>
                     ) : null}
                     {schedule.latestLog ? (
                       <p className="mt-2 text-xs text-[color:var(--on-surface-variant)]">
-                        Log má»›i nháº¥t: {schedule.latestLog.status} Â·{" "}
-                        {schedule.latestLog.detail ?? "KhÃ´ng cÃ³ chi tiáº¿t"}
+                        Log mới nhất: {schedule.latestLog.status} ·{" "}
+                        {schedule.latestLog.detail ?? "Không có chi tiết"}
                       </p>
                     ) : null}
                   </div>
@@ -817,7 +899,7 @@ export function AutopostWorkbench() {
                         onClick={() => startEditSchedule(schedule)}
                         className="rounded-[16px] bg-white/80 px-4 py-2 text-sm font-semibold"
                       >
-                        Sá»­a
+                        Sửa
                       </button>
                       <button
                         type="button"
@@ -826,10 +908,10 @@ export function AutopostWorkbench() {
                         className="rounded-[16px] bg-white/80 px-4 py-2 text-sm font-semibold"
                       >
                         {togglingScheduleId === schedule.id
-                          ? "Äang Ä‘á»•i..."
+                          ? "Đang đổi..."
                           : schedule.status === "DRAFT"
-                            ? "Báº­t"
-                            : "Táº¯t"}
+                            ? "Bật"
+                            : "Tắt"}
                       </button>
                       <button
                         type="button"
@@ -837,7 +919,7 @@ export function AutopostWorkbench() {
                         disabled={deletingScheduleId === schedule.id}
                         className="rounded-[16px] bg-[color:var(--danger-soft)] px-4 py-2 text-sm font-semibold text-[color:var(--danger)]"
                       >
-                        {deletingScheduleId === schedule.id ? "Äang xÃ³a..." : "XÃ³a"}
+                        {deletingScheduleId === schedule.id ? "Đang xóa..." : "Xóa"}
                       </button>
                     </div>
                   </div>
@@ -850,21 +932,21 @@ export function AutopostWorkbench() {
 
       <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-          Nháº­t kÃ½ dispatch
+          Nhật ký gửi bài
         </p>
         <h3 className="mt-2 text-2xl font-black tracking-tight">
-          Theo dÃµi tá»«ng láº§n gá»­i bÃ i, tráº¡ng thÃ¡i vÃ  external post id
+          Theo dõi từng lần gửi bài, trạng thái và external post id
         </h3>
 
         <div className="mt-6 overflow-x-auto rounded-[24px] bg-[color:var(--surface-low)]">
           <table className="min-w-[860px] w-full border-collapse text-left">
             <thead>
               <tr className="text-xs uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                <th className="px-5 py-4 font-semibold">Lá»‹ch</th>
-                <th className="px-5 py-4 font-semibold">Loáº¡i bÃ i</th>
+                <th className="px-5 py-4 font-semibold">Lịch</th>
+                <th className="px-5 py-4 font-semibold">Loại bài</th>
                 <th className="px-5 py-4 font-semibold">Target</th>
-                <th className="px-5 py-4 font-semibold">Káº¿t quáº£</th>
-                <th className="px-5 py-4 font-semibold">Thá»i gian</th>
+                <th className="px-5 py-4 font-semibold">Kết quả</th>
+                <th className="px-5 py-4 font-semibold">Thời gian</th>
               </tr>
             </thead>
             <tbody>
@@ -880,11 +962,11 @@ export function AutopostWorkbench() {
                       </p>
                     </td>
                     <td className="px-5 py-4 align-top text-sm text-[color:var(--on-surface-variant)]">
-                      {schedule?.mediaUrl ? "áº¢nh + caption" : "Text"}
+                      {schedule?.mediaUrl ? "Ảnh + caption" : "Text"}
                     </td>
                     <td className="px-5 py-4 align-top text-sm text-[color:var(--on-surface-variant)]">
                       <p>{log.schedule.targetName}</p>
-                      <p className="mt-1">{log.externalPostId ?? "ChÆ°a cÃ³ post id"}</p>
+                      <p className="mt-1">{log.externalPostId ?? "Chưa có post id"}</p>
                     </td>
                     <td className="px-5 py-4 align-top">
                       <span
@@ -895,7 +977,7 @@ export function AutopostWorkbench() {
                         {log.status}
                       </span>
                       <p className="mt-2 text-sm text-[color:var(--on-surface-variant)]">
-                        {log.detail ?? "KhÃ´ng cÃ³ chi tiáº¿t"}
+                        {log.detail ?? "Không có chi tiết"}
                       </p>
                     </td>
                     <td className="px-5 py-4 align-top text-sm text-[color:var(--on-surface-variant)]">

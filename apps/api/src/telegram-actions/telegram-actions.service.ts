@@ -107,6 +107,24 @@ export class TelegramActionsService {
       return result;
     }
 
+    if (
+      input.eventType === 'join_request' &&
+      input.decision === SpamDecision.REVIEW
+    ) {
+      const result = {
+        enforced: false,
+        skipped: true,
+        reason: 'Join request is waiting for manual review',
+        decision: input.decision,
+        actionVariant: 'allow' as const,
+        missingPermissions: [],
+        userGuidance: null,
+        operations: [],
+      } satisfies PersistedActionResult;
+      await this.persistActionLog(input.spamEventId, result, input);
+      return result;
+    }
+
     if (!config.botToken) {
       const result = {
         enforced: false,
