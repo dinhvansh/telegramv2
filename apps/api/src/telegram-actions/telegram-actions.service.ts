@@ -73,6 +73,8 @@ type PersistedActionResult = {
   userGuidance?: string | null;
 };
 
+const ACTION_ANNOUNCEMENT_COOLDOWN_MS = 15_000;
+
 @Injectable()
 export class TelegramActionsService {
   constructor(
@@ -729,6 +731,14 @@ export class TelegramActionsService {
       return;
     }
 
+    const suppressed = await this.shouldSuppressActionAnnouncement(
+      input,
+      result,
+    );
+    if (suppressed) {
+      return;
+    }
+
     const response = await this.callTelegram<{ message_id?: number }>(
       botToken,
       'sendMessage',
@@ -752,7 +762,92 @@ export class TelegramActionsService {
           actorUsername: input.actorUsername || null,
         },
       });
+      return;
     }
+
+    await this.systemLogsService.log({
+      level: 'INFO',
+      scope: 'telegram.announcement',
+      action: 'send_action_announcement',
+      message: `Announced ${result.actionVariant} in group`,
+      payload: {
+        chatId: input.chatId,
+        actionVariant: result.actionVariant,
+        actorExternalId: input.actorExternalId || null,
+        actorUsername: input.actorUsername || null,
+        source: input.source,
+        spamEventId: input.spamEventId || null,
+        messageId:
+          typeof response.result?.message_id === 'number'
+            ? String(response.result.message_id)
+            : null,
+      },
+    });
+  }
+
+  private async shouldSuppressActionAnnouncement(
+    input: ExecuteDecisionInput,
+    result: PersistedActionResult,
+  ) {
+    if (!process.env.DATABASE_URL || !input.chatId) {
+      return false;
+    }
+
+    const targetKey = input.actorExternalId
+      ? String(input.actorExternalId)
+      : input.actorUsername
+        ? `@${String(input.actorUsername).replace(/^@/, '')}`
+        : null;
+
+    if (!targetKey) {
+      return false;
+    }
+
+    const recentLogs = await (this.prisma as any).systemLog.findMany({
+      where: {
+        scope: 'telegram.announcement',
+        action: 'send_action_announcement',
+        level: 'INFO',
+        createdAt: {
+          gte: new Date(Date.now() - ACTION_ANNOUNCEMENT_COOLDOWN_MS),
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 20,
+    });
+
+    return recentLogs.some((item: any) => {
+      const payload = item?.payload as {
+        chatId?: unknown;
+        actionVariant?: unknown;
+        actorExternalId?: unknown;
+        actorUsername?: unknown;
+      } | null;
+      const payloadChatId =
+        typeof payload?.chatId === 'string' ||
+        typeof payload?.chatId === 'number'
+          ? String(payload.chatId)
+          : null;
+      const payloadActionVariant =
+        typeof payload?.actionVariant === 'string'
+          ? payload.actionVariant
+          : null;
+      const payloadTargetKey =
+        typeof payload?.actorExternalId === 'string' ||
+        typeof payload?.actorExternalId === 'number'
+          ? String(payload.actorExternalId)
+          : typeof payload?.actorUsername === 'string'
+            ? `@${payload.actorUsername.replace(/^@/, '')}`
+            : null;
+
+      return (
+        payloadChatId === String(input.chatId) &&
+        payloadActionVariant === result.actionVariant &&
+        payloadTargetKey === targetKey
+      );
+    });
   }
 
   private buildAnnouncementText(
