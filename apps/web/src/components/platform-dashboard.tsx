@@ -163,7 +163,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
       if (message) {
         detail = message;
       }
-    } catch (error) {
+    } catch {
       // Keep default status message when backend has no JSON error body.
     }
     throw new Error(detail);

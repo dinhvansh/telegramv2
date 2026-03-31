@@ -21,6 +21,8 @@ type GroupModerationSettings = {
   lockVideo: boolean;
   lockDocument: boolean;
   lockSticker: boolean;
+  lockInlineButtons: boolean;
+  lockInlineButtonUrls: boolean;
   trustedUsernames: string;
   trustedExternalIds: string;
   exemptAdmins: boolean;
@@ -29,12 +31,21 @@ type GroupModerationSettings = {
   warnLimit: number;
   warnAction: "mute" | "tmute" | "kick" | "ban" | "tban";
   warnActionDurationSeconds: number | null;
+  warningExpirySeconds: number;
   antifloodEnabled: boolean;
   antifloodLimit: number;
   antifloodWindowSeconds: number;
   antifloodAction: "mute" | "tmute" | "kick" | "ban" | "tban";
   antifloodActionDurationSeconds: number | null;
   antifloodDeleteAll: boolean;
+  resetAntifloodOnRejoin: boolean;
+  probationEnabled: boolean;
+  probationSeconds: number;
+  probationAction: "mute" | "tmute" | "kick" | "ban" | "tban";
+  probationActionDurationSeconds: number | null;
+  antiRaidEnabled: boolean;
+  antiRaidAction: "mute" | "tmute" | "kick" | "ban" | "tban";
+  antiRaidActionDurationSeconds: number | null;
   aiModerationEnabled: boolean;
   aiMode: "off" | "fallback_only" | "suspicious_only";
   aiConfidenceThreshold: number;
@@ -221,11 +232,16 @@ export function TelegramGroupModerationSettings({
     ["lockVideo", "Lock video"],
     ["lockDocument", "Lock document"],
     ["lockSticker", "Lock sticker"],
+    ["lockInlineButtons", "Lock inline buttons"],
+    ["lockInlineButtonUrls", "Lock inline button URLs"],
     ["exemptAdmins", "Exempt Telegram admins"],
     ["exemptOwners", "Exempt CRM owners"],
     ["lockWarns", "Warn on lock violation"],
     ["antifloodEnabled", "Enable antiflood"],
     ["antifloodDeleteAll", "Delete all flooded messages"],
+    ["resetAntifloodOnRejoin", "Reset antiflood on rejoin"],
+    ["probationEnabled", "Enable probation for new members"],
+    ["antiRaidEnabled", "Enable anti-raid mode"],
     ["aiModerationEnabled", "Enable AI moderation"],
     ["aiOverrideAction", "Allow AI override action"],
     ["silentActions", "Silent actions"],
@@ -417,6 +433,28 @@ export function TelegramGroupModerationSettings({
                       className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
                     />
                   </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
+                      Warning expiry seconds
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.warningExpirySeconds}
+                      onChange={(event) =>
+                        setForm((current) =>
+                          current
+                            ? {
+                                ...current,
+                                warningExpirySeconds: Number(event.target.value || 0),
+                              }
+                            : current,
+                        )
+                      }
+                      className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
+                    />
+                  </label>
                 </div>
               </div>
 
@@ -505,6 +543,131 @@ export function TelegramGroupModerationSettings({
                             ? {
                                 ...current,
                                 antifloodActionDurationSeconds: event.target.value
+                                  ? Number(event.target.value)
+                                  : null,
+                              }
+                            : current,
+                        )
+                      }
+                      className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="rounded-[24px] bg-[color:var(--surface-low)] p-5">
+                <p className="text-sm font-bold">Probation / AntiRaid</p>
+                <div className="mt-4 grid gap-4">
+                  <label className="block">
+                    <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
+                      Probation seconds
+                    </span>
+                    <input
+                      type="number"
+                      min={60}
+                      value={form.probationSeconds}
+                      onChange={(event) =>
+                        setForm((current) =>
+                          current
+                            ? {
+                                ...current,
+                                probationSeconds: Number(event.target.value || 60),
+                              }
+                            : current,
+                        )
+                      }
+                      className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
+                      Probation action
+                    </span>
+                    <select
+                      value={form.probationAction}
+                      onChange={(event) =>
+                        setForm((current) =>
+                          current
+                            ? {
+                                ...current,
+                                probationAction:
+                                  event.target.value as GroupModerationSettings["probationAction"],
+                              }
+                            : current,
+                        )
+                      }
+                      className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
+                    >
+                      <option value="mute">mute</option>
+                      <option value="tmute">tmute</option>
+                      <option value="kick">kick</option>
+                      <option value="ban">ban</option>
+                      <option value="tban">tban</option>
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
+                      Probation action duration seconds
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.probationActionDurationSeconds ?? ""}
+                      onChange={(event) =>
+                        setForm((current) =>
+                          current
+                            ? {
+                                ...current,
+                                probationActionDurationSeconds: event.target.value
+                                  ? Number(event.target.value)
+                                  : null,
+                              }
+                            : current,
+                        )
+                      }
+                      className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
+                      AntiRaid action
+                    </span>
+                    <select
+                      value={form.antiRaidAction}
+                      onChange={(event) =>
+                        setForm((current) =>
+                          current
+                            ? {
+                                ...current,
+                                antiRaidAction:
+                                  event.target.value as GroupModerationSettings["antiRaidAction"],
+                              }
+                            : current,
+                        )
+                      }
+                      className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
+                    >
+                      <option value="mute">mute</option>
+                      <option value="tmute">tmute</option>
+                      <option value="kick">kick</option>
+                      <option value="ban">ban</option>
+                      <option value="tban">tban</option>
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
+                      AntiRaid action duration seconds
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.antiRaidActionDurationSeconds ?? ""}
+                      onChange={(event) =>
+                        setForm((current) =>
+                          current
+                            ? {
+                                ...current,
+                                antiRaidActionDurationSeconds: event.target.value
                                   ? Number(event.target.value)
                                   : null,
                               }

@@ -173,6 +173,15 @@ type WebhookPayload = {
       invite_link?: string;
       name?: string;
     };
+    reply_markup?: {
+      inline_keyboard?: Array<
+        Array<{
+          text?: string;
+          url?: string;
+          callback_data?: string;
+        }>
+      >;
+    };
   };
   channel_post?: {
     chat?: {
@@ -247,6 +256,8 @@ type TelegramGroupModerationInput = {
   lockVideo?: boolean;
   lockDocument?: boolean;
   lockSticker?: boolean;
+  lockInlineButtons?: boolean;
+  lockInlineButtonUrls?: boolean;
   trustedUsernames?: string;
   trustedExternalIds?: string;
   exemptAdmins?: boolean;
@@ -255,12 +266,21 @@ type TelegramGroupModerationInput = {
   warnLimit?: number;
   warnAction?: 'mute' | 'tmute' | 'kick' | 'ban' | 'tban';
   warnActionDurationSeconds?: number | null;
+  warningExpirySeconds?: number;
   antifloodEnabled?: boolean;
   antifloodLimit?: number;
   antifloodWindowSeconds?: number;
   antifloodAction?: 'mute' | 'tmute' | 'kick' | 'ban' | 'tban';
   antifloodActionDurationSeconds?: number | null;
   antifloodDeleteAll?: boolean;
+  resetAntifloodOnRejoin?: boolean;
+  probationEnabled?: boolean;
+  probationSeconds?: number;
+  probationAction?: 'mute' | 'tmute' | 'kick' | 'ban' | 'tban';
+  probationActionDurationSeconds?: number | null;
+  antiRaidEnabled?: boolean;
+  antiRaidAction?: 'mute' | 'tmute' | 'kick' | 'ban' | 'tban';
+  antiRaidActionDurationSeconds?: number | null;
   aiModerationEnabled?: boolean;
   aiMode?: 'off' | 'fallback_only' | 'suspicious_only';
   aiConfidenceThreshold?: number;
@@ -420,9 +440,13 @@ export class TelegramService {
     }
 
     const current = await this.ensureModerationSettings(group.id);
-    const warnAction = input.warnAction || current?.warnAction || 'kick';
+    const warnAction = input.warnAction || current?.warnAction || 'tmute';
     const antifloodAction =
       input.antifloodAction || current?.antifloodAction || 'tmute';
+    const probationAction =
+      input.probationAction || current?.probationAction || 'tmute';
+    const antiRaidAction =
+      input.antiRaidAction || current?.antiRaidAction || 'tban';
     const aiMode = input.aiMode || current?.aiMode || 'off';
     const aiConfidenceThreshold = Math.max(
       0,
@@ -452,6 +476,22 @@ export class TelegramService {
           600,
       ),
     );
+    const probationActionDurationSeconds = Math.max(
+      60,
+      Number(
+        input.probationActionDurationSeconds ??
+          current?.probationActionDurationSeconds ??
+          600,
+      ),
+    );
+    const antiRaidActionDurationSeconds = Math.max(
+      60,
+      Number(
+        input.antiRaidActionDurationSeconds ??
+          current?.antiRaidActionDurationSeconds ??
+          3600,
+      ),
+    );
 
     const settings = await this.prisma.telegramGroupModerationSettings.upsert({
       where: { telegramGroupId: group.id },
@@ -469,6 +509,10 @@ export class TelegramService {
         lockVideo: input.lockVideo ?? current?.lockVideo ?? false,
         lockDocument: input.lockDocument ?? current?.lockDocument ?? false,
         lockSticker: input.lockSticker ?? current?.lockSticker ?? false,
+        lockInlineButtons:
+          input.lockInlineButtons ?? current?.lockInlineButtons ?? false,
+        lockInlineButtonUrls:
+          input.lockInlineButtonUrls ?? current?.lockInlineButtonUrls ?? false,
         trustedUsernames:
           input.trustedUsernames ?? current?.trustedUsernames ?? '',
         trustedExternalIds:
@@ -482,6 +526,14 @@ export class TelegramService {
         ),
         warnAction,
         warnActionDurationSeconds,
+        warningExpirySeconds: Math.max(
+          0,
+          Number(
+            input.warningExpirySeconds ??
+              current?.warningExpirySeconds ??
+              86400,
+          ),
+        ),
         antifloodEnabled:
           input.antifloodEnabled ?? current?.antifloodEnabled ?? false,
         antifloodLimit: Math.max(
@@ -500,6 +552,22 @@ export class TelegramService {
         antifloodActionDurationSeconds,
         antifloodDeleteAll:
           input.antifloodDeleteAll ?? current?.antifloodDeleteAll ?? true,
+        resetAntifloodOnRejoin:
+          input.resetAntifloodOnRejoin ??
+          current?.resetAntifloodOnRejoin ??
+          true,
+        probationEnabled:
+          input.probationEnabled ?? current?.probationEnabled ?? false,
+        probationSeconds: Math.max(
+          60,
+          Number(input.probationSeconds ?? current?.probationSeconds ?? 900),
+        ),
+        probationAction,
+        probationActionDurationSeconds,
+        antiRaidEnabled:
+          input.antiRaidEnabled ?? current?.antiRaidEnabled ?? false,
+        antiRaidAction,
+        antiRaidActionDurationSeconds,
         aiModerationEnabled:
           input.aiModerationEnabled ?? current?.aiModerationEnabled ?? false,
         aiMode,
@@ -527,6 +595,8 @@ export class TelegramService {
         lockVideo: input.lockVideo ?? false,
         lockDocument: input.lockDocument ?? false,
         lockSticker: input.lockSticker ?? false,
+        lockInlineButtons: input.lockInlineButtons ?? false,
+        lockInlineButtonUrls: input.lockInlineButtonUrls ?? false,
         trustedUsernames: input.trustedUsernames ?? '',
         trustedExternalIds: input.trustedExternalIds ?? '',
         exemptAdmins: input.exemptAdmins ?? true,
@@ -535,6 +605,10 @@ export class TelegramService {
         warnLimit: Math.max(1, Number(input.warnLimit ?? 2)),
         warnAction,
         warnActionDurationSeconds,
+        warningExpirySeconds: Math.max(
+          0,
+          Number(input.warningExpirySeconds ?? 86400),
+        ),
         antifloodEnabled: input.antifloodEnabled ?? false,
         antifloodLimit: Math.max(1, Number(input.antifloodLimit ?? 5)),
         antifloodWindowSeconds: Math.max(
@@ -544,6 +618,14 @@ export class TelegramService {
         antifloodAction,
         antifloodActionDurationSeconds,
         antifloodDeleteAll: input.antifloodDeleteAll ?? true,
+        resetAntifloodOnRejoin: input.resetAntifloodOnRejoin ?? true,
+        probationEnabled: input.probationEnabled ?? false,
+        probationSeconds: Math.max(60, Number(input.probationSeconds ?? 900)),
+        probationAction,
+        probationActionDurationSeconds,
+        antiRaidEnabled: input.antiRaidEnabled ?? false,
+        antiRaidAction,
+        antiRaidActionDurationSeconds,
         aiModerationEnabled: input.aiModerationEnabled ?? false,
         aiMode,
         aiConfidenceThreshold,
@@ -1182,6 +1264,13 @@ export class TelegramService {
     }
     await this.recordTelegramEvent(processed);
     await this.syncMembershipFromWebhook(payload, processed);
+    const latestMembership =
+      processed.actorExternalId && processed.groupTitle
+        ? await this.findLatestCommunityMember({
+            actorExternalId: processed.actorExternalId,
+            groupTitle: processed.groupTitle,
+          })
+        : null;
     const moderation =
       processed.eventType === 'message_received' ||
       processed.eventType === 'join_request' ||
@@ -1213,6 +1302,8 @@ export class TelegramService {
           hasSticker: processed.hasSticker,
           hasContact: processed.hasContact,
           viaBot: processed.viaBot,
+          hasInlineButtons: processed.hasInlineButtons,
+          joinedAt: latestMembership?.joinedAt ?? null,
         })
       : null;
     const resolvedModeration = moderation
@@ -1248,6 +1339,7 @@ export class TelegramService {
                     groupTitle: processed.groupTitle,
                     windowSeconds: runtimeModeration.deleteWindowSeconds || 0,
                     currentMessageId: processed.messageExternalId,
+                    joinedAt: latestMembership?.joinedAt ?? null,
                   })
                 : null,
             muteDurationHours:
@@ -1899,10 +1991,20 @@ export class TelegramService {
     groupTitle: string;
     limit: number;
     windowSeconds: number;
+    joinedAt?: Date | null;
   }) {
     if (!process.env.DATABASE_URL) {
       return false;
     }
+
+    const fromDate = input.joinedAt
+      ? new Date(
+          Math.max(
+            input.joinedAt.getTime(),
+            Date.now() - input.windowSeconds * 1000,
+          ),
+        )
+      : new Date(Date.now() - input.windowSeconds * 1000);
 
     const recentCount = await this.prisma.spamEvent.count({
       where: {
@@ -1910,7 +2012,7 @@ export class TelegramService {
         actorExternalId: input.actorExternalId,
         groupTitle: input.groupTitle,
         createdAt: {
-          gte: new Date(Date.now() - input.windowSeconds * 1000),
+          gte: fromDate,
         },
       },
     });
@@ -1923,11 +2025,21 @@ export class TelegramService {
     groupTitle: string;
     windowSeconds: number;
     currentMessageId?: string | null;
+    joinedAt?: Date | null;
   }) {
     const currentMessageId = String(input.currentMessageId || '').trim();
     if (!process.env.DATABASE_URL || input.windowSeconds <= 0) {
       return currentMessageId ? [currentMessageId] : [];
     }
+
+    const fromDate = input.joinedAt
+      ? new Date(
+          Math.max(
+            input.joinedAt.getTime(),
+            Date.now() - input.windowSeconds * 1000,
+          ),
+        )
+      : new Date(Date.now() - input.windowSeconds * 1000);
 
     const recentEvents = await this.prisma.spamEvent.findMany({
       where: {
@@ -1935,7 +2047,7 @@ export class TelegramService {
         actorExternalId: input.actorExternalId,
         groupTitle: input.groupTitle,
         createdAt: {
-          gte: new Date(Date.now() - input.windowSeconds * 1000),
+          gte: fromDate,
         },
       },
       orderBy: {
@@ -2036,8 +2148,10 @@ export class TelegramService {
     hasSticker?: boolean;
     hasContact?: boolean;
     viaBot?: boolean;
+    hasInlineButtons?: boolean;
+    joinedAt?: Date | null;
   }): Promise<RuntimeModerationRuleResult | null> {
-    if (!process.env.DATABASE_URL || input.eventType !== 'message_received') {
+    if (!process.env.DATABASE_URL) {
       return null;
     }
 
@@ -2083,6 +2197,40 @@ export class TelegramService {
     let durationSeconds: number | null = null;
     let deleteAll = false;
     let deleteWindowSeconds: number | null = null;
+
+    if (
+      settings.antiRaidEnabled &&
+      (input.eventType === 'join_request' || input.eventType === 'user_joined')
+    ) {
+      matchedRules.push('antiraid');
+      actionVariant =
+        settings.antiRaidAction as RuntimeModerationRuleResult['actionVariant'];
+      decision = this.escalateSpamDecision(
+        decision,
+        this.mapTelegramActionToDecision(settings.antiRaidAction),
+      );
+      durationSeconds = settings.antiRaidActionDurationSeconds
+        ? Math.max(60, Number(settings.antiRaidActionDurationSeconds))
+        : null;
+      muteDurationHours = settings.antiRaidActionDurationSeconds
+        ? Math.max(1, Math.ceil(settings.antiRaidActionDurationSeconds / 3600))
+        : 24;
+    }
+
+    if (input.eventType !== 'message_received') {
+      return decision === 'ALLOW'
+        ? null
+        : {
+            decision,
+            actionVariant,
+            matchedRules,
+            muteDurationHours,
+            durationSeconds,
+            deleteAll,
+            deleteWindowSeconds,
+            silentActions: settings.silentActions,
+          };
+    }
 
     if (settings.lockUrl && this.containsUrl(messageText)) {
       matchedRules.push('lock:url');
@@ -2137,6 +2285,40 @@ export class TelegramService {
       decision = this.escalateSpamDecision(decision, 'WARN');
     }
 
+    if (settings.lockInlineButtons && input.hasInlineButtons) {
+      matchedRules.push('lock:inline_buttons');
+      decision = this.escalateSpamDecision(decision, 'WARN');
+    }
+
+    if (
+      settings.lockInlineButtonUrls &&
+      input.hasInlineButtons &&
+      this.containsUrl(messageText)
+    ) {
+      matchedRules.push('lock:inline_button_urls');
+      decision = this.escalateSpamDecision(decision, 'WARN');
+    }
+
+    if (
+      settings.probationEnabled &&
+      input.joinedAt &&
+      Date.now() - input.joinedAt.getTime() <= settings.probationSeconds * 1000
+    ) {
+      matchedRules.push(`probation:${settings.probationSeconds}s`);
+      actionVariant =
+        settings.probationAction as RuntimeModerationRuleResult['actionVariant'];
+      decision = this.escalateSpamDecision(
+        decision,
+        this.mapTelegramActionToDecision(settings.probationAction),
+      );
+      durationSeconds = settings.probationActionDurationSeconds
+        ? Math.max(60, Number(settings.probationActionDurationSeconds))
+        : null;
+      muteDurationHours = settings.probationActionDurationSeconds
+        ? Math.max(1, Math.ceil(settings.probationActionDurationSeconds / 3600))
+        : 24;
+    }
+
     if (
       settings.antifloodEnabled &&
       input.actorExternalId &&
@@ -2145,6 +2327,9 @@ export class TelegramService {
         groupTitle: input.groupTitle,
         limit: settings.antifloodLimit,
         windowSeconds: settings.antifloodWindowSeconds,
+        joinedAt: settings.resetAntifloodOnRejoin
+          ? (input.joinedAt ?? null)
+          : null,
       }))
     ) {
       matchedRules.push(
@@ -2246,12 +2431,22 @@ export class TelegramService {
         video: 'gửi video',
         document: 'gửi tài liệu',
         sticker: 'gửi sticker',
+        inline_buttons: 'chứa nút inline',
+        inline_button_urls: 'nút inline chứa liên kết',
       };
       return lockLabels[lockKey] || `vi phạm ${lockKey}`;
     }
 
     if (normalizedRule.startsWith('antiflood:')) {
       return `gửi tin quá nhanh (${normalizedRule.slice('antiflood:'.length)})`;
+    }
+
+    if (normalizedRule.startsWith('probation:')) {
+      return `vi phạm trong giai đoạn theo dõi (${normalizedRule.slice('probation:'.length)})`;
+    }
+
+    if (normalizedRule === 'antiraid') {
+      return 'anti-raid đang bật';
     }
 
     if (normalizedRule.startsWith('warning_ladder:')) {
@@ -2463,17 +2658,23 @@ export class TelegramService {
       lockVideo: overrides?.lockVideo ?? false,
       lockDocument: overrides?.lockDocument ?? false,
       lockSticker: overrides?.lockSticker ?? false,
+      lockInlineButtons: overrides?.lockInlineButtons ?? false,
+      lockInlineButtonUrls: overrides?.lockInlineButtonUrls ?? false,
       trustedUsernames: overrides?.trustedUsernames ?? '',
       trustedExternalIds: overrides?.trustedExternalIds ?? '',
       exemptAdmins: overrides?.exemptAdmins ?? true,
       exemptOwners: overrides?.exemptOwners ?? true,
       lockWarns: overrides?.lockWarns ?? true,
       warnLimit: Math.max(1, Number(overrides?.warnLimit ?? 2)),
-      warnAction: overrides?.warnAction ?? 'kick',
+      warnAction: overrides?.warnAction ?? 'tmute',
       warnActionDurationSeconds:
         overrides?.warnAction === 'tmute' || overrides?.warnAction === 'tban'
           ? Math.max(60, Number(overrides?.warnActionDurationSeconds ?? 600))
           : null,
+      warningExpirySeconds: Math.max(
+        0,
+        Number(overrides?.warningExpirySeconds ?? 86400),
+      ),
       antifloodEnabled: overrides?.antifloodEnabled ?? false,
       antifloodLimit: Math.max(1, Number(overrides?.antifloodLimit ?? 5)),
       antifloodWindowSeconds: Math.max(
@@ -2490,6 +2691,31 @@ export class TelegramService {
             )
           : null,
       antifloodDeleteAll: overrides?.antifloodDeleteAll ?? true,
+      resetAntifloodOnRejoin: overrides?.resetAntifloodOnRejoin ?? true,
+      probationEnabled: overrides?.probationEnabled ?? false,
+      probationSeconds: Math.max(
+        60,
+        Number(overrides?.probationSeconds ?? 900),
+      ),
+      probationAction: overrides?.probationAction ?? 'tmute',
+      probationActionDurationSeconds:
+        overrides?.probationAction === 'tmute' ||
+        overrides?.probationAction === 'tban'
+          ? Math.max(
+              60,
+              Number(overrides?.probationActionDurationSeconds ?? 600),
+            )
+          : null,
+      antiRaidEnabled: overrides?.antiRaidEnabled ?? false,
+      antiRaidAction: overrides?.antiRaidAction ?? 'tban',
+      antiRaidActionDurationSeconds:
+        overrides?.antiRaidAction === 'tmute' ||
+        overrides?.antiRaidAction === 'tban'
+          ? Math.max(
+              60,
+              Number(overrides?.antiRaidActionDurationSeconds ?? 3600),
+            )
+          : null,
       aiModerationEnabled: overrides?.aiModerationEnabled ?? false,
       aiMode: overrides?.aiMode ?? 'off',
       aiConfidenceThreshold: Math.max(
@@ -2517,6 +2743,8 @@ export class TelegramService {
       lockVideo: boolean;
       lockDocument: boolean;
       lockSticker: boolean;
+      lockInlineButtons: boolean;
+      lockInlineButtonUrls: boolean;
       trustedUsernames: string;
       trustedExternalIds: string;
       exemptAdmins: boolean;
@@ -2525,12 +2753,21 @@ export class TelegramService {
       warnLimit: number;
       warnAction: string;
       warnActionDurationSeconds: number | null;
+      warningExpirySeconds: number;
       antifloodEnabled: boolean;
       antifloodLimit: number;
       antifloodWindowSeconds: number;
       antifloodAction: string;
       antifloodActionDurationSeconds: number | null;
       antifloodDeleteAll: boolean;
+      resetAntifloodOnRejoin: boolean;
+      probationEnabled: boolean;
+      probationSeconds: number;
+      probationAction: string;
+      probationActionDurationSeconds: number | null;
+      antiRaidEnabled: boolean;
+      antiRaidAction: string;
+      antiRaidActionDurationSeconds: number | null;
       aiModerationEnabled: boolean;
       aiMode: string;
       aiConfidenceThreshold: number;
@@ -2554,6 +2791,8 @@ export class TelegramService {
       lockVideo: settings.lockVideo,
       lockDocument: settings.lockDocument,
       lockSticker: settings.lockSticker,
+      lockInlineButtons: settings.lockInlineButtons,
+      lockInlineButtonUrls: settings.lockInlineButtonUrls,
       trustedUsernames: settings.trustedUsernames,
       trustedExternalIds: settings.trustedExternalIds,
       exemptAdmins: settings.exemptAdmins,
@@ -2562,12 +2801,21 @@ export class TelegramService {
       warnLimit: settings.warnLimit,
       warnAction: settings.warnAction,
       warnActionDurationSeconds: settings.warnActionDurationSeconds,
+      warningExpirySeconds: settings.warningExpirySeconds,
       antifloodEnabled: settings.antifloodEnabled,
       antifloodLimit: settings.antifloodLimit,
       antifloodWindowSeconds: settings.antifloodWindowSeconds,
       antifloodAction: settings.antifloodAction,
       antifloodActionDurationSeconds: settings.antifloodActionDurationSeconds,
       antifloodDeleteAll: settings.antifloodDeleteAll,
+      resetAntifloodOnRejoin: settings.resetAntifloodOnRejoin,
+      probationEnabled: settings.probationEnabled,
+      probationSeconds: settings.probationSeconds,
+      probationAction: settings.probationAction,
+      probationActionDurationSeconds: settings.probationActionDurationSeconds,
+      antiRaidEnabled: settings.antiRaidEnabled,
+      antiRaidAction: settings.antiRaidAction,
+      antiRaidActionDurationSeconds: settings.antiRaidActionDurationSeconds,
       aiModerationEnabled: settings.aiModerationEnabled,
       aiMode: settings.aiMode,
       aiConfidenceThreshold: settings.aiConfidenceThreshold,
@@ -2935,10 +3183,30 @@ export class TelegramService {
     }
 
     const groupTitle = payload.message?.chat?.title ?? 'Telegram Group';
-    const messageText =
+    const inlineButtons =
+      payload.message?.reply_markup?.inline_keyboard?.flatMap((row) => row) ||
+      [];
+    const inlineButtonText = inlineButtons
+      .map((button) => String(button.text || '').trim())
+      .filter(Boolean);
+    const inlineButtonUrls = inlineButtons
+      .map((button) => String(button.url || '').trim())
+      .filter(Boolean);
+    const baseMessageText =
       payload.message?.text ||
       payload.message?.caption ||
       'Non-text message received.';
+    const messageText = [
+      baseMessageText,
+      inlineButtonText.length
+        ? `Inline buttons: ${inlineButtonText.join(' | ')}`
+        : null,
+      inlineButtonUrls.length
+        ? `Inline urls: ${inlineButtonUrls.join(' | ')}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     return {
       eventType: 'message_received',
@@ -2965,6 +3233,7 @@ export class TelegramService {
       viaBot: Boolean(
         payload.message?.via_bot || payload.message?.from?.is_bot,
       ),
+      hasInlineButtons: inlineButtons.length > 0,
       groupExternalId: payload.message?.chat?.id
         ? String(payload.message.chat.id)
         : null,
@@ -3244,6 +3513,25 @@ export class TelegramService {
       .join('');
 
     return initials || 'TG';
+  }
+
+  private async findLatestCommunityMember(input: {
+    actorExternalId: string;
+    groupTitle: string;
+  }) {
+    if (!process.env.DATABASE_URL) {
+      return null;
+    }
+
+    return this.prisma.communityMember.findFirst({
+      where: {
+        externalId: input.actorExternalId,
+        groupTitle: input.groupTitle,
+      },
+      orderBy: {
+        joinedAt: 'desc',
+      },
+    });
   }
 
   private async recordTelegramEvent(event: {

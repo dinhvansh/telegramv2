@@ -649,7 +649,11 @@ export class ModerationService {
             candidate.groupTitle === input.groupTitle,
         ) || null;
 
-    const currentWarningCount = member?.warningCount || 0;
+    const currentWarningCount = this.getEffectiveWarningCount(
+      member?.warningCount || 0,
+      member?.lastWarnedAt || null,
+      warnSettings.warningExpirySeconds,
+    );
     const nextWarningCount = currentWarningCount + 1;
     const triggered =
       warnSettings.lockWarns && nextWarningCount >= warnSettings.warnLimit;
@@ -732,10 +736,19 @@ export class ModerationService {
       };
     }
 
+    const warnSettings = await this.resolveWarnSettingsForGroup(
+      input.groupTitle,
+    );
+    const currentWarningCount = this.getEffectiveWarningCount(
+      member.warningCount,
+      member.lastWarnedAt,
+      warnSettings.warningExpirySeconds,
+    );
+
     if (!input.incrementWarning) {
       return {
         memberId: member.id,
-        warningCount: member.warningCount,
+        warningCount: currentWarningCount,
         warningApplied: false,
       };
     }
@@ -743,9 +756,7 @@ export class ModerationService {
     const updatedMember = await this.prisma.communityMember.update({
       where: { id: member.id },
       data: {
-        warningCount: {
-          increment: 1,
-        },
+        warningCount: currentWarningCount + 1,
         lastWarnedAt: new Date(),
       },
     });
@@ -975,9 +986,10 @@ export class ModerationService {
       return {
         lockWarns: true,
         warnLimit: 2,
-        warnAction: 'kick' as const,
-        warnActionDurationHours: 24,
-        warnActionDurationSeconds: null,
+        warnAction: 'tmute' as const,
+        warnActionDurationHours: 1,
+        warnActionDurationSeconds: 600,
+        warningExpirySeconds: 86400,
       };
     }
 
@@ -990,7 +1002,7 @@ export class ModerationService {
       },
     });
 
-    const warnAction = group?.moderationSettings?.warnAction || 'kick';
+    const warnAction = group?.moderationSettings?.warnAction || 'tmute';
     const warnActionDurationHours =
       warnAction === 'tmute' || warnAction === 'tban'
         ? Math.max(
@@ -1018,7 +1030,30 @@ export class ModerationService {
       warnAction: warnAction as 'mute' | 'tmute' | 'kick' | 'ban' | 'tban',
       warnActionDurationHours,
       warnActionDurationSeconds,
+      warningExpirySeconds: Math.max(
+        0,
+        group?.moderationSettings?.warningExpirySeconds ?? 86400,
+      ),
     };
+  }
+
+  private getEffectiveWarningCount(
+    warningCount: number,
+    lastWarnedAt: Date | string | null,
+    warningExpirySeconds: number,
+  ) {
+    if (!warningCount || warningExpirySeconds <= 0 || !lastWarnedAt) {
+      return warningCount;
+    }
+
+    const lastWarnedAtDate =
+      lastWarnedAt instanceof Date ? lastWarnedAt : new Date(lastWarnedAt);
+    if (Number.isNaN(lastWarnedAtDate.getTime())) {
+      return warningCount;
+    }
+
+    const expiresAt = lastWarnedAtDate.getTime() + warningExpirySeconds * 1000;
+    return expiresAt <= Date.now() ? 0 : warningCount;
   }
 
   private mapWarnActionToDecision(action: string) {
