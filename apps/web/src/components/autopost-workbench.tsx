@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 const apiBaseUrl = "/api";
@@ -126,8 +127,12 @@ export function AutopostWorkbench() {
   const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
+  const [isUpdatingSchedule, setIsUpdatingSchedule] = useState(false);
   const [isDispatchingAll, setIsDispatchingAll] = useState(false);
   const [dispatchingScheduleId, setDispatchingScheduleId] = useState<string | null>(null);
+  const [togglingScheduleId, setTogglingScheduleId] = useState<string | null>(null);
+  const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null);
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
     title: "Bản tin tự động",
     message: "Nội dung autopost được tạo từ CRM.",
@@ -216,6 +221,25 @@ export function AutopostWorkbench() {
     );
   }
 
+  async function readFileAsDataUrl(file: File) {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Không thể đọc file hình."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleImageSelect(file: File | null) {
+    if (!file) {
+      setScheduleForm((current) => ({ ...current, mediaUrl: "" }));
+      return;
+    }
+
+    const dataUrl = await readFileAsDataUrl(file);
+    setScheduleForm((current) => ({ ...current, mediaUrl: dataUrl }));
+  }
+
   async function handleCreateSchedule(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!token) {
@@ -249,6 +273,74 @@ export function AutopostWorkbench() {
       );
     } finally {
       setIsCreatingSchedule(false);
+    }
+  }
+
+  function startEditSchedule(schedule: AutopostSchedule) {
+    setEditingScheduleId(schedule.id);
+    setScheduleForm({
+      title: schedule.title,
+      message: schedule.message,
+      mediaUrl: schedule.mediaUrl || "",
+      frequency: schedule.frequency,
+      scheduledFor: schedule.scheduledFor
+        ? new Date(schedule.scheduledFor).toISOString().slice(0, 16)
+        : "",
+      saveAsDraft: schedule.status === "DRAFT",
+    });
+    setSelectAllTelegramGroups(false);
+    const matchingGroup =
+      snapshot?.telegramGroups.find((group) => group.externalId === schedule.target.externalId) ??
+      null;
+    setSelectedTelegramGroupIds(matchingGroup ? [matchingGroup.id] : []);
+  }
+
+  function resetScheduleForm() {
+    setEditingScheduleId(null);
+    setScheduleForm({
+      title: "Bản tin tự động",
+      message: "Nội dung autopost được tạo từ CRM.",
+      mediaUrl: "",
+      frequency: "IMMEDIATE",
+      scheduledFor: "",
+      saveAsDraft: false,
+    });
+  }
+
+  async function handleUpdateSchedule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !editingScheduleId) {
+      return;
+    }
+
+    setIsUpdatingSchedule(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const result = await fetchJson<{ updated: boolean; snapshot: AutopostSnapshot }>(
+        `${apiBaseUrl}/autopost/schedules/${editingScheduleId}`,
+        {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            ...scheduleForm,
+            scheduledFor: scheduleForm.scheduledFor || null,
+            mediaUrl: scheduleForm.mediaUrl || null,
+            telegramGroupIds: selectAllTelegramGroups ? [] : selectedTelegramGroupIds,
+            selectAllTelegramGroups,
+          }),
+        },
+      );
+      setSnapshot(result.snapshot);
+      setNotice("Đã cập nhật lịch autopost.");
+      resetScheduleForm();
+    } catch (updateError) {
+      setError(
+        updateError instanceof Error ? updateError.message : "Không thể cập nhật lịch autopost.",
+      );
+    } finally {
+      setIsUpdatingSchedule(false);
     }
   }
 
@@ -305,6 +397,62 @@ export function AutopostWorkbench() {
       );
     } finally {
       setDispatchingScheduleId(null);
+    }
+  }
+
+  async function handleToggleSchedule(scheduleId: string) {
+    if (!token) {
+      return;
+    }
+
+    setTogglingScheduleId(scheduleId);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const result = await fetchJson<{
+        toggled: boolean;
+        status: string;
+        snapshot: AutopostSnapshot;
+      }>(`${apiBaseUrl}/autopost/schedules/${scheduleId}/toggle`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setSnapshot(result.snapshot);
+      setNotice(`Đã đổi trạng thái lịch sang ${result.status}.`);
+    } catch (toggleError) {
+      setError(toggleError instanceof Error ? toggleError.message : "Không thể bật/tắt lịch.");
+    } finally {
+      setTogglingScheduleId(null);
+    }
+  }
+
+  async function handleDeleteSchedule(scheduleId: string) {
+    if (!token) {
+      return;
+    }
+
+    setDeletingScheduleId(scheduleId);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const result = await fetchJson<{ deleted: boolean; snapshot: AutopostSnapshot }>(
+        `${apiBaseUrl}/autopost/schedules/${scheduleId}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+      setSnapshot(result.snapshot);
+      setNotice("Đã xóa lịch autopost.");
+      if (editingScheduleId === scheduleId) {
+        resetScheduleForm();
+      }
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Không thể xóa lịch.");
+    } finally {
+      setDeletingScheduleId(null);
     }
   }
 
@@ -456,7 +604,12 @@ export function AutopostWorkbench() {
             </button>
           </div>
 
-          <form onSubmit={handleCreateSchedule} className="mt-6 space-y-4">
+          <form
+            onSubmit={(event) =>
+              editingScheduleId ? void handleUpdateSchedule(event) : void handleCreateSchedule(event)
+            }
+            className="mt-6 space-y-4"
+          >
             <div className="grid gap-4 md:grid-cols-2">
               <input
                 value={scheduleForm.title}
@@ -487,17 +640,44 @@ export function AutopostWorkbench() {
             />
 
             <input
-              value={scheduleForm.mediaUrl}
+              value={
+                scheduleForm.mediaUrl.startsWith("data:")
+                  ? "Đã chọn ảnh từ máy"
+                  : scheduleForm.mediaUrl
+              }
               onChange={(event) =>
                 setScheduleForm((current) => ({ ...current, mediaUrl: event.target.value }))
               }
               className="w-full rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
               placeholder="URL hình ảnh (tùy chọn)"
             />
+            <label className="flex cursor-pointer items-center justify-center rounded-[18px] border border-dashed border-[color:var(--outline)] bg-[color:var(--surface-low)] px-4 py-4 text-sm font-semibold text-[color:var(--on-surface)]">
+              Upload ảnh từ máy
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(event) =>
+                  void handleImageSelect(event.target.files?.[0] ?? null)
+                }
+              />
+            </label>
             <p className="text-sm text-[color:var(--on-surface-variant)]">
-              Nếu có URL hình, Telegram sẽ gửi ảnh bằng `sendPhoto`. Tiêu đề và nội dung sẽ đi
-              vào caption.
+              Có thể dán URL ảnh hoặc upload ảnh trực tiếp. Telegram sẽ gửi ảnh bằng `sendPhoto`.
+              Tiêu đề và nội dung sẽ đi vào caption.
             </p>
+            {scheduleForm.mediaUrl ? (
+              <div className="rounded-[18px] bg-[color:var(--surface-low)] p-3">
+                <Image
+                  src={scheduleForm.mediaUrl}
+                  alt="Ảnh autopost"
+                  width={720}
+                  height={420}
+                  unoptimized
+                  className="max-h-56 w-auto rounded-[14px] object-cover"
+                />
+              </div>
+            ) : null}
 
             <div className="grid gap-4 md:grid-cols-[1fr_auto]">
               <input
@@ -531,12 +711,28 @@ export function AutopostWorkbench() {
                 type="submit"
                 disabled={
                   isCreatingSchedule ||
+                  isUpdatingSchedule ||
                   (!selectAllTelegramGroups && selectedTelegramGroupIds.length === 0)
                 }
                 className="rounded-[18px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white disabled:opacity-60"
               >
-                {isCreatingSchedule ? "Đang tạo lịch..." : "Tạo lịch"}
+                {editingScheduleId
+                  ? isUpdatingSchedule
+                    ? "Đang cập nhật..."
+                    : "Lưu chỉnh sửa"
+                  : isCreatingSchedule
+                    ? "Đang tạo lịch..."
+                    : "Tạo lịch"}
               </button>
+              {editingScheduleId ? (
+                <button
+                  type="button"
+                  onClick={() => resetScheduleForm()}
+                  className="rounded-[18px] bg-[color:var(--surface-low)] px-5 py-3 text-sm font-bold"
+                >
+                  Hủy sửa
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => void handleDispatchAll()}
@@ -591,6 +787,35 @@ export function AutopostWorkbench() {
                     >
                       {dispatchingScheduleId === schedule.id ? "Đang gửi..." : "Gửi ngay"}
                     </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => startEditSchedule(schedule)}
+                        className="rounded-[16px] bg-white/80 px-4 py-2 text-sm font-semibold"
+                      >
+                        Sửa
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleToggleSchedule(schedule.id)}
+                        disabled={togglingScheduleId === schedule.id}
+                        className="rounded-[16px] bg-white/80 px-4 py-2 text-sm font-semibold"
+                      >
+                        {togglingScheduleId === schedule.id
+                          ? "Đang đổi..."
+                          : schedule.status === "DRAFT"
+                            ? "Bật"
+                            : "Tắt"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteSchedule(schedule.id)}
+                        disabled={deletingScheduleId === schedule.id}
+                        className="rounded-[16px] bg-[color:var(--danger-soft)] px-4 py-2 text-sm font-semibold text-[color:var(--danger)]"
+                      >
+                        {deletingScheduleId === schedule.id ? "Đang xóa..." : "Xóa"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </article>

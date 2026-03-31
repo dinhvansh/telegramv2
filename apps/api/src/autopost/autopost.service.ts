@@ -283,6 +283,161 @@ export class AutopostService {
     };
   }
 
+  async updateSchedule(scheduleId: string, input: CreateScheduleInput) {
+    if (!process.env.DATABASE_URL) {
+      return {
+        updated: false,
+        snapshot: await this.getSnapshot(),
+      };
+    }
+
+    const existing = await this.prisma.autopostSchedule.findUnique({
+      where: { id: scheduleId },
+    });
+    if (!existing) {
+      return {
+        updated: false,
+        snapshot: await this.getSnapshot(),
+      };
+    }
+
+    const title = String(input.title || '').trim();
+    const message = String(input.message || '').trim();
+    const mediaUrl = String(input.mediaUrl || '').trim() || null;
+    const targetIds = await this.resolveTelegramTargetIds({
+      targetIds: Array.isArray(input.targetIds)
+        ? input.targetIds.filter(Boolean)
+        : [],
+      telegramGroupIds: Array.isArray(input.telegramGroupIds)
+        ? input.telegramGroupIds.filter(Boolean)
+        : [],
+      selectAllTelegramGroups: Boolean(input.selectAllTelegramGroups),
+    });
+    const primaryTargetId = targetIds[0] || existing.targetId;
+    const scheduledFor = input.scheduledFor
+      ? new Date(input.scheduledFor)
+      : null;
+
+    await this.prisma.autopostSchedule.update({
+      where: { id: scheduleId },
+      data: {
+        title,
+        message,
+        mediaUrl,
+        frequency:
+          String(input.frequency || existing.frequency).trim() ||
+          existing.frequency,
+        scheduledFor,
+        status: input.saveAsDraft
+          ? AutopostScheduleStatus.DRAFT
+          : existing.status === AutopostScheduleStatus.DRAFT
+            ? AutopostScheduleStatus.SCHEDULED
+            : existing.status,
+        targetId: primaryTargetId,
+      },
+    });
+
+    await this.systemLogsService.log({
+      scope: 'autopost.schedule',
+      action: 'update_schedule',
+      message: `Autopost schedule updated: ${scheduleId}`,
+      payload: {
+        scheduleId,
+        targetId: primaryTargetId,
+        mediaUrl,
+      },
+    });
+
+    return {
+      updated: true,
+      snapshot: await this.getSnapshot(),
+    };
+  }
+
+  async toggleSchedule(scheduleId: string) {
+    if (!process.env.DATABASE_URL) {
+      return {
+        toggled: false,
+        snapshot: await this.getSnapshot(),
+      };
+    }
+
+    const existing = await this.prisma.autopostSchedule.findUnique({
+      where: { id: scheduleId },
+    });
+    if (!existing) {
+      return {
+        toggled: false,
+        snapshot: await this.getSnapshot(),
+      };
+    }
+
+    const nextStatus =
+      existing.status === AutopostScheduleStatus.DRAFT
+        ? AutopostScheduleStatus.SCHEDULED
+        : existing.status === AutopostScheduleStatus.SCHEDULED
+          ? AutopostScheduleStatus.DRAFT
+          : existing.status;
+
+    await this.prisma.autopostSchedule.update({
+      where: { id: scheduleId },
+      data: { status: nextStatus },
+    });
+
+    await this.systemLogsService.log({
+      scope: 'autopost.schedule',
+      action: 'toggle_schedule',
+      message: `Autopost schedule toggled to ${nextStatus}: ${scheduleId}`,
+      payload: {
+        scheduleId,
+        status: nextStatus,
+      },
+    });
+
+    return {
+      toggled: true,
+      status: nextStatus,
+      snapshot: await this.getSnapshot(),
+    };
+  }
+
+  async deleteSchedule(scheduleId: string) {
+    if (!process.env.DATABASE_URL) {
+      return {
+        deleted: false,
+        snapshot: await this.getSnapshot(),
+      };
+    }
+
+    const existing = await this.prisma.autopostSchedule.findUnique({
+      where: { id: scheduleId },
+    });
+    if (!existing) {
+      return {
+        deleted: false,
+        snapshot: await this.getSnapshot(),
+      };
+    }
+
+    await this.prisma.autopostSchedule.delete({
+      where: { id: scheduleId },
+    });
+
+    await this.systemLogsService.log({
+      scope: 'autopost.schedule',
+      action: 'delete_schedule',
+      message: `Autopost schedule deleted: ${scheduleId}`,
+      payload: {
+        scheduleId,
+      },
+    });
+
+    return {
+      deleted: true,
+      snapshot: await this.getSnapshot(),
+    };
+  }
+
   async dispatch(input?: { scheduleId?: string }) {
     if (!process.env.DATABASE_URL) {
       return {
@@ -359,29 +514,12 @@ export class AutopostService {
         externalPostId = null;
       } else {
         const method = schedule.mediaUrl ? 'sendPhoto' : 'sendMessage';
-        const response = await fetch(
-          `https://api.telegram.org/bot${botToken}/${method}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: schedule.target.externalId,
-              ...(schedule.mediaUrl
-                ? {
-                    photo: schedule.mediaUrl,
-                    caption: this.formatTelegramPost(
-                      schedule.title,
-                      schedule.message,
-                    ),
-                  }
-                : {
-                    text: this.formatTelegramPost(
-                      schedule.title,
-                      schedule.message,
-                    ),
-                  }),
-            }),
-          },
+        const response = await this.sendTelegramAutopost(
+          botToken,
+          schedule.target.externalId,
+          schedule.title,
+          schedule.message,
+          schedule.mediaUrl || null,
         );
         const body = (await response.json()) as {
           ok?: boolean;
@@ -453,6 +591,48 @@ export class AutopostService {
     return setting?.value ? decryptSecretValue(setting.value) : envToken;
   }
 
+  private async sendTelegramAutopost(
+    botToken: string,
+    chatId: string,
+    title: string,
+    message: string,
+    mediaUrl: string | null,
+  ) {
+    const caption = this.formatTelegramPost(title, message);
+    if (mediaUrl && this.isDataUrl(mediaUrl)) {
+      const form = new FormData();
+      form.set('chat_id', chatId);
+      form.set('caption', caption);
+      form.set(
+        'photo',
+        this.dataUrlToBlob(mediaUrl),
+        this.buildMediaFilename(mediaUrl),
+      );
+      return fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+        method: 'POST',
+        body: form,
+      });
+    }
+
+    const method = mediaUrl ? 'sendPhoto' : 'sendMessage';
+    return fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(
+        mediaUrl
+          ? {
+              chat_id: chatId,
+              photo: mediaUrl,
+              caption,
+            }
+          : {
+              chat_id: chatId,
+              text: caption,
+            },
+      ),
+    });
+  }
+
   private async resolveTelegramTargetIds(input: {
     targetIds: string[];
     telegramGroupIds: string[];
@@ -503,6 +683,24 @@ export class AutopostService {
     }
 
     return normalizedTitle || normalizedMessage;
+  }
+
+  private isDataUrl(value: string) {
+    return /^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(value);
+  }
+
+  private dataUrlToBlob(dataUrl: string) {
+    const [meta, base64Payload] = dataUrl.split(',', 2);
+    const mimeMatch = meta.match(/^data:([^;]+);base64$/);
+    const mimeType = mimeMatch?.[1] || 'image/png';
+    const bytes = Buffer.from(base64Payload || '', 'base64');
+    return new Blob([bytes], { type: mimeType });
+  }
+
+  private buildMediaFilename(dataUrl: string) {
+    const mimeMatch = dataUrl.match(/^data:image\/([^;]+);base64,/);
+    const extension = mimeMatch?.[1]?.replace('jpeg', 'jpg') || 'png';
+    return `autopost-${Date.now()}.${extension}`;
   }
 
   private toPlatform(value: string) {

@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -21,6 +30,8 @@ type CreateScheduleBody = {
   selectAllTelegramGroups?: boolean;
   saveAsDraft?: boolean;
 };
+
+type UpdateScheduleBody = CreateScheduleBody;
 
 @Controller('autopost')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -57,6 +68,36 @@ export class AutopostController {
       selectAllTelegramGroups: Boolean(body.selectAllTelegramGroups),
       saveAsDraft: Boolean(body.saveAsDraft),
     });
+  }
+
+  @Put('schedules/:scheduleId')
+  updateSchedule(
+    @Param('scheduleId') scheduleId: string,
+    @Body() body: UpdateScheduleBody,
+  ) {
+    return this.autopostService.updateSchedule(scheduleId, {
+      title: body.title || '',
+      message: body.message || '',
+      frequency: body.frequency || 'IMMEDIATE',
+      scheduledFor: body.scheduledFor || null,
+      mediaUrl: body.mediaUrl || null,
+      targetIds: Array.isArray(body.targetIds) ? body.targetIds : [],
+      telegramGroupIds: Array.isArray(body.telegramGroupIds)
+        ? body.telegramGroupIds
+        : [],
+      selectAllTelegramGroups: Boolean(body.selectAllTelegramGroups),
+      saveAsDraft: Boolean(body.saveAsDraft),
+    });
+  }
+
+  @Post('schedules/:scheduleId/toggle')
+  toggleSchedule(@Param('scheduleId') scheduleId: string) {
+    return this.autopostService.toggleSchedule(scheduleId);
+  }
+
+  @Delete('schedules/:scheduleId')
+  deleteSchedule(@Param('scheduleId') scheduleId: string) {
+    return this.autopostService.deleteSchedule(scheduleId);
   }
 
   @Post('dispatch')
