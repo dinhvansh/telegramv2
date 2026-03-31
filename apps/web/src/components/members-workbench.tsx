@@ -259,8 +259,8 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
             </div>
           ) : null}
 
-          <div className="mt-6 overflow-hidden rounded-[24px] bg-[color:var(--surface-low)]">
-            <table className="w-full border-collapse text-left">
+          <div className="mt-6 overflow-x-auto rounded-[24px] bg-[color:var(--surface-low)]">
+            <table className="min-w-[860px] w-full border-collapse text-left">
               <thead>
                 <tr className="text-xs uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
                   <th className="px-5 py-4 font-semibold">User</th>

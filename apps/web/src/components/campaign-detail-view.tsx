@@ -221,8 +221,8 @@ export function CampaignDetailView({ campaignId }: { campaignId: string }) {
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
               Thành viên mới nhất
             </p>
-            <div className="mt-5 overflow-hidden rounded-[24px] bg-[color:var(--surface-low)]">
-              <table className="w-full border-collapse text-left">
+            <div className="mt-5 overflow-x-auto rounded-[24px] bg-[color:var(--surface-low)]">
+              <table className="min-w-[720px] w-full border-collapse text-left">
                 <thead>
                   <tr className="text-xs uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
                     <th className="px-5 py-4 font-semibold">User</th>

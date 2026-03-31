@@ -172,9 +172,9 @@ export function DashboardShell({
               </p>
               <h2 className="mt-1 text-xl font-black tracking-tight">{pageMeta.description}</h2>
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
               <div
-                className={`rounded-full px-4 py-3 text-sm font-semibold ${
+                className={`self-start rounded-full px-4 py-3 text-sm font-semibold sm:self-auto ${
                   status === "connected"
                     ? "bg-[color:var(--success-soft)] text-[color:var(--success)]"
                     : "bg-[color:var(--warning-soft)] text-[color:var(--warning)]"
@@ -190,7 +190,7 @@ export function DashboardShell({
               {onLogout ? (
                 <button
                   onClick={onLogout}
-                  className="rounded-full bg-[color:var(--surface-low)] px-4 py-3 text-sm font-bold text-[color:var(--on-surface)]"
+                  className="w-full rounded-full bg-[color:var(--surface-low)] px-4 py-3 text-sm font-bold text-[color:var(--on-surface)] sm:w-auto"
                 >
                   Đăng xuất
                 </button>
@@ -198,13 +198,32 @@ export function DashboardShell({
               <button
                 onClick={onCreateCampaign}
                 disabled={!canCreateCampaign || isCreatingCampaign}
-                className="rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white shadow-[0_16px_40px_rgba(0,83,219,0.24)] disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white shadow-[0_16px_40px_rgba(0,83,219,0.24)] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
                 {isCreatingCampaign ? "Đang xử lý..." : "Tạo campaign mới"}
               </button>
             </div>
           </div>
         </header>
+
+        <div className="px-5 pt-2 lg:hidden">
+          <nav className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {navigation.map((item) => (
+              <Link
+                key={item.key}
+                href={item.href}
+                className={`shrink-0 rounded-full px-4 py-3 text-sm font-semibold transition-all ${
+                  page === item.key
+                    ? "bg-[color:var(--primary)] text-white shadow-[0_12px_28px_rgba(0,83,219,0.24)]"
+                    : "bg-[color:var(--surface-card)] text-[color:var(--on-surface)]"
+                }`}
+              >
+                <span className="mr-2 text-xs">{item.icon}</span>
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
 
         <div className="space-y-10 px-5 py-8 lg:px-10 lg:py-10">
           {page === "dashboard" ? (
