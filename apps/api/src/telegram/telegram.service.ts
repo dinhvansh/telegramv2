@@ -367,8 +367,10 @@ export class TelegramService {
       orderBy: { title: 'asc' },
     });
 
+    const visibleGroups = this.dedupeTelegramGroups(groups);
+
     return {
-      items: groups.map((group) => ({
+      items: visibleGroups.map((group) => ({
         id: group.id,
         title: group.title,
         slug: group.slug,
@@ -389,6 +391,154 @@ export class TelegramService {
         },
         moderationEnabled: group.moderationSettings?.moderationEnabled ?? false,
       })),
+    };
+  }
+
+  async refreshBotRights(groupId?: string) {
+    const config = await this.getResolvedConfig();
+    if (!config.botToken) {
+      return {
+        ok: false,
+        skipped: true,
+        reason: 'Missing bot token',
+        refreshed: 0,
+        failed: 0,
+        items: [],
+      };
+    }
+
+    if (!process.env.DATABASE_URL) {
+      return {
+        ok: false,
+        skipped: true,
+        reason: 'Database is not configured',
+        refreshed: 0,
+        failed: 0,
+        items: [],
+      };
+    }
+
+    const botProfile = await this.callTelegram<TelegramBotProfile>(
+      config.botToken,
+      'getMe',
+    );
+
+    const botId = botProfile.result?.id ? Number(botProfile.result.id) : null;
+    if (!botProfile.ok || !botId) {
+      return {
+        ok: false,
+        skipped: false,
+        reason: botProfile.description ?? 'Unable to resolve bot identity',
+        refreshed: 0,
+        failed: 0,
+        items: [],
+      };
+    }
+
+    const groups = await this.prisma.telegramGroup.findMany({
+      where: groupId
+        ? { id: groupId }
+        : {
+            isActive: true,
+          },
+      orderBy: [{ title: 'asc' }],
+    });
+
+    if (!groups.length) {
+      return {
+        ok: false,
+        skipped: false,
+        reason: groupId ? 'Group not found' : 'No groups available to refresh',
+        refreshed: 0,
+        failed: 0,
+        items: [],
+      };
+    }
+
+    const items: Array<{
+      groupId: string;
+      title: string;
+      externalId: string;
+      ok: boolean;
+      state: string | null;
+      description: string | null;
+    }> = [];
+
+    let refreshed = 0;
+    let failed = 0;
+
+    for (const group of groups) {
+      const response = await this.callTelegram<{
+        status?: string;
+        can_delete_messages?: boolean;
+        can_restrict_members?: boolean;
+        can_invite_users?: boolean;
+        can_manage_topics?: boolean;
+      }>(config.botToken, 'getChatMember', {
+        chat_id: group.externalId,
+        user_id: botId,
+      });
+
+      const state = response.result?.status
+        ? String(response.result.status).toLowerCase()
+        : null;
+
+      if (response.ok) {
+        await this.prisma.telegramGroup.update({
+          where: { id: group.id },
+          data: {
+            botMemberState: state,
+            botCanDeleteMessages: Boolean(response.result?.can_delete_messages),
+            botCanRestrictMembers: Boolean(
+              response.result?.can_restrict_members,
+            ),
+            botCanInviteUsers: Boolean(response.result?.can_invite_users),
+            botCanManageTopics: Boolean(response.result?.can_manage_topics),
+            isActive:
+              state === 'left' || state === 'kicked' ? false : group.isActive,
+            lastSyncedAt: new Date(),
+          },
+        });
+
+        refreshed += 1;
+      } else {
+        failed += 1;
+      }
+
+      items.push({
+        groupId: group.id,
+        title: group.title,
+        externalId: group.externalId,
+        ok: Boolean(response.ok),
+        state,
+        description: response.description ?? null,
+      });
+    }
+
+    await this.systemLogsService.log({
+      level: failed ? 'WARN' : 'INFO',
+      scope: 'telegram.groups',
+      action: 'refresh_rights',
+      message: failed
+        ? 'Telegram bot rights refresh completed with failures'
+        : 'Telegram bot rights refreshed',
+      detail: failed
+        ? `${failed} group(s) failed while refreshing bot rights.`
+        : null,
+      payload: {
+        groupId: groupId ?? null,
+        refreshed,
+        failed,
+        items,
+      },
+    });
+
+    return {
+      ok: failed === 0,
+      skipped: false,
+      refreshed,
+      failed,
+      items,
     };
   }
 
@@ -649,6 +799,75 @@ export class TelegramService {
     return {
       updated: true,
       ...this.mapModerationSettings(group.id, settings),
+    };
+  }
+
+  async deleteGroup(groupId: string) {
+    if (!process.env.DATABASE_URL) {
+      return {
+        deleted: false,
+        found: false,
+        groupId,
+        reason: 'Database not configured',
+      };
+    }
+
+    const group = await this.prisma.telegramGroup.findUnique({
+      where: { id: groupId },
+      include: {
+        campaigns: {
+          select: { id: true },
+        },
+        inviteLinks: {
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!group) {
+      return {
+        deleted: false,
+        found: false,
+        groupId,
+      };
+    }
+
+    if (group.isActive) {
+      return {
+        deleted: false,
+        found: true,
+        groupId,
+        reason: 'Only inactive groups can be deleted.',
+      };
+    }
+
+    if (group.campaigns.length || group.inviteLinks.length) {
+      return {
+        deleted: false,
+        found: true,
+        groupId,
+        reason: 'Group is still linked to campaigns or invite links.',
+      };
+    }
+
+    await this.prisma.telegramGroup.delete({
+      where: { id: groupId },
+    });
+
+    await this.systemLogsService.log({
+      scope: 'telegram.lifecycle',
+      action: 'delete_group',
+      message: `Deleted inactive Telegram group ${group.title}`,
+      payload: {
+        groupId: group.id,
+        externalId: group.externalId,
+      },
+    });
+
+    return {
+      deleted: true,
+      found: true,
+      groupId,
     };
   }
 
@@ -982,7 +1201,7 @@ export class TelegramService {
       });
     }
 
-    const items = [
+    const items = this.dedupeTelegramGroups([
       ...existingItems.map((group) => ({
         externalId: group.externalId,
         title: group.title,
@@ -996,7 +1215,7 @@ export class TelegramService {
         (item) =>
           !existingItems.some((group) => group.externalId === item.externalId),
       ),
-    ].sort((left, right) => left.title.localeCompare(right.title));
+    ]).sort((left, right) => left.title.localeCompare(right.title));
 
     if (process.env.DATABASE_URL) {
       for (const item of discoveredItems) {
@@ -2894,9 +3113,116 @@ export class TelegramService {
       },
     });
 
+    await this.deactivateLegacyGroupDuplicates(group);
+
     await this.ensureModerationSettings(group.id);
 
     return group;
+  }
+
+  private normalizeTelegramGroupIdentity(input: {
+    title?: string | null;
+    username?: string | null;
+  }) {
+    return {
+      title: String(input.title || '')
+        .trim()
+        .toLowerCase(),
+      username: String(input.username || '')
+        .trim()
+        .replace(/^@/, '')
+        .toLowerCase(),
+    };
+  }
+
+  private isPreferredTelegramGroupType(type?: string | null) {
+    const normalized = String(type || '').toLowerCase();
+    return normalized === 'supergroup' || normalized === 'channel';
+  }
+
+  private dedupeTelegramGroups<
+    T extends {
+      title?: string | null;
+      username?: string | null;
+      type?: string | null;
+      isActive?: boolean | null;
+      externalId?: string | null;
+    },
+  >(items: T[]) {
+    const byIdentity = new Map<string, T>();
+
+    const getScore = (item: T) => {
+      let score = 0;
+      if (item.isActive !== false) {
+        score += 100;
+      }
+      if (this.isPreferredTelegramGroupType(item.type)) {
+        score += 50;
+      }
+      if (String(item.externalId || '').startsWith('-100')) {
+        score += 10;
+      }
+      return score;
+    };
+
+    for (const item of items) {
+      const normalized = this.normalizeTelegramGroupIdentity(item);
+      const identityKey = normalized.username
+        ? `username:${normalized.username}`
+        : normalized.title
+          ? `title:${normalized.title}`
+          : `external:${item.externalId || ''}`;
+      const existing = byIdentity.get(identityKey);
+
+      if (!existing || getScore(item) > getScore(existing)) {
+        byIdentity.set(identityKey, item);
+      }
+    }
+
+    return [...byIdentity.values()];
+  }
+
+  private async deactivateLegacyGroupDuplicates(group: {
+    id: string;
+    title: string;
+    username?: string | null;
+    type?: string | null;
+  }) {
+    if (
+      !process.env.DATABASE_URL ||
+      !this.isPreferredTelegramGroupType(group.type)
+    ) {
+      return;
+    }
+
+    const normalized = this.normalizeTelegramGroupIdentity(group);
+    const legacyClauses: Array<Record<string, unknown>> = [];
+
+    if (normalized.username) {
+      legacyClauses.push({ username: normalized.username });
+    }
+
+    if (normalized.title) {
+      legacyClauses.push({ title: group.title });
+    }
+
+    if (!legacyClauses.length) {
+      return;
+    }
+
+    await this.prisma.telegramGroup.updateMany({
+      where: {
+        id: { not: group.id },
+        type: 'group',
+        isActive: true,
+        OR: legacyClauses as never,
+      },
+      data: {
+        isActive: false,
+        discoveredFrom: 'legacy_group_migrated',
+        lastSyncedAt: new Date(),
+      },
+    });
   }
 
   private async syncGroupLifecycleFromWebhook(payload: WebhookPayload) {

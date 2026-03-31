@@ -12,6 +12,11 @@ type RoleItem = {
   permissions: string[];
 };
 
+type PermissionItem = {
+  code: string;
+  description: string;
+};
+
 type UserItem = {
   id: string;
   name: string;
@@ -55,6 +60,13 @@ type ResetPasswordForm = {
   password: string;
 };
 
+type EditRoleForm = {
+  id: string;
+  name: string;
+  description: string;
+  permissions: string[];
+};
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -96,6 +108,7 @@ export function RolesWorkbench({
 }) {
   const [token, setToken] = useState<string | null>(null);
   const [roles, setRoles] = useState<RoleItem[]>([]);
+  const [permissionCatalog, setPermissionCatalog] = useState<PermissionItem[]>([]);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -105,7 +118,9 @@ export function RolesWorkbench({
   const [isSavingUser, setIsSavingUser] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+  const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<EditUserForm | null>(null);
+  const [editingRole, setEditingRole] = useState<EditRoleForm | null>(null);
   const [resetPasswordUser, setResetPasswordUser] =
     useState<ResetPasswordForm | null>(null);
   const [form, setForm] = useState<CreateUserForm>({
@@ -128,9 +143,10 @@ export function RolesWorkbench({
     async function load(currentToken: string) {
       try {
         const headers = { Authorization: `Bearer ${currentToken}` };
-        const [rolesResponse, usersResponse] = await Promise.all([
+        const [rolesResponse, usersResponse, permissionResponse] = await Promise.all([
           fetchJson<RoleItem[]>(`${apiBaseUrl}/roles`, { headers }),
           fetchJson<UserItem[]>(`${apiBaseUrl}/users`, { headers }),
+          fetchJson<PermissionItem[]>(`${apiBaseUrl}/roles/catalog`, { headers }),
         ]);
 
         if (!active) {
@@ -139,6 +155,7 @@ export function RolesWorkbench({
 
         setRoles(rolesResponse);
         setUsers(usersResponse);
+        setPermissionCatalog(permissionResponse);
         setForm((current) => ({
           ...current,
           roleId: current.roleId || rolesResponse[0]?.id || "",
@@ -180,13 +197,15 @@ export function RolesWorkbench({
     }
 
     const headers = { Authorization: `Bearer ${token}` };
-    const [rolesResponse, usersResponse] = await Promise.all([
+    const [rolesResponse, usersResponse, permissionResponse] = await Promise.all([
       fetchJson<RoleItem[]>(`${apiBaseUrl}/roles`, { headers }),
       fetchJson<UserItem[]>(`${apiBaseUrl}/users`, { headers }),
+      fetchJson<PermissionItem[]>(`${apiBaseUrl}/roles/catalog`, { headers }),
     ]);
 
     setRoles(rolesResponse);
     setUsers(usersResponse);
+    setPermissionCatalog(permissionResponse);
   }
 
   async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
@@ -336,6 +355,39 @@ export function RolesWorkbench({
     }
   }
 
+  async function handleSaveRole() {
+    if (!token || !editingRole) {
+      return;
+    }
+
+    setSavingRoleId(editingRole.id);
+    setError(null);
+    setNotice(null);
+    setTemporaryPassword(null);
+
+    try {
+      await fetchJson(`${apiBaseUrl}/roles/${editingRole.id}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          description: editingRole.description,
+          permissions: editingRole.permissions,
+        }),
+      });
+      await refreshData();
+      setNotice(`Đã cập nhật quyền cho role ${editingRole.name}.`);
+      setEditingRole(null);
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Không thể cập nhật quyền cho role.",
+      );
+    } finally {
+      setSavingRoleId(null);
+    }
+  }
+
   if (isLoading) {
     return (
       <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
@@ -390,7 +442,23 @@ export function RolesWorkbench({
                 key={role.id}
                 className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4"
               >
-                <p className="text-sm font-bold">{role.name}</p>
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm font-bold">{role.name}</p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditingRole({
+                        id: role.id,
+                        name: role.name,
+                        description: role.description,
+                        permissions: [...role.permissions],
+                      })
+                    }
+                    className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[color:var(--primary)]"
+                  >
+                    Sửa quyền
+                  </button>
+                </div>
                 <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">
                   {role.description}
                 </p>
@@ -640,6 +708,102 @@ export function RolesWorkbench({
           </table>
         </div>
       </section>
+
+      {editingRole ? (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/35 px-4">
+          <div className="w-full max-w-2xl rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">
+                  Role editor
+                </p>
+                <h2 className="mt-2 text-2xl font-black tracking-tight">
+                  Sửa quyền role {editingRole.name}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingRole(null)}
+                className="rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold"
+              >
+                Đóng
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              <textarea
+                value={editingRole.description}
+                onChange={(event) =>
+                  setEditingRole((current) =>
+                    current
+                      ? { ...current, description: event.target.value }
+                      : current,
+                  )
+                }
+                className="min-h-24 w-full rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
+              />
+
+              <div className="grid gap-3 md:grid-cols-2">
+                {permissionCatalog.map((permission) => {
+                  const enabled = editingRole.permissions.includes(permission.code);
+                  return (
+                    <label
+                      key={permission.code}
+                      className="flex items-start gap-3 rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={(event) =>
+                          setEditingRole((current) => {
+                            if (!current) {
+                              return current;
+                            }
+
+                            return {
+                              ...current,
+                              permissions: event.target.checked
+                                ? [...current.permissions, permission.code]
+                                : current.permissions.filter(
+                                    (code) => code !== permission.code,
+                                  ),
+                            };
+                          })
+                        }
+                        className="mt-1"
+                      />
+                      <span>
+                        <span className="block font-semibold">{permission.code}</span>
+                        <span className="mt-1 block text-[color:var(--on-surface-variant)]">
+                          {permission.description}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingRole(null)}
+                  className="rounded-full bg-[color:var(--surface-low)] px-5 py-3 text-sm font-semibold"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveRole()}
+                  disabled={savingRoleId === editingRole.id}
+                  className="rounded-full bg-[color:var(--primary)] px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {savingRoleId === editingRole.id ? "Đang lưu..." : "Lưu quyền"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {editingUser ? (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/35 px-4">

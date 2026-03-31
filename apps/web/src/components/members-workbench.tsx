@@ -88,6 +88,9 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
   const [users, setUsers] = useState<UserItem[]>([]);
   const [selectedMember, setSelectedMember] = useState<MemberItem | null>(null);
   const [groupFilter, setGroupFilter] = useState("all");
+  const [campaignFilter, setCampaignFilter] = useState(campaignId ?? "all");
+  const [draftGroupFilter, setDraftGroupFilter] = useState("all");
+  const [draftCampaignFilter, setDraftCampaignFilter] = useState(campaignId ?? "all");
   const [currentPage, setCurrentPage] = useState(1);
   const [ownerName, setOwnerName] = useState("");
   const [note, setNote] = useState("");
@@ -158,17 +161,39 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
     };
   }, [campaignId, token]);
 
+  useEffect(() => {
+    const initialCampaignFilter = campaignId ?? "all";
+    setCampaignFilter(initialCampaignFilter);
+    setDraftCampaignFilter(initialCampaignFilter);
+  }, [campaignId]);
+
   const groupOptions = useMemo(
     () => Array.from(new Set(members.map((member) => member.groupTitle))).sort(),
     [members],
   );
 
+  const campaignOptions = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          members
+            .filter((member) => member.campaignId)
+            .map((member) => [member.campaignId as string, member.campaignLabel]),
+        ).entries(),
+      ).sort((left, right) => left[1].localeCompare(right[1], "vi")),
+    [members],
+  );
+
   const filteredMembers = useMemo(
     () =>
-      members.filter((member) =>
-        groupFilter === "all" ? true : member.groupTitle === groupFilter,
-      ),
-    [groupFilter, members],
+      members.filter((member) => {
+        const matchesGroup =
+          groupFilter === "all" ? true : member.groupTitle === groupFilter;
+        const matchesCampaign =
+          campaignFilter === "all" ? true : member.campaignId === campaignFilter;
+        return matchesGroup && matchesCampaign;
+      }),
+    [campaignFilter, groupFilter, members],
   );
 
   const filteredSummary = useMemo(
@@ -205,7 +230,7 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [campaignId, groupFilter]);
+  }, [campaignFilter, campaignId, groupFilter]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -372,15 +397,29 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
-    const suffix =
+    const groupSuffix =
       groupFilter === "all" ? "tat-ca-group" : groupFilter.replace(/[^\w-]+/g, "_");
+    const campaignSuffix =
+      campaignFilter === "all"
+        ? "tat-ca-campaign"
+        : (campaignOptions.find(([id]) => id === campaignFilter)?.[1] ?? campaignFilter).replace(
+            /[^\w-]+/g,
+            "_",
+          );
     anchor.href = url;
-    anchor.download = `members-${suffix}.csv`;
+    anchor.download = `members-${groupSuffix}-${campaignSuffix}.csv`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
     setNotice("Đã xuất danh sách thành viên theo filter hiện tại.");
+  }
+
+  function handleApplyFilters() {
+    setGroupFilter(draftGroupFilter);
+    setCampaignFilter(draftCampaignFilter);
+    setNotice(null);
+    setCurrentPage(1);
   }
 
   return (
@@ -415,10 +454,10 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
                 Danh sách user đã vào nhóm từ các campaign
               </h3>
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
               <select
-                value={groupFilter}
-                onChange={(event) => setGroupFilter(event.target.value)}
+                value={draftGroupFilter}
+                onChange={(event) => setDraftGroupFilter(event.target.value)}
                 className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-3 text-sm outline-none"
               >
                 <option value="all">Tất cả nhóm</option>
@@ -428,6 +467,25 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
                   </option>
                 ))}
               </select>
+              <select
+                value={draftCampaignFilter}
+                onChange={(event) => setDraftCampaignFilter(event.target.value)}
+                className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-3 text-sm outline-none"
+              >
+                <option value="all">Tất cả campaign</option>
+                {campaignOptions.map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleApplyFilters}
+                className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-3 text-sm font-semibold"
+              >
+                Lọc
+              </button>
               <button
                 type="button"
                 onClick={handleExportCurrentFilter}

@@ -255,6 +255,18 @@ export function CampaignsWorkbench() {
     };
   }, []);
 
+  useEffect(() => {
+    function handleRefresh() {
+      void reloadCampaigns();
+    }
+
+    window.addEventListener("campaigns:refresh", handleRefresh);
+
+    return () => {
+      window.removeEventListener("campaigns:refresh", handleRefresh);
+    };
+  }, []);
+
   const summary = campaigns.reduce(
     (accumulator, campaign) => ({
       total: accumulator.total + 1,

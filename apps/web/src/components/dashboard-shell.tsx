@@ -121,10 +121,16 @@ export function DashboardShell({
   onCreateCampaign,
   isCreatingCampaign = false,
 }: DashboardShellProps) {
+  const userPermissions = user?.permissions ?? [];
+  const hasAnyPermission = (requiredPermissions: readonly string[]) =>
+    requiredPermissions.length === 0 ||
+    requiredPermissions.some((permission) => userPermissions.includes(permission));
+
   const navigation = [
     {
       key: "dashboard",
       href: "/dashboard",
+      requiredPermissions: [],
       label: "Tổng quan",
       icon: (
         <>
@@ -139,6 +145,7 @@ export function DashboardShell({
     {
       key: "campaigns",
       href: "/campaigns",
+      requiredPermissions: ["campaign.manage"],
       label: "Campaign",
       icon: (
         <>
@@ -153,6 +160,7 @@ export function DashboardShell({
     {
       key: "members",
       href: "/members",
+      requiredPermissions: ["campaign.manage", "moderation.review"],
       label: "Thành viên",
       icon: (
         <>
@@ -167,6 +175,7 @@ export function DashboardShell({
     {
       key: "moderation",
       href: "/moderation",
+      requiredPermissions: ["moderation.review"],
       label: "Chống spam",
       icon: (
         <>
@@ -180,6 +189,7 @@ export function DashboardShell({
     {
       key: "autopost",
       href: "/autopost",
+      requiredPermissions: ["autopost.execute"],
       label: "Autopost",
       icon: (
         <>
@@ -194,6 +204,7 @@ export function DashboardShell({
     {
       key: "roles",
       href: "/roles",
+      requiredPermissions: ["settings.manage"],
       label: "Phân quyền",
       icon: (
         <>
@@ -206,6 +217,7 @@ export function DashboardShell({
     {
       key: "telegram",
       href: "/telegram",
+      requiredPermissions: ["settings.manage"],
       label: "Telegram",
       icon: (
         <>
@@ -218,6 +230,7 @@ export function DashboardShell({
     {
       key: "settings",
       href: "/settings",
+      requiredPermissions: ["settings.manage"],
       label: "Cài đặt",
       icon: (
         <>
@@ -235,6 +248,10 @@ export function DashboardShell({
       description: "Cấu hình hệ thống và tích hợp AI.",
     },
   ] as const;
+
+  const visibleNavigation = navigation.filter((item) =>
+    hasAnyPermission(item.requiredPermissions),
+  );
 
   const topCampaigns = snapshot.campaigns
     .map((campaign, index) => ({
@@ -284,7 +301,7 @@ export function DashboardShell({
         </div>
 
         <nav className="mt-8 space-y-2 pb-6">
-          {navigation.map((item) => (
+          {visibleNavigation.map((item) => (
             <Link
               key={item.key}
               href={item.href}
@@ -347,7 +364,7 @@ export function DashboardShell({
 
             <div className="mt-3 hidden min-w-0 items-center justify-between gap-4 border-t border-black/5 pt-3 2xl:hidden xl:flex">
               <nav className="flex min-w-0 flex-1 gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {navigation.map((item) => (
+                {visibleNavigation.map((item) => (
                   <Link
                     key={item.key}
                     href={item.href}
@@ -401,7 +418,7 @@ export function DashboardShell({
 
             <div className="mt-3 border-t border-black/5 pt-3 xl:hidden">
               <nav className="flex gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {navigation.map((item) => (
+                {visibleNavigation.map((item) => (
                   <Link
                     key={item.key}
                     href={item.href}

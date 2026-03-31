@@ -70,6 +70,23 @@ export class AutopostController {
     });
   }
 
+  @Post('send-now')
+  sendNow(@Body() body: CreateScheduleBody) {
+    return this.autopostService.sendNow({
+      title: body.title || '',
+      message: body.message || '',
+      frequency: body.frequency || 'IMMEDIATE',
+      scheduledFor: body.scheduledFor || null,
+      mediaUrl: body.mediaUrl || null,
+      targetIds: Array.isArray(body.targetIds) ? body.targetIds : [],
+      telegramGroupIds: Array.isArray(body.telegramGroupIds)
+        ? body.telegramGroupIds
+        : [],
+      selectAllTelegramGroups: Boolean(body.selectAllTelegramGroups),
+      saveAsDraft: false,
+    });
+  }
+
   @Put('schedules/:scheduleId')
   updateSchedule(
     @Param('scheduleId') scheduleId: string,

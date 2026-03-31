@@ -1,6 +1,29 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { fallbackSnapshot } from '../platform/fallback-snapshot';
 import { PrismaService } from '../prisma/prisma.service';
+
+const fallbackPermissionCatalog = [
+  {
+    code: 'campaign.manage',
+    description: 'Manage campaigns and invite links',
+  },
+  {
+    code: 'moderation.review',
+    description: 'Review spam and moderation alerts',
+  },
+  {
+    code: 'settings.manage',
+    description: 'Manage bot settings and security config',
+  },
+  {
+    code: 'autopost.execute',
+    description: 'Manage autopost schedules and logs',
+  },
+] as const;
 
 @Injectable()
 export class RolesService {
@@ -20,10 +43,9 @@ export class RolesService {
         permissions:
           role.title === 'Admin'
             ? [
-                'campaign.manage',
-                'moderation.review',
-                'settings.manage',
-                'autopost.execute',
+                ...fallbackPermissionCatalog.map(
+                  (permission) => permission.code,
+                ),
               ]
             : role.title === 'Moderator'
               ? ['moderation.review']
@@ -48,5 +70,112 @@ export class RolesService {
       description: role.description,
       permissions: role.rolePermissions.map((item) => item.permission.code),
     }));
+  }
+
+  async findPermissionCatalog() {
+    if (!process.env.DATABASE_URL) {
+      return fallbackPermissionCatalog.map((permission) => ({
+        code: permission.code,
+        description: permission.description,
+      }));
+    }
+
+    const permissions = await this.prisma.permission.findMany({
+      orderBy: { code: 'asc' },
+    });
+
+    return permissions.map((permission) => ({
+      code: permission.code,
+      description: permission.description,
+    }));
+  }
+
+  async updateRolePermissions(
+    roleId: string,
+    input: {
+      description?: string;
+      permissions: string[];
+    },
+  ) {
+    const permissionCodes = [
+      ...new Set(input.permissions.map((code) => code.trim()).filter(Boolean)),
+    ];
+
+    if (!process.env.DATABASE_URL) {
+      throw new UnauthorizedException(
+        'Role permission editing requires database mode',
+      );
+    }
+
+    const existingRole = await this.prisma.role.findUnique({
+      where: { id: roleId },
+      select: { id: true },
+    });
+
+    if (!existingRole) {
+      throw new NotFoundException('Role not found');
+    }
+
+    const permissions = await this.prisma.permission.findMany({
+      where: {
+        code: {
+          in: permissionCodes,
+        },
+      },
+    });
+
+    if (permissions.length !== permissionCodes.length) {
+      throw new UnauthorizedException(
+        'Permission catalog contains unknown code',
+      );
+    }
+
+    await this.prisma.$transaction(async (transaction) => {
+      if (input.description !== undefined) {
+        await transaction.role.update({
+          where: { id: roleId },
+          data: {
+            description: input.description.trim(),
+          },
+        });
+      }
+
+      await transaction.rolePermission.deleteMany({
+        where: { roleId },
+      });
+
+      if (permissions.length > 0) {
+        await transaction.rolePermission.createMany({
+          data: permissions.map((permission) => ({
+            roleId,
+            permissionId: permission.id,
+          })),
+        });
+      }
+    });
+
+    const updatedRole = await this.prisma.role.findUnique({
+      where: { id: roleId },
+      include: {
+        rolePermissions: {
+          include: {
+            permission: true,
+          },
+        },
+      },
+    });
+
+    if (!updatedRole) {
+      throw new NotFoundException('Role not found');
+    }
+
+    return {
+      id: updatedRole.id,
+      name: updatedRole.name,
+      description: updatedRole.description,
+      permissions: updatedRole.rolePermissions.map(
+        (item) => item.permission.code,
+      ),
+    };
   }
 }

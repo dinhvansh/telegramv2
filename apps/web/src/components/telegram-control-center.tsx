@@ -296,6 +296,65 @@ export function TelegramControlCenter({
     );
   }
 
+  async function handleDeleteGroup(group: TelegramGroupItem) {
+    if (!token) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `X?a group "${group.title}" kh?i CRM? Ch? n?n x?a b?n ghi inactive c?.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    await runAction(
+      `delete-group-${group.id}`,
+      () =>
+        fetchJson<{ deleted: boolean; reason?: string }>(
+          `${apiBaseUrl}/telegram/groups/${group.id}`,
+          {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        ).then((result) => ({
+          ok: result.deleted,
+          description: result.reason ?? null,
+        })),
+      "?? x?a group inactive kh?i CRM.",
+    );
+  }
+
+  async function handleRefreshRights(group?: TelegramGroupItem) {
+    if (!token) {
+      return;
+    }
+
+    const actionKey = group
+      ? `refresh-rights-${group.id}`
+      : "refresh-rights-all";
+    const url = group
+      ? `${apiBaseUrl}/telegram/groups/${group.id}/refresh-rights`
+      : `${apiBaseUrl}/telegram/refresh-rights`;
+
+    await runAction(
+      actionKey,
+      () =>
+        fetchJson<{ ok?: boolean; failed?: number }>(url, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        }).then((result) => ({
+          ok: result.ok ?? result.failed === 0,
+          description:
+            result.failed && result.failed > 0
+              ? `Có ${result.failed} group không làm mới được quyền bot.`
+              : null,
+        })),
+      group ? "Đã làm mới quyền bot cho group." : "Đã làm mới quyền bot cho toàn bộ group.",
+    );
+  }
+
   if (isLoading) {
     return (
       <div
@@ -662,8 +721,20 @@ export function TelegramControlCenter({
                 Danh sách group đã được CRM ghi nhận
               </h2>
             </div>
-            <div className="rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold text-[color:var(--on-surface-variant)]">
-              {groups.length} group
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void handleRefreshRights()}
+                disabled={isActionRunning === "refresh-rights-all"}
+                className="inline-flex rounded-full bg-[color:var(--surface-card)] px-4 py-2 text-sm font-semibold text-[color:var(--primary)] shadow-[0_4px_14px_rgba(42,52,57,0.08)] disabled:opacity-60"
+              >
+                {isActionRunning === "refresh-rights-all"
+                  ? "Đang làm mới..."
+                  : "Làm mới quyền bot"}
+              </button>
+              <div className="rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold text-[color:var(--on-surface-variant)]">
+                {groups.length} group
+              </div>
             </div>
           </div>
 
@@ -721,12 +792,36 @@ export function TelegramControlCenter({
                       {formatDateTime(group.lastSyncedAt)}
                     </td>
                     <td className="px-5 py-4 align-top text-sm">
-                      <Link
-                        href={`/telegram/groups/${group.id}/moderation`}
-                        className="inline-flex rounded-full bg-[color:var(--surface-card)] px-4 py-2 font-semibold text-[color:var(--primary)] shadow-[0_4px_14px_rgba(42,52,57,0.08)]"
-                      >
-                        Mở cấu hình
-                      </Link>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleRefreshRights(group)}
+                          disabled={isActionRunning === `refresh-rights-${group.id}`}
+                          className="inline-flex rounded-full bg-[color:var(--surface-card)] px-4 py-2 font-semibold text-[color:var(--primary)] shadow-[0_4px_14px_rgba(42,52,57,0.08)] disabled:opacity-60"
+                        >
+                          {isActionRunning === `refresh-rights-${group.id}`
+                            ? "Đang làm mới..."
+                            : "Làm mới quyền"}
+                        </button>
+                        <Link
+                          href={`/telegram/groups/${group.id}/moderation`}
+                          className="inline-flex rounded-full bg-[color:var(--surface-card)] px-4 py-2 font-semibold text-[color:var(--primary)] shadow-[0_4px_14px_rgba(42,52,57,0.08)]"
+                        >
+                          M? c?u h?nh
+                        </Link>
+                        {!group.isActive ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteGroup(group)}
+                            disabled={isActionRunning === `delete-group-${group.id}`}
+                            className="inline-flex rounded-full bg-[color:var(--danger-soft)] px-4 py-2 font-semibold text-[color:var(--danger)] disabled:opacity-60"
+                          >
+                            {isActionRunning === `delete-group-${group.id}`
+                              ? "?ang x?a..."
+                              : "X?a"}
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}

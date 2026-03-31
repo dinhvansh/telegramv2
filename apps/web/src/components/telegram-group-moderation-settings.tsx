@@ -152,7 +152,7 @@ export function TelegramGroupModerationSettings({
         setError(
           loadError instanceof Error
             ? loadError.message
-            : "Failed to load moderation settings.",
+            : "Không thể tải cấu hình moderation.",
         );
       } finally {
         if (isMounted) {
@@ -196,12 +196,12 @@ export function TelegramGroupModerationSettings({
       );
 
       setForm(next);
-      setNotice("Moderation settings saved.");
+      setNotice("Đã lưu cấu hình moderation.");
     } catch (saveError) {
       setError(
         saveError instanceof Error
           ? saveError.message
-          : "Failed to save moderation settings.",
+          : "Không thể lưu cấu hình moderation.",
       );
     } finally {
       setIsSaving(false);
@@ -395,7 +395,7 @@ export function TelegramGroupModerationSettings({
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-                Group Moderation Settings
+                Cấu hình moderation của group
               </p>
               <h1 className="mt-2 text-3xl font-black tracking-tight">
                 {group?.title ?? "Telegram Group"}
@@ -408,7 +408,7 @@ export function TelegramGroupModerationSettings({
               href="/telegram"
               className="inline-flex rounded-full bg-[color:var(--surface-low)] px-4 py-3 text-sm font-semibold"
             >
-              Back to groups
+              Quay lại danh sách group
             </Link>
           </div>
         </header>
@@ -420,7 +420,7 @@ export function TelegramGroupModerationSettings({
           <div className="grid gap-6 2xl:grid-cols-[1.05fr_0.95fr]">
             <section>
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-                Lock Matrix
+                Ma trận khóa nội dung
               </p>
               <div className="mt-5 grid gap-3 lg:grid-cols-2">
                 {toggleFieldKeys.map(([key, label]) => (
@@ -450,11 +450,11 @@ export function TelegramGroupModerationSettings({
 
             <section className="space-y-5">
               <div className="rounded-[24px] bg-[color:var(--surface-low)] p-5">
-                <p className="text-sm font-bold">Trusted / Exemption</p>
+                <p className="text-sm font-bold">Miễn trừ / Danh sách tin cậy</p>
                 <div className="mt-4 grid gap-4">
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      Trusted usernames
+                      Username được tin cậy
                     </span>
                     <input
                       type="text"
@@ -476,7 +476,7 @@ export function TelegramGroupModerationSettings({
 
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      Trusted external ids
+                      External ID được tin cậy
                     </span>
                     <input
                       type="text"
@@ -499,11 +499,11 @@ export function TelegramGroupModerationSettings({
               </div>
 
               <div className="rounded-[24px] bg-[color:var(--surface-low)] p-5">
-                <p className="text-sm font-bold">Warning rules</p>
+                <p className="text-sm font-bold">Quy tắc cảnh báo</p>
                 <div className="mt-4 grid gap-4">
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      Warn limit
+                      Ngưỡng cảnh báo
                     </span>
                     <input
                       type="number"
@@ -525,7 +525,7 @@ export function TelegramGroupModerationSettings({
 
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      Warn action
+                      Hành động khi chạm ngưỡng
                     </span>
                     <select
                       value={form.warnAction}
@@ -541,17 +541,17 @@ export function TelegramGroupModerationSettings({
                       }
                       className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
                     >
-                      <option value="mute">mute</option>
-                      <option value="tmute">tmute</option>
-                      <option value="kick">kick</option>
-                      <option value="ban">ban</option>
-                      <option value="tban">tban</option>
+                      <option value="mute">Khóa chat</option>
+                      <option value="tmute">Khóa chat tạm thời</option>
+                      <option value="kick">Kick khỏi nhóm</option>
+                      <option value="ban">Cấm vĩnh viễn</option>
+                      <option value="tban">Cấm tạm thời</option>
                     </select>
                   </label>
 
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      Warn action duration seconds
+                      Thời lượng hành động cảnh báo (giây)
                     </span>
                     <input
                       type="number"
@@ -575,7 +575,7 @@ export function TelegramGroupModerationSettings({
 
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      Warning expiry seconds
+                      Thời gian hết hạn cảnh báo (giây)
                     </span>
                     <input
                       type="number"
@@ -644,7 +644,7 @@ export function TelegramGroupModerationSettings({
                   </label>
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      Flood action
+                      Hành động khi flood
                     </span>
                     <select
                       value={form.antifloodAction}
@@ -661,16 +661,16 @@ export function TelegramGroupModerationSettings({
                       }
                       className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
                     >
-                      <option value="mute">mute</option>
-                      <option value="tmute">tmute</option>
-                      <option value="kick">kick</option>
-                      <option value="ban">ban</option>
-                      <option value="tban">tban</option>
+                      <option value="mute">Khóa chat</option>
+                      <option value="tmute">Khóa chat tạm thời</option>
+                      <option value="kick">Kick khỏi nhóm</option>
+                      <option value="ban">Cấm vĩnh viễn</option>
+                      <option value="tban">Cấm tạm thời</option>
                     </select>
                   </label>
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      Flood action duration seconds
+                      Thời lượng flood action (giây)
                     </span>
                     <input
                       type="number"
@@ -695,15 +695,33 @@ export function TelegramGroupModerationSettings({
               </div>
 
               <div className="rounded-[24px] bg-[color:var(--surface-low)] p-5">
-                <p className="text-sm font-bold">Probation / AntiRaid</p>
+                <p className="text-sm font-bold">Probation / Anti-raid</p>
                 <div className="mt-4 grid gap-4">
+                  <label className="flex items-center justify-between gap-4 rounded-[16px] bg-white px-4 py-3 text-sm font-semibold">
+                    <span>Bật probation</span>
+                    <input
+                      type="checkbox"
+                      checked={form.probationEnabled}
+                      onChange={(event) =>
+                        setForm((current) =>
+                          current
+                            ? {
+                                ...current,
+                                probationEnabled: event.target.checked,
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  </label>
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      Probation seconds
+                      Thời gian probation (giây)
                     </span>
                     <input
                       type="number"
                       min={60}
+                      disabled={!form.probationEnabled}
                       value={form.probationSeconds}
                       onChange={(event) =>
                         setForm((current) =>
@@ -715,14 +733,15 @@ export function TelegramGroupModerationSettings({
                             : current,
                         )
                       }
-                      className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
+                      className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none disabled:opacity-50"
                     />
                   </label>
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      Probation action
+                      Hành động trong probation
                     </span>
                     <select
+                      disabled={!form.probationEnabled}
                       value={form.probationAction}
                       onChange={(event) =>
                         setForm((current) =>
@@ -735,22 +754,23 @@ export function TelegramGroupModerationSettings({
                             : current,
                         )
                       }
-                      className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
+                      className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none disabled:opacity-50"
                     >
-                      <option value="mute">mute</option>
-                      <option value="tmute">tmute</option>
-                      <option value="kick">kick</option>
-                      <option value="ban">ban</option>
-                      <option value="tban">tban</option>
+                      <option value="mute">Khóa chat</option>
+                      <option value="tmute">Khóa chat tạm thời</option>
+                      <option value="kick">Kick khỏi nhóm</option>
+                      <option value="ban">Cấm vĩnh viễn</option>
+                      <option value="tban">Cấm tạm thời</option>
                     </select>
                   </label>
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      Probation action duration seconds
+                      Thời lượng probation action (giây)
                     </span>
                     <input
                       type="number"
                       min={0}
+                      disabled={!form.probationEnabled}
                       value={form.probationActionDurationSeconds ?? ""}
                       onChange={(event) =>
                         setForm((current) =>
@@ -764,14 +784,32 @@ export function TelegramGroupModerationSettings({
                             : current,
                         )
                       }
-                      className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
+                      className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none disabled:opacity-50"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between gap-4 rounded-[16px] bg-white px-4 py-3 text-sm font-semibold">
+                    <span>Bật anti-raid</span>
+                    <input
+                      type="checkbox"
+                      checked={form.antiRaidEnabled}
+                      onChange={(event) =>
+                        setForm((current) =>
+                          current
+                            ? {
+                                ...current,
+                                antiRaidEnabled: event.target.checked,
+                              }
+                            : current,
+                        )
+                      }
                     />
                   </label>
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      AntiRaid action
+                      Hành động anti-raid
                     </span>
                     <select
+                      disabled={!form.antiRaidEnabled}
                       value={form.antiRaidAction}
                       onChange={(event) =>
                         setForm((current) =>
@@ -784,22 +822,23 @@ export function TelegramGroupModerationSettings({
                             : current,
                         )
                       }
-                      className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
+                      className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none disabled:opacity-50"
                     >
-                      <option value="mute">mute</option>
-                      <option value="tmute">tmute</option>
-                      <option value="kick">kick</option>
-                      <option value="ban">ban</option>
-                      <option value="tban">tban</option>
+                      <option value="mute">Khóa chat</option>
+                      <option value="tmute">Khóa chat tạm thời</option>
+                      <option value="kick">Kick khỏi nhóm</option>
+                      <option value="ban">Cấm vĩnh viễn</option>
+                      <option value="tban">Cấm tạm thời</option>
                     </select>
                   </label>
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      AntiRaid action duration seconds
+                      Thời lượng anti-raid (giây)
                     </span>
                     <input
                       type="number"
                       min={0}
+                      disabled={!form.antiRaidEnabled}
                       value={form.antiRaidActionDurationSeconds ?? ""}
                       onChange={(event) =>
                         setForm((current) =>
@@ -813,7 +852,7 @@ export function TelegramGroupModerationSettings({
                             : current,
                         )
                       }
-                      className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
+                      className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none disabled:opacity-50"
                     />
                   </label>
                 </div>
@@ -844,8 +883,8 @@ export function TelegramGroupModerationSettings({
                       className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
                     >
                       <option value="off">off</option>
-                      <option value="fallback_only">fallback_only</option>
-                      <option value="suspicious_only">suspicious_only</option>
+                      <option value="fallback_only">Chỉ khi rule chưa đủ chắc</option>
+                      <option value="suspicious_only">Chỉ khi nội dung đáng ngờ</option>
                     </select>
                   </label>
                   <label className="block">
@@ -1004,7 +1043,7 @@ export function TelegramGroupModerationSettings({
               disabled={isSaving}
               className="w-full rounded-[18px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white disabled:opacity-60 sm:w-auto"
             >
-              {isSaving ? "Saving..." : "Save Moderation Settings"}
+              {isSaving ? "Đang lưu..." : "Lưu cấu hình moderation"}
             </button>
           </div>
         </form>

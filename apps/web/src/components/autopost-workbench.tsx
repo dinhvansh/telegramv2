@@ -103,6 +103,37 @@ function formatDateTime(value: string | null) {
   }
 }
 
+function toLocalDateTimeInputValue(value: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function toIsoFromLocalDateTime(value: string) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toISOString();
+}
+
 function getScheduleTone(status: string) {
   switch (status) {
     case "COMPLETED":
@@ -128,6 +159,7 @@ export function AutopostWorkbench() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
   const [isUpdatingSchedule, setIsUpdatingSchedule] = useState(false);
+  const [isSendingNow, setIsSendingNow] = useState(false);
   const [isDispatchingAll, setIsDispatchingAll] = useState(false);
   const [dispatchingScheduleId, setDispatchingScheduleId] = useState<string | null>(null);
   const [togglingScheduleId, setTogglingScheduleId] = useState<string | null>(null);
@@ -259,7 +291,7 @@ export function AutopostWorkbench() {
         headers: { Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           ...scheduleForm,
-          scheduledFor: scheduleForm.scheduledFor || null,
+          scheduledFor: toIsoFromLocalDateTime(scheduleForm.scheduledFor),
           mediaUrl: scheduleForm.mediaUrl || null,
           telegramGroupIds: selectAllTelegramGroups ? [] : selectedTelegramGroupIds,
           selectAllTelegramGroups,
@@ -283,9 +315,7 @@ export function AutopostWorkbench() {
       message: schedule.message,
       mediaUrl: schedule.mediaUrl || "",
       frequency: schedule.frequency,
-      scheduledFor: schedule.scheduledFor
-        ? new Date(schedule.scheduledFor).toISOString().slice(0, 16)
-        : "",
+      scheduledFor: toLocalDateTimeInputValue(schedule.scheduledFor),
       saveAsDraft: schedule.status === "DRAFT",
     });
     setSelectAllTelegramGroups(false);
@@ -325,7 +355,7 @@ export function AutopostWorkbench() {
           headers: { Authorization: `Bearer ${token}` },
           body: JSON.stringify({
             ...scheduleForm,
-            scheduledFor: scheduleForm.scheduledFor || null,
+            scheduledFor: toIsoFromLocalDateTime(scheduleForm.scheduledFor),
             mediaUrl: scheduleForm.mediaUrl || null,
             telegramGroupIds: selectAllTelegramGroups ? [] : selectedTelegramGroupIds,
             selectAllTelegramGroups,
@@ -369,6 +399,39 @@ export function AutopostWorkbench() {
       );
     } finally {
       setIsDispatchingAll(false);
+    }
+  }
+
+  async function handleSendNow() {
+    if (!token) {
+      return;
+    }
+
+    setIsSendingNow(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const result = await fetchJson<{
+        dispatched: number;
+        snapshot: AutopostSnapshot;
+      }>(`${apiBaseUrl}/autopost/send-now`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          ...scheduleForm,
+          scheduledFor: null,
+          mediaUrl: scheduleForm.mediaUrl || null,
+          telegramGroupIds: selectAllTelegramGroups ? [] : selectedTelegramGroupIds,
+          selectAllTelegramGroups,
+        }),
+      });
+      setSnapshot(result.snapshot);
+      setNotice(`Đã gửi ngay tới ${result.dispatched} group.`);
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : "Không thể gửi ngay.");
+    } finally {
+      setIsSendingNow(false);
     }
   }
 
@@ -712,6 +775,7 @@ export function AutopostWorkbench() {
                 disabled={
                   isCreatingSchedule ||
                   isUpdatingSchedule ||
+                  isSendingNow ||
                   (!selectAllTelegramGroups && selectedTelegramGroupIds.length === 0)
                 }
                 className="rounded-[18px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white disabled:opacity-60"
@@ -723,6 +787,19 @@ export function AutopostWorkbench() {
                   : isCreatingSchedule
                     ? "Đang tạo lịch..."
                     : "Tạo lịch"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSendNow()}
+                disabled={
+                  isSendingNow ||
+                  isCreatingSchedule ||
+                  isUpdatingSchedule ||
+                  (!selectAllTelegramGroups && selectedTelegramGroupIds.length === 0)
+                }
+                className="rounded-[18px] bg-[color:var(--primary-soft)] px-5 py-3 text-sm font-bold text-[color:var(--primary)] disabled:opacity-60"
+              >
+                {isSendingNow ? "Đang gửi..." : "Gửi ngay"}
               </button>
               {editingScheduleId ? (
                 <button

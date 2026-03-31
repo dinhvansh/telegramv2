@@ -283,6 +283,126 @@ export class AutopostService {
     };
   }
 
+  async sendNow(input: CreateScheduleInput) {
+    if (!process.env.DATABASE_URL) {
+      return {
+        dispatched: 0,
+        items: [],
+        snapshot: await this.getSnapshot(),
+      };
+    }
+
+    const title = String(input.title || '').trim();
+    const message = String(input.message || '').trim();
+    const mediaUrl = String(input.mediaUrl || '').trim() || null;
+    const targetIds = Array.isArray(input.targetIds)
+      ? input.targetIds.filter(Boolean)
+      : [];
+    const telegramGroupIds = Array.isArray(input.telegramGroupIds)
+      ? input.telegramGroupIds.filter(Boolean)
+      : [];
+
+    const resolvedTargetIds = await this.resolveTelegramTargetIds({
+      targetIds,
+      telegramGroupIds,
+      selectAllTelegramGroups: Boolean(input.selectAllTelegramGroups),
+    });
+
+    if ((!title && !message) || !resolvedTargetIds.length) {
+      return {
+        dispatched: 0,
+        items: [],
+        snapshot: await this.getSnapshot(),
+      };
+    }
+
+    const targets = await this.prisma.autopostTarget.findMany({
+      where: {
+        id: { in: resolvedTargetIds },
+      },
+      orderBy: { displayName: 'asc' },
+    });
+
+    const botToken = await this.getTelegramBotToken();
+    const items = [];
+
+    for (const target of targets) {
+      let status: AutopostDeliveryStatus = AutopostDeliveryStatus.SENT;
+      let detail = 'Message delivered.';
+      let externalPostId: string | null = `instant-${Date.now()}`;
+
+      if (target.platform === AutopostTargetPlatform.TELEGRAM) {
+        if (!botToken) {
+          status = AutopostDeliveryStatus.FAILED;
+          detail = 'Missing Telegram bot token.';
+          externalPostId = null;
+        } else {
+          const response = await this.sendTelegramAutopost(
+            botToken,
+            target.externalId,
+            title,
+            message,
+            mediaUrl,
+          );
+          const body = (await response.json()) as {
+            ok?: boolean;
+            description?: string;
+            result?: { message_id?: number };
+          };
+          if (!body.ok) {
+            status = AutopostDeliveryStatus.FAILED;
+            detail = body.description || 'Telegram send failed.';
+            externalPostId = null;
+          } else {
+            detail = mediaUrl
+              ? 'Telegram photo post sent.'
+              : 'Telegram message sent.';
+            externalPostId = body.result?.message_id
+              ? String(body.result.message_id)
+              : externalPostId;
+          }
+        }
+      } else if (target.platform === AutopostTargetPlatform.DISCORD) {
+        status = AutopostDeliveryStatus.FAILED;
+        detail = 'Discord delivery is not implemented yet.';
+        externalPostId = null;
+      } else {
+        status = AutopostDeliveryStatus.FAILED;
+        detail = 'Target platform is not implemented yet.';
+        externalPostId = null;
+      }
+
+      items.push({
+        targetId: target.id,
+        targetName: target.displayName,
+        platform: target.platform,
+        status,
+        detail,
+        externalPostId,
+      });
+    }
+
+    await this.systemLogsService.log({
+      scope: 'autopost.dispatch',
+      action: 'send_now',
+      message: `Autopost send-now executed for ${items.length} target(s)`,
+      payload: {
+        title,
+        mediaUrl,
+        targetIds: resolvedTargetIds,
+        telegramGroupIds,
+        selectAllTelegramGroups: Boolean(input.selectAllTelegramGroups),
+        items,
+      },
+    });
+
+    return {
+      dispatched: items.length,
+      items,
+      snapshot: await this.getSnapshot(),
+    };
+  }
+
   async updateSchedule(scheduleId: string, input: CreateScheduleInput) {
     if (!process.env.DATABASE_URL) {
       return {

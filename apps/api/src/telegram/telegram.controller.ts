@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Param,
@@ -160,6 +161,13 @@ export class TelegramController {
     return this.telegramService.discoverGroups();
   }
 
+  @Post('refresh-rights')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('settings.manage')
+  refreshRights() {
+    return this.telegramService.refreshBotRights();
+  }
+
   @Put('groups/:groupId/moderation')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
@@ -168,6 +176,20 @@ export class TelegramController {
     @Body() body: TelegramGroupModerationBody,
   ) {
     return this.telegramService.updateGroupModerationSettings(groupId, body);
+  }
+
+  @Delete('groups/:groupId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('settings.manage')
+  deleteGroup(@Param('groupId') groupId: string) {
+    return this.telegramService.deleteGroup(groupId);
+  }
+
+  @Post('groups/:groupId/refresh-rights')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('settings.manage')
+  refreshGroupRights(@Param('groupId') groupId: string) {
+    return this.telegramService.refreshBotRights(groupId);
   }
 
   @Post('invite-links')

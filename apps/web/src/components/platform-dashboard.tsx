@@ -51,6 +51,20 @@ type PlatformDashboardProps = {
   entryMode?: boolean;
 };
 
+const pagePermissionMap: Record<
+  NonNullable<PlatformDashboardProps["page"]>,
+  string[]
+> = {
+  dashboard: [],
+  campaigns: ["campaign.manage"],
+  members: ["campaign.manage", "moderation.review"],
+  moderation: ["moderation.review"],
+  autopost: ["autopost.execute"],
+  roles: ["settings.manage"],
+  telegram: ["settings.manage"],
+  settings: ["settings.manage"],
+};
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -126,6 +140,23 @@ export function PlatformDashboard({
       router.replace("/");
     }
   }, [entryMode, isLoading, router, token, user]);
+
+  useEffect(() => {
+    if (entryMode || !user) {
+      return;
+    }
+
+    const requiredPermissions = pagePermissionMap[page] ?? [];
+    const hasPageAccess =
+      requiredPermissions.length === 0 ||
+      requiredPermissions.some((permission) =>
+        user.permissions.includes(permission),
+      );
+
+    if (!hasPageAccess) {
+      router.replace("/dashboard");
+    }
+  }, [entryMode, page, router, user]);
 
   useEffect(() => {
     let isMounted = true;
@@ -312,6 +343,7 @@ export function PlatformDashboard({
       });
 
       await reloadSnapshot();
+      window.dispatchEvent(new CustomEvent("campaigns:refresh"));
       setCampaignNotice({
         message: `Đã tạo campaign ${createdCampaign.name}.`,
         inviteUrl: createdCampaign.inviteCode ?? null,
@@ -706,5 +738,3 @@ export function PlatformDashboard({
     </>
   );
 }
-
-
