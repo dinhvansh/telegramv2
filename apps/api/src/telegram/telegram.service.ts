@@ -122,6 +122,8 @@ type WebhookPayload = {
     chat?: {
       id?: number | string;
       title?: string;
+      username?: string;
+      type?: string;
     };
     via_bot?: {
       id?: number | string;
@@ -172,10 +174,20 @@ type WebhookPayload = {
       name?: string;
     };
   };
+  channel_post?: {
+    chat?: {
+      id?: number | string;
+      title?: string;
+      username?: string;
+      type?: string;
+    };
+  };
   chat_join_request?: {
     chat?: {
       id?: number | string;
       title?: string;
+      username?: string;
+      type?: string;
     };
     from?: {
       id?: number | string;
@@ -1149,6 +1161,8 @@ export class TelegramService {
         lifecycle: lifecycleSync,
       };
     }
+
+    await this.syncGroupPresenceFromWebhook(payload);
 
     const processed = this.extractWebhookEvent(payload);
     if (processed.eventType === 'message_received') {
@@ -2698,6 +2712,37 @@ export class TelegramService {
         ? `Bot membership synced as ${nextStatus}.`
         : `Bot is no longer active in ${groupTitle}.`,
     };
+  }
+
+  private async syncGroupPresenceFromWebhook(payload: WebhookPayload) {
+    const chat =
+      payload.message?.chat ||
+      payload.channel_post?.chat ||
+      payload.chat_join_request?.chat ||
+      null;
+
+    if (!chat?.id) {
+      return null;
+    }
+
+    const chatType = String(chat.type || '').toLowerCase();
+    if (!['group', 'supergroup', 'channel'].includes(chatType)) {
+      return null;
+    }
+
+    const groupTitle =
+      String(chat.title || '').trim() ||
+      String(chat.username || '').trim() ||
+      `telegram-${chat.id}`;
+
+    return this.upsertTelegramGroupRecord({
+      externalId: String(chat.id),
+      title: groupTitle,
+      username: chat.username || null,
+      type: chat.type || 'supergroup',
+      discoveredFrom: 'webhook_presence',
+      isActive: true,
+    });
   }
 
   private async resolveTelegramGroup(input: TelegramInviteLinkInput) {
