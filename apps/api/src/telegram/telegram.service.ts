@@ -1279,6 +1279,7 @@ export class TelegramService {
       action: 'handle_webhook',
       message: `Webhook ${processed.eventType} processed for ${processed.groupTitle}`,
       payload: {
+        rawPayload: payload,
         moderationDecision: resolvedModeration?.decision || null,
         runtimeModeration,
         memberImpact,

@@ -108,6 +108,7 @@ type SystemLogItem = {
   action: string;
   message: string;
   detail: string | null;
+  payload?: unknown;
   createdAt: string;
 };
 
@@ -218,11 +219,20 @@ function formatTelegramMethod(method: string) {
   }
 }
 
+function formatJsonPayload(value: unknown) {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
 export function ModerationWorkbench() {
   const [token, setToken] = useState<string | null>(null);
   const [events, setEvents] = useState<ModerationEvent[]>([]);
   const [config, setConfig] = useState<ModerationConfig | null>(null);
   const [debugOverview, setDebugOverview] = useState<DebugOverview | null>(null);
+  const [selectedRawLogId, setSelectedRawLogId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedScopeKey, setSelectedScopeKey] = useState("global");
   const [manualDecision, setManualDecision] = useState<SpamDecision>("REVIEW");
@@ -348,6 +358,11 @@ export function ModerationWorkbench() {
     config?.scopes.find((scope) => scope.scopeKey === selectedScopeKey) ??
     config?.scopes[0] ??
     null;
+  const rawWebhookLogs = (debugOverview?.logs || []).filter(
+    (log) => log.scope === "telegram.webhook" && log.payload,
+  );
+  const selectedRawLog =
+    rawWebhookLogs.find((log) => log.id === selectedRawLogId) ?? rawWebhookLogs[0] ?? null;
 
   useEffect(() => {
     if (!selectedScope) {
@@ -1563,6 +1578,60 @@ export function ModerationWorkbench() {
                 )}
               </div>
             </div>
+          </div>
+
+          <div className="mt-5 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold">Webhook JSON thô</p>
+                <p className="mt-1 text-sm text-[color:var(--on-surface-variant)]">
+                  Chọn webhook gần nhất để xem và copy payload raw.
+                </p>
+              </div>
+              {selectedRawLog?.payload ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void navigator.clipboard.writeText(formatJsonPayload(selectedRawLog.payload))
+                  }
+                  className="rounded-full bg-white/80 px-4 py-2 text-xs font-bold text-[color:var(--primary)]"
+                >
+                  Copy JSON
+                </button>
+              ) : null}
+            </div>
+
+            {rawWebhookLogs.length ? (
+              <div className="mt-4 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+                <div className="space-y-3">
+                  {rawWebhookLogs.slice(0, 8).map((log) => (
+                    <button
+                      key={log.id}
+                      type="button"
+                      onClick={() => setSelectedRawLogId(log.id)}
+                      className={`block w-full rounded-[16px] px-3 py-3 text-left text-sm ${
+                        selectedRawLog?.id === log.id
+                          ? "bg-[color:var(--primary-soft)] text-[color:var(--on-surface)]"
+                          : "bg-white/80 text-[color:var(--on-surface)]"
+                      }`}
+                    >
+                      <p className="font-semibold">{log.message}</p>
+                      <p className="mt-1 text-[color:var(--on-surface-variant)]">
+                        {formatDateTime(log.createdAt)}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+
+                <pre className="overflow-x-auto rounded-[16px] bg-slate-950 px-4 py-4 text-xs leading-6 text-slate-100">
+                  {selectedRawLog?.payload ? formatJsonPayload(selectedRawLog.payload) : "{}"}
+                </pre>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-[color:var(--on-surface-variant)]">
+                Chưa có webhook nào chứa JSON raw để hiển thị.
+              </p>
+            )}
           </div>
         </section>
       </div>

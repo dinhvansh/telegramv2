@@ -596,6 +596,7 @@ export class ModerationService {
       action: string;
       message: string;
       detail: string | null;
+      payload?: unknown;
       createdAt: string;
     }>;
 

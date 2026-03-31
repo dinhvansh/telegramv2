@@ -31,6 +31,11 @@ type TelegramGroupOption = {
   isActive: boolean;
 };
 
+type CampaignNoticeState = {
+  message: string;
+  inviteUrl?: string | null;
+};
+
 type PlatformDashboardProps = {
   page?:
     | "dashboard"
@@ -184,7 +189,7 @@ export function PlatformDashboard({
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
   const [campaignError, setCampaignError] = useState<string | null>(null);
-  const [campaignNotice, setCampaignNotice] = useState<string | null>(null);
+  const [campaignNotice, setCampaignNotice] = useState<CampaignNoticeState | null>(null);
   const [telegramGroups, setTelegramGroups] = useState<TelegramGroupOption[]>([]);
   const [campaignForm, setCampaignForm] = useState<CreateCampaignInput>({
     name: "Spring Operator Push",
@@ -358,6 +363,18 @@ export function PlatformDashboard({
     setIsLoading(false);
   }
 
+  async function handleCopyInviteLink(inviteUrl: string) {
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setCampaignNotice({
+        message: "Đã sao chép link mời.",
+        inviteUrl,
+      });
+    } catch {
+      setCampaignError("Không thể sao chép link mời trên thiết bị này.");
+    }
+  }
+
   async function handleCreateCampaign(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -376,7 +393,11 @@ export function PlatformDashboard({
     setCampaignNotice(null);
 
     try {
-      await fetchJson(`${apiBaseUrl}/campaigns`, {
+      const createdCampaign = await fetchJson<{
+        id: string;
+        inviteCode?: string | null;
+        name: string;
+      }>(`${apiBaseUrl}/campaigns`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -385,7 +406,10 @@ export function PlatformDashboard({
       });
 
       await reloadSnapshot();
-      setCampaignNotice(`Đã tạo campaign ${campaignForm.name}.`);
+      setCampaignNotice({
+        message: `Đã tạo campaign ${createdCampaign.name}.`,
+        inviteUrl: createdCampaign.inviteCode ?? null,
+      });
       setIsCreateModalOpen(false);
       setCampaignForm({
         name: "",
@@ -393,8 +417,12 @@ export function PlatformDashboard({
         joinRate: "0% conversion",
         status: "Active",
       });
-    } catch {
-      setCampaignError("Không thể tạo campaign. Kiểm tra quyền hoặc trạng thái API.");
+    } catch (createError) {
+      setCampaignError(
+        createError instanceof Error
+          ? createError.message
+          : "Không thể tạo campaign. Kiểm tra quyền hoặc trạng thái API.",
+      );
     } finally {
       setIsCreatingCampaign(false);
     }
@@ -543,8 +571,17 @@ export function PlatformDashboard({
                 : "text-[color:var(--success)]"
             }`}
           >
-            {campaignError ?? campaignNotice}
+            {campaignError ?? campaignNotice?.message}
           </p>
+          {!campaignError && campaignNotice?.inviteUrl ? (
+            <button
+              type="button"
+              onClick={() => void handleCopyInviteLink(campaignNotice.inviteUrl || "")}
+              className="mt-3 inline-flex rounded-full bg-[color:var(--primary-soft)] px-3 py-2 text-xs font-bold text-[color:var(--primary)]"
+            >
+              Copy link mời
+            </button>
+          ) : null}
         </div>
       )}
 
