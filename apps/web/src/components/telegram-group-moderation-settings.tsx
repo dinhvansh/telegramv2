@@ -61,6 +61,19 @@ type GroupItem = {
   externalId: string;
 };
 
+type ModerationScope = {
+  scopeKey: string;
+  scopeType: "GLOBAL" | "GROUP";
+  scopeLabel: string;
+  telegramGroupId: string | null;
+  keywords: Array<{ id: string; value: string }>;
+  domains: Array<{ id: string; value: string; mode: "BLOCK" | "ALLOW" }>;
+};
+
+type ModerationConfigResponse = {
+  scopes: ModerationScope[];
+};
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -86,8 +99,13 @@ export function TelegramGroupModerationSettings({
   const [token, setToken] = useState<string | null>(null);
   const [group, setGroup] = useState<GroupItem | null>(null);
   const [form, setForm] = useState<GroupModerationSettings | null>(null);
+  const [scope, setScope] = useState<ModerationScope | null>(null);
+  const [keywordInput, setKeywordInput] = useState("");
+  const [domainInput, setDomainInput] = useState("");
+  const [domainMode, setDomainMode] = useState<"BLOCK" | "ALLOW">("BLOCK");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUpdatingRules, setIsUpdatingRules] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -101,7 +119,7 @@ export function TelegramGroupModerationSettings({
 
     async function load(currentToken: string) {
       try {
-        const [groupsResponse, settings] = await Promise.all([
+        const [groupsResponse, settings, moderationConfig] = await Promise.all([
           fetchJson<{ items: GroupItem[] }>(`${apiBaseUrl}/telegram/groups`, {
             headers: { Authorization: `Bearer ${currentToken}` },
           }),
@@ -111,6 +129,9 @@ export function TelegramGroupModerationSettings({
               headers: { Authorization: `Bearer ${currentToken}` },
             },
           ),
+          fetchJson<ModerationConfigResponse>(`${apiBaseUrl}/moderation/config`, {
+            headers: { Authorization: `Bearer ${currentToken}` },
+          }),
         ]);
 
         if (!isMounted) {
@@ -119,6 +140,9 @@ export function TelegramGroupModerationSettings({
 
         setGroup(groupsResponse.items.find((item) => item.id === groupId) ?? null);
         setForm(settings);
+        setScope(
+          moderationConfig.scopes.find((item) => item.scopeKey === `group:${groupId}`) ?? null,
+        );
         setError(null);
       } catch (loadError) {
         if (!isMounted) {
@@ -181,6 +205,121 @@ export function TelegramGroupModerationSettings({
       );
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function refreshRuleScope(currentToken: string) {
+    const moderationConfig = await fetchJson<ModerationConfigResponse>(
+      `${apiBaseUrl}/moderation/config`,
+      {
+        headers: { Authorization: `Bearer ${currentToken}` },
+      },
+    );
+    setScope(
+      moderationConfig.scopes.find((item) => item.scopeKey === `group:${groupId}`) ?? null,
+    );
+  }
+
+  async function handleAddKeyword() {
+    if (!token || !keywordInput.trim()) {
+      return;
+    }
+
+    setIsUpdatingRules(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await fetchJson(`${apiBaseUrl}/moderation/keywords`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          scopeKey: `group:${groupId}`,
+          value: keywordInput.trim(),
+        }),
+      });
+      setKeywordInput("");
+      await refreshRuleScope(token);
+      setNotice("Đã thêm từ khóa vào group này.");
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Không thể thêm từ khóa.");
+    } finally {
+      setIsUpdatingRules(false);
+    }
+  }
+
+  async function handleRemoveKeyword(keywordId: string) {
+    if (!token) {
+      return;
+    }
+
+    setIsUpdatingRules(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await fetchJson(`${apiBaseUrl}/moderation/keywords/${keywordId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      await refreshRuleScope(token);
+      setNotice("Đã xóa từ khóa khỏi group này.");
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Không thể xóa từ khóa.");
+    } finally {
+      setIsUpdatingRules(false);
+    }
+  }
+
+  async function handleAddDomain() {
+    if (!token || !domainInput.trim()) {
+      return;
+    }
+
+    setIsUpdatingRules(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await fetchJson(`${apiBaseUrl}/moderation/domains`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          scopeKey: `group:${groupId}`,
+          value: domainInput.trim(),
+          mode: domainMode,
+        }),
+      });
+      setDomainInput("");
+      await refreshRuleScope(token);
+      setNotice("Đã cập nhật domain cho group này.");
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Không thể thêm domain.");
+    } finally {
+      setIsUpdatingRules(false);
+    }
+  }
+
+  async function handleRemoveDomain(domainId: string) {
+    if (!token) {
+      return;
+    }
+
+    setIsUpdatingRules(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await fetchJson(`${apiBaseUrl}/moderation/domains/${domainId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      await refreshRuleScope(token);
+      setNotice("Đã xóa domain khỏi group này.");
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Không thể xóa domain.");
+    } finally {
+      setIsUpdatingRules(false);
     }
   }
 
@@ -729,6 +868,110 @@ export function TelegramGroupModerationSettings({
                       className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
                     />
                   </label>
+                </div>
+              </div>
+
+              <div className="rounded-[24px] bg-[color:var(--surface-low)] p-5">
+                <p className="text-sm font-bold">Keyword / Domain theo group</p>
+                <p className="mt-2 text-sm text-[color:var(--on-surface-variant)]">
+                  Đây là nơi cấu hình rule riêng cho group này. Khối policy cũ ở màn Chống spam
+                  sẽ chỉ còn vai trò theo dõi.
+                </p>
+
+                <div className="mt-4 grid gap-5 xl:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
+                      Từ khóa bổ sung
+                    </p>
+                    <div className="mt-3 flex gap-3">
+                      <input
+                        value={keywordInput}
+                        onChange={(event) => setKeywordInput(event.target.value)}
+                        className="flex-1 rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
+                        placeholder="Ví dụ: fake support"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleAddKeyword()}
+                        disabled={isUpdatingRules}
+                        className="rounded-[16px] bg-[color:var(--primary)] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                      >
+                        Thêm
+                      </button>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {scope?.keywords.length ? (
+                        scope.keywords.map((keyword) => (
+                          <button
+                            key={keyword.id}
+                            type="button"
+                            onClick={() => void handleRemoveKeyword(keyword.id)}
+                            className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-[color:var(--on-surface)]"
+                          >
+                            {keyword.value} ×
+                          </button>
+                        ))
+                      ) : (
+                        <span className="text-sm text-[color:var(--on-surface-variant)]">
+                          Chưa có từ khóa riêng cho group này.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
+                      Domain allow / block
+                    </p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_140px] xl:grid-cols-[minmax(0,1fr)_140px_100px]">
+                      <input
+                        value={domainInput}
+                        onChange={(event) => setDomainInput(event.target.value)}
+                        className="rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
+                        placeholder="Ví dụ: tinyurl.com"
+                      />
+                      <select
+                        value={domainMode}
+                        onChange={(event) =>
+                          setDomainMode(event.target.value as "BLOCK" | "ALLOW")
+                        }
+                        className="rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
+                      >
+                        <option value="BLOCK">Block</option>
+                        <option value="ALLOW">Allow</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => void handleAddDomain()}
+                        disabled={isUpdatingRules}
+                        className="rounded-[16px] bg-[color:var(--primary)] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60 md:col-span-2 xl:col-span-1"
+                      >
+                        Thêm
+                      </button>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {scope?.domains.length ? (
+                        scope.domains.map((domain) => (
+                          <button
+                            key={domain.id}
+                            type="button"
+                            onClick={() => void handleRemoveDomain(domain.id)}
+                            className={`rounded-full px-3 py-2 text-xs font-semibold ${
+                              domain.mode === "ALLOW"
+                                ? "bg-[color:var(--success-soft)] text-[color:var(--success)]"
+                                : "bg-[color:var(--danger-soft)] text-[color:var(--danger)]"
+                            }`}
+                          >
+                            {domain.mode}: {domain.value} ×
+                          </button>
+                        ))
+                      ) : (
+                        <span className="text-sm text-[color:var(--on-surface-variant)]">
+                          Chưa có domain riêng cho group này.
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 const apiBaseUrl = "/api";
@@ -293,11 +294,6 @@ export function ModerationWorkbench() {
       configResponse.scopes[0];
     if (defaultScope) {
       setSelectedScopeKey(defaultScope.scopeKey);
-      setScopeForm({
-        autoBanSpam: defaultScope.autoBanSpam,
-        muteNewMembers: defaultScope.muteNewMembers,
-        muteDurationHours: defaultScope.muteDurationHours,
-      });
       setSimulateForm((current) => ({
         ...current,
         groupTitle:
@@ -369,12 +365,6 @@ export function ModerationWorkbench() {
       return;
     }
 
-    setScopeForm({
-      autoBanSpam: selectedScope.autoBanSpam,
-      muteNewMembers: selectedScope.muteNewMembers,
-      muteDurationHours: selectedScope.muteDurationHours,
-    });
-
     if (selectedScope.scopeType === "GROUP") {
       setSimulateForm((current) => ({
         ...current,
@@ -405,131 +395,27 @@ export function ModerationWorkbench() {
   }
 
   async function handleSaveScope() {
-    if (!token || !selectedScope) {
-      return;
-    }
-
     setIsSavingScope(true);
-    setError(null);
-    setNotice(null);
-
-    try {
-      await fetchJson(`${apiBaseUrl}/moderation/config`, {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          scopeKey: selectedScope.scopeKey,
-          autoBanSpam: scopeForm.autoBanSpam,
-          muteNewMembers: scopeForm.muteNewMembers,
-          muteDurationHours: scopeForm.muteDurationHours,
-        }),
-      });
-      await refreshData();
-      setNotice("Đã lưu cấu hình chống spam.");
-    } catch (saveError) {
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : "Không thể lưu cấu hình chống spam.",
-      );
-    } finally {
-      setIsSavingScope(false);
-    }
+    setNotice("Khối policy cũ đã bị vô hiệu hóa. Hãy dùng Telegram Group Moderation.");
+    setTimeout(() => setIsSavingScope(false), 0);
   }
 
   async function handleAddKeyword() {
-    if (!token || !selectedScope || !keywordInput.trim()) {
-      return;
-    }
-
-    try {
-      await fetchJson(`${apiBaseUrl}/moderation/keywords`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          scopeKey: selectedScope.scopeKey,
-          value: keywordInput.trim(),
-        }),
-      });
-      setKeywordInput("");
-      await refreshData();
-      setNotice("Đã thêm từ khóa.");
-    } catch (keywordError) {
-      setError(
-        keywordError instanceof Error
-          ? keywordError.message
-          : "Không thể thêm từ khóa.",
-      );
-    }
+    setNotice("Hãy thêm từ khóa trong Telegram Group Moderation.");
   }
 
-  async function handleRemoveKeyword(keywordId: string) {
-    if (!token) {
-      return;
-    }
-
-    try {
-      await fetchJson(`${apiBaseUrl}/moderation/keywords/${keywordId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      await refreshData();
-      setNotice("Đã xóa từ khóa.");
-    } catch (removeError) {
-      setError(
-        removeError instanceof Error
-          ? removeError.message
-          : "Không thể xóa từ khóa.",
-      );
-    }
+  async function handleRemoveKeyword(_keywordId?: string) {
+    void _keywordId;
+    setNotice("Hãy xóa từ khóa trong Telegram Group Moderation.");
   }
 
   async function handleAddDomain() {
-    if (!token || !selectedScope || !domainInput.trim()) {
-      return;
-    }
-
-    try {
-      await fetchJson(`${apiBaseUrl}/moderation/domains`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          scopeKey: selectedScope.scopeKey,
-          value: domainInput.trim(),
-          mode: domainMode,
-        }),
-      });
-      setDomainInput("");
-      await refreshData();
-      setNotice("Đã thêm domain.");
-    } catch (domainError) {
-      setError(
-        domainError instanceof Error
-          ? domainError.message
-          : "Không thể thêm domain.",
-      );
-    }
+    setNotice("Hãy thêm domain trong Telegram Group Moderation.");
   }
 
-  async function handleRemoveDomain(domainId: string) {
-    if (!token) {
-      return;
-    }
-
-    try {
-      await fetchJson(`${apiBaseUrl}/moderation/domains/${domainId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      await refreshData();
-      setNotice("Đã xóa domain.");
-    } catch (removeError) {
-      setError(
-        removeError instanceof Error
-          ? removeError.message
-          : "Không thể xóa domain.",
-      );
-    }
+  async function handleRemoveDomain(_domainId?: string) {
+    void _domainId;
+    setNotice("Hãy xóa domain trong Telegram Group Moderation.");
   }
 
   async function handleApplyAction() {
@@ -1067,6 +953,7 @@ export function ModerationWorkbench() {
           </div>
 
           {selectedScope ? (
+            false ? (
             <div className="mt-6 space-y-5">
               <div className="grid gap-4 md:grid-cols-3">
                 <label className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4">
@@ -1159,7 +1046,7 @@ export function ModerationWorkbench() {
                     </button>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    {selectedScope.keywords.map((keyword) => (
+                    {(selectedScope?.keywords ?? []).map((keyword) => (
                       <button
                         key={keyword.id}
                         onClick={() => void handleRemoveKeyword(keyword.id)}
@@ -1196,7 +1083,7 @@ export function ModerationWorkbench() {
                     </button>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    {selectedScope.domains.map((domain) => (
+                    {(selectedScope?.domains ?? []).map((domain) => (
                       <button
                         key={domain.id}
                         onClick={() => void handleRemoveDomain(domain.id)}
@@ -1213,7 +1100,34 @@ export function ModerationWorkbench() {
                 </div>
               </div>
             </div>
+            ) : null
           ) : null}
+
+          <div className="mt-6 rounded-[22px] bg-[color:var(--surface-low)] px-5 py-5">
+            <p className="text-sm font-bold">Khối policy cũ đã được gỡ khỏi màn này</p>
+            <p className="mt-3 text-sm leading-6 text-[color:var(--on-surface-variant)]">
+              Để tránh chồng chéo rule, toàn bộ keyword, domain, antiflood, warning ladder,
+              probation và anti-raid nên chỉnh tập trung trong Telegram Group Moderation.
+            </p>
+            {selectedScope?.scopeType === "GROUP" && selectedScope.telegramGroupId ? (
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Link
+                  href={`/telegram/groups/${selectedScope.telegramGroupId}/moderation`}
+                  className="rounded-[18px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white"
+                >
+                  Mở cấu hình group này
+                </Link>
+                <span className="inline-flex items-center rounded-[18px] bg-white/80 px-4 py-3 text-sm font-semibold text-[color:var(--on-surface)]">
+                  {selectedScope.scopeLabel}
+                </span>
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-[color:var(--on-surface-variant)]">
+                Scope toàn hệ thống không còn là nơi chỉnh rule chính. Hãy mở từng group để cấu
+                hình đúng hành vi moderation.
+              </p>
+            )}
+          </div>
         </section>
 
         <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
