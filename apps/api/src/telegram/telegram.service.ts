@@ -796,6 +796,9 @@ export class TelegramService {
         reason: 'Missing bot token',
         bot: null,
         items: [],
+        existingItems: [],
+        source: 'missing_token',
+        note: 'Missing bot token',
       };
     }
 
@@ -835,7 +838,7 @@ export class TelegramService {
       pushChat(update.my_chat_member?.chat);
     }
 
-    const items = [...discoveredChats.values()]
+    const discoveredItems = [...discoveredChats.values()]
       .map((chat) => ({
         externalId: String(chat.id),
         title:
@@ -850,8 +853,59 @@ export class TelegramService {
       }))
       .sort((left, right) => left.title.localeCompare(right.title));
 
+    let existingItems: Array<{
+      id: string;
+      externalId: string;
+      title: string;
+      username: string | null;
+      type: string;
+      isActive: boolean;
+      botMemberState: string | null;
+      botCanDeleteMessages: boolean;
+      botCanRestrictMembers: boolean;
+      botCanInviteUsers: boolean;
+      botCanManageTopics: boolean;
+      lastSyncedAt: Date | null;
+    }> = [];
+
     if (process.env.DATABASE_URL) {
-      for (const item of items) {
+      existingItems = await this.prisma.telegramGroup.findMany({
+        orderBy: [{ title: 'asc' }],
+        select: {
+          id: true,
+          externalId: true,
+          title: true,
+          username: true,
+          type: true,
+          isActive: true,
+          botMemberState: true,
+          botCanDeleteMessages: true,
+          botCanRestrictMembers: true,
+          botCanInviteUsers: true,
+          botCanManageTopics: true,
+          lastSyncedAt: true,
+        },
+      });
+    }
+
+    const items = [
+      ...existingItems.map((group) => ({
+        externalId: group.externalId,
+        title: group.title,
+        username: group.username
+          ? `@${group.username.replace(/^@/, '')}`
+          : null,
+        type: group.type,
+        isForum: false,
+      })),
+      ...discoveredItems.filter(
+        (item) =>
+          !existingItems.some((group) => group.externalId === item.externalId),
+      ),
+    ].sort((left, right) => left.title.localeCompare(right.title));
+
+    if (process.env.DATABASE_URL) {
+      for (const item of discoveredItems) {
         await this.upsertTelegramGroupRecord({
           externalId: item.externalId,
           title: item.title,
@@ -894,6 +948,8 @@ export class TelegramService {
       message: `Telegram group discovery completed with ${items.length} group(s)`,
       payload: {
         updateCount: Array.isArray(updates.result) ? updates.result.length : 0,
+        discoveredItems,
+        existingItems,
         items,
       },
     });
@@ -913,7 +969,14 @@ export class TelegramService {
           }
         : null,
       items,
+      existingItems,
       updateCount: Array.isArray(updates.result) ? updates.result.length : 0,
+      source: discoveredItems.length
+        ? 'telegram_updates_and_db'
+        : 'db_only_or_empty',
+      note: discoveredItems.length
+        ? 'Groups discovered from Telegram updates and merged with CRM records.'
+        : 'Telegram Bot API does not expose a full group list. When webhook is enabled, getUpdates may be empty; CRM can only show groups already synced from prior updates.',
     };
   }
 

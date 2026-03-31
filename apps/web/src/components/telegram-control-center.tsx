@@ -101,6 +101,12 @@ function rightsSummary(group: TelegramGroupItem) {
   return rights.length ? rights.join(", ") : "none";
 }
 
+function generateWebhookSecret() {
+  const bytes = new Uint8Array(24);
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 export function TelegramControlCenter({
   embedded = false,
 }: {
@@ -492,9 +498,23 @@ export function TelegramControlCenter({
                 </label>
 
                 <label className="block">
-                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                    Webhook secret
-                  </span>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
+                      Webhook secret
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm((current) => ({
+                          ...current,
+                          webhookSecret: generateWebhookSecret(),
+                        }))
+                      }
+                      className="shrink-0 rounded-full bg-[color:var(--surface-low)] px-3 py-2 text-xs font-semibold text-[color:var(--primary)]"
+                    >
+                      Tạo secret
+                    </button>
+                  </div>
                   <input
                     value={form.webhookSecret}
                     onChange={(event) =>
