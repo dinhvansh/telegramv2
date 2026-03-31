@@ -362,6 +362,15 @@ export class TelegramActionsService {
       await this.sendActionAnnouncement(config.botToken, input, result);
     }
 
+    if (
+      result.enforced &&
+      (result.actionVariant === 'kick' ||
+        result.actionVariant === 'ban' ||
+        result.actionVariant === 'tban')
+    ) {
+      await this.markMemberRemovedFromGroup(input);
+    }
+
     await this.persistActionLog(input.spamEventId, result, input);
     return result;
   }
@@ -847,6 +856,23 @@ export class TelegramActionsService {
         payloadActionVariant === result.actionVariant &&
         payloadTargetKey === targetKey
       );
+    });
+  }
+
+  private async markMemberRemovedFromGroup(input: ExecuteDecisionInput) {
+    if (!process.env.DATABASE_URL || !input.userId || !input.groupTitle) {
+      return;
+    }
+
+    await this.prisma.communityMember.updateMany({
+      where: {
+        externalId: String(input.userId),
+        groupTitle: input.groupTitle,
+        leftAt: null,
+      },
+      data: {
+        leftAt: new Date(),
+      },
     });
   }
 

@@ -3462,6 +3462,23 @@ export class TelegramService {
     });
 
     if (input.eventType === 'user_joined') {
+      await this.prisma.communityMember.updateMany({
+        where: {
+          ...(whereClause as object),
+          leftAt: null,
+          ...(latestMember?.id
+            ? {
+                NOT: {
+                  id: latestMember.id,
+                },
+              }
+            : {}),
+        },
+        data: {
+          leftAt: new Date(),
+        },
+      });
+
       if (latestMember && !latestMember.leftAt) {
         await this.prisma.communityMember.update({
           where: { id: latestMember.id },
