@@ -77,6 +77,7 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isResettingWarning, setIsResettingWarning] = useState(false);
 
   useEffect(() => {
     setToken(window.localStorage.getItem(authStorageKey));
@@ -211,6 +212,46 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
       );
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleResetWarning() {
+    if (!token || !selectedMember) {
+      return;
+    }
+
+    setIsResettingWarning(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const response = await fetchJson<MemberDetailResponse>(
+        `${apiBaseUrl}/moderation/members/${selectedMember.id}/reset-warning`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+
+      if (!response.member) {
+        throw new Error("Không reset được cảnh báo.");
+      }
+
+      setSelectedMember(response.member);
+      setMembers((current) =>
+        current.map((member) =>
+          member.id === response.member?.id ? response.member : member,
+        ),
+      );
+      setNotice("Đã reset cảnh báo cho thành viên.");
+    } catch (resetError) {
+      setError(
+        resetError instanceof Error
+          ? resetError.message
+          : "Không thể reset cảnh báo.",
+      );
+    } finally {
+      setIsResettingWarning(false);
     }
   }
 
@@ -397,13 +438,22 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
                 </div>
               ) : null}
 
-              <button
-                onClick={() => void handleSave()}
-                disabled={isSaving}
-                className="w-full rounded-[18px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white disabled:opacity-60"
-              >
-                {isSaving ? "Đang lưu..." : "Lưu owner và ghi chú"}
-              </button>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  onClick={() => void handleSave()}
+                  disabled={isSaving}
+                  className="w-full rounded-[18px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white disabled:opacity-60"
+                >
+                  {isSaving ? "Đang lưu..." : "Lưu owner và ghi chú"}
+                </button>
+                <button
+                  onClick={() => void handleResetWarning()}
+                  disabled={isResettingWarning}
+                  className="w-full rounded-[18px] bg-[color:var(--warning-soft)] px-5 py-3 text-sm font-bold text-[color:var(--warning)] disabled:opacity-60"
+                >
+                  {isResettingWarning ? "Đang reset..." : "Reset cảnh báo"}
+                </button>
+              </div>
             </div>
           ) : (
             <div className="mt-5 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4 text-sm text-[color:var(--on-surface-variant)]">

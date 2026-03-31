@@ -278,6 +278,42 @@ export class ModerationService {
     return this.getMemberDetail(member.id);
   }
 
+  async resetMemberWarning(memberId: string) {
+    if (!process.env.DATABASE_URL) {
+      const fallbackMember = fallbackMembers.find(
+        (member) => member.id === memberId,
+      );
+      if (!fallbackMember) {
+        return { found: false, member: null };
+      }
+
+      fallbackMember.warningCount = 0;
+      fallbackMember.lastWarnedAt = null;
+      return {
+        found: true,
+        member: fallbackMember,
+      };
+    }
+
+    const member = await this.prisma.communityMember.findUnique({
+      where: { id: memberId },
+    });
+
+    if (!member) {
+      return { found: false, member: null };
+    }
+
+    await this.prisma.communityMember.update({
+      where: { id: member.id },
+      data: {
+        warningCount: 0,
+        lastWarnedAt: null,
+      },
+    });
+
+    return this.getMemberDetail(member.id);
+  }
+
   async getConfig() {
     const fallbackConfig = {
       builtInRules: this.getBuiltInRules(),

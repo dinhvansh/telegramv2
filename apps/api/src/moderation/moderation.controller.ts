@@ -88,6 +88,13 @@ export class ModerationController {
     });
   }
 
+  @Post('members/:memberId/reset-warning')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('moderation.review')
+  resetMemberWarning(@Param('memberId') memberId: string) {
+    return this.moderationService.resetMemberWarning(memberId);
+  }
+
   @Get('events')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('moderation.review')
