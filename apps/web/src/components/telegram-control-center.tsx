@@ -408,23 +408,31 @@ export function TelegramControlCenter({
       }
     >
       <div className={embedded ? "space-y-6" : "mx-auto max-w-7xl space-y-6"}>
-        <header className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.08)]">
+        <header
+          className={`rounded-[32px] bg-[color:var(--surface-card)] shadow-[0_8px_32px_rgba(42,52,57,0.08)] ${
+            embedded ? "p-5 sm:p-6" : "p-7"
+          }`}
+        >
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
                 Telegram Control Center
               </p>
-              <h1 className="mt-2 text-3xl font-black tracking-tight">
+              <h1 className={`mt-2 font-black tracking-tight ${embedded ? "text-2xl sm:text-3xl" : "text-3xl"}`}>
                 CRM-first bot onboarding and group sync
               </h1>
-              <p className="mt-3 max-w-3xl text-sm leading-7 text-[color:var(--on-surface-variant)]">
+              <p
+                className={`mt-3 max-w-3xl text-sm leading-7 text-[color:var(--on-surface-variant)] ${
+                  embedded ? "hidden sm:block" : ""
+                }`}
+              >
                 Configure the bot from CRM, verify it against Telegram, register
                 webhook, then discover the groups where the bot is currently
                 active.
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className={`flex flex-wrap items-center gap-3 ${embedded ? "hidden sm:flex" : ""}`}>
               <div className="rounded-full bg-[color:var(--surface-low)] px-4 py-3 text-sm text-[color:var(--on-surface-variant)]">
                 {user.name} · {user.roles.join(", ")}
               </div>

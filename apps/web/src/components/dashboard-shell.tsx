@@ -183,14 +183,33 @@ export function DashboardShell({
                 API {status === "connected" ? "đã kết nối" : "fallback"}
               </div>
               {user ? (
-                <div className="max-w-[220px] truncate rounded-full bg-[color:var(--surface-low)] px-3 py-2 text-xs text-[color:var(--on-surface-variant)]">
+                <div className="hidden max-w-[220px] truncate rounded-full bg-[color:var(--surface-low)] px-3 py-2 text-xs text-[color:var(--on-surface-variant)] sm:block">
                   {user.name} · {user.roles.join(", ")}
                 </div>
               ) : null}
+              <div className="grid grid-cols-2 gap-2 sm:hidden">
+                {onLogout ? (
+                  <button
+                    onClick={onLogout}
+                    className="inline-flex items-center justify-center gap-2 rounded-full bg-[color:var(--surface-low)] px-3 py-2 text-xs font-bold text-[color:var(--on-surface)]"
+                  >
+                    <span className="text-sm leading-none">↩</span>
+                    <span>Thoát</span>
+                  </button>
+                ) : null}
+                <button
+                  onClick={onCreateCampaign}
+                  disabled={!canCreateCampaign || isCreatingCampaign}
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-3 py-2 text-xs font-bold text-white shadow-[0_16px_40px_rgba(0,83,219,0.24)] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <span className="text-sm leading-none">+</span>
+                  <span>{isCreatingCampaign ? "Đang tạo" : "Mới"}</span>
+                </button>
+              </div>
               {onLogout ? (
                 <button
                   onClick={onLogout}
-                  className="w-full rounded-full bg-[color:var(--surface-low)] px-3 py-2 text-xs font-bold text-[color:var(--on-surface)] sm:w-auto"
+                  className="hidden w-full rounded-full bg-[color:var(--surface-low)] px-3 py-2 text-xs font-bold text-[color:var(--on-surface)] sm:inline-flex sm:w-auto"
                 >
                   Đăng xuất
                 </button>
@@ -198,7 +217,7 @@ export function DashboardShell({
               <button
                 onClick={onCreateCampaign}
                 disabled={!canCreateCampaign || isCreatingCampaign}
-                className="w-full rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-4 py-2 text-xs font-bold text-white shadow-[0_16px_40px_rgba(0,83,219,0.24)] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                className="hidden w-full rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-4 py-2 text-xs font-bold text-white shadow-[0_16px_40px_rgba(0,83,219,0.24)] disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex sm:w-auto"
               >
                 {isCreatingCampaign ? "Đang xử lý..." : "Tạo campaign mới"}
               </button>
@@ -207,19 +226,21 @@ export function DashboardShell({
         </header>
 
         <div className="px-5 pt-2 lg:hidden">
-          <nav className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <nav className="flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {navigation.map((item) => (
               <Link
                 key={item.key}
                 href={item.href}
-                className={`shrink-0 rounded-full px-4 py-3 text-sm font-semibold transition-all ${
+                className={`shrink-0 rounded-[18px] px-3 py-2 text-[11px] font-semibold transition-all ${
                   page === item.key
                     ? "bg-[color:var(--primary)] text-white shadow-[0_12px_28px_rgba(0,83,219,0.24)]"
                     : "bg-[color:var(--surface-card)] text-[color:var(--on-surface)]"
                 }`}
               >
-                <span className="mr-2 text-xs">{item.icon}</span>
-                {item.label}
+                <span className="flex flex-col items-center gap-1 leading-none">
+                  <span className="text-sm">{item.icon}</span>
+                  <span className="whitespace-nowrap">{item.label}</span>
+                </span>
               </Link>
             ))}
           </nav>
