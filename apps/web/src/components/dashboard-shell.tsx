@@ -172,9 +172,9 @@ export function DashboardShell({
               </p>
               <h2 className="mt-1 text-xl font-black tracking-tight">{pageMeta.description}</h2>
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
               <div
-                className={`self-start rounded-full px-4 py-3 text-sm font-semibold sm:self-auto ${
+                className={`self-start rounded-full px-3 py-2 text-xs font-semibold sm:self-auto ${
                   status === "connected"
                     ? "bg-[color:var(--success-soft)] text-[color:var(--success)]"
                     : "bg-[color:var(--warning-soft)] text-[color:var(--warning)]"
@@ -183,14 +183,14 @@ export function DashboardShell({
                 API {status === "connected" ? "đã kết nối" : "fallback"}
               </div>
               {user ? (
-                <div className="rounded-full bg-[color:var(--surface-low)] px-4 py-3 text-sm text-[color:var(--on-surface-variant)]">
+                <div className="max-w-[220px] truncate rounded-full bg-[color:var(--surface-low)] px-3 py-2 text-xs text-[color:var(--on-surface-variant)]">
                   {user.name} · {user.roles.join(", ")}
                 </div>
               ) : null}
               {onLogout ? (
                 <button
                   onClick={onLogout}
-                  className="w-full rounded-full bg-[color:var(--surface-low)] px-4 py-3 text-sm font-bold text-[color:var(--on-surface)] sm:w-auto"
+                  className="w-full rounded-full bg-[color:var(--surface-low)] px-3 py-2 text-xs font-bold text-[color:var(--on-surface)] sm:w-auto"
                 >
                   Đăng xuất
                 </button>
@@ -198,7 +198,7 @@ export function DashboardShell({
               <button
                 onClick={onCreateCampaign}
                 disabled={!canCreateCampaign || isCreatingCampaign}
-                className="w-full rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white shadow-[0_16px_40px_rgba(0,83,219,0.24)] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                className="w-full rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-4 py-2 text-xs font-bold text-white shadow-[0_16px_40px_rgba(0,83,219,0.24)] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
                 {isCreatingCampaign ? "Đang xử lý..." : "Tạo campaign mới"}
               </button>
