@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
@@ -13,10 +13,19 @@ type AutopostTarget = {
   status: string;
 };
 
+type TelegramGroupOption = {
+  id: string;
+  title: string;
+  externalId: string;
+  username: string | null;
+  type: string;
+};
+
 type AutopostSchedule = {
   id: string;
   title: string;
   message: string;
+  mediaUrl: string | null;
   frequency: string;
   scheduledFor: string | null;
   status: string;
@@ -49,6 +58,7 @@ type AutopostLog = {
 
 type AutopostSnapshot = {
   targets: AutopostTarget[];
+  telegramGroups: TelegramGroupOption[];
   schedules: AutopostSchedule[];
   logs: AutopostLog[];
   stats: {
@@ -110,22 +120,18 @@ function getScheduleTone(status: string) {
 export function AutopostWorkbench() {
   const [token, setToken] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<AutopostSnapshot | null>(null);
-  const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>([]);
+  const [selectedTelegramGroupIds, setSelectedTelegramGroupIds] = useState<string[]>([]);
+  const [selectAllTelegramGroups, setSelectAllTelegramGroups] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isCreatingTarget, setIsCreatingTarget] = useState(false);
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
   const [isDispatchingAll, setIsDispatchingAll] = useState(false);
   const [dispatchingScheduleId, setDispatchingScheduleId] = useState<string | null>(null);
-  const [targetForm, setTargetForm] = useState({
-    platform: "TELEGRAM" as "TELEGRAM" | "DISCORD" | "TWITTER",
-    externalId: "-100221001",
-    displayName: "Nexus Global",
-  });
   const [scheduleForm, setScheduleForm] = useState({
     title: "Bản tin tự động",
     message: "Nội dung autopost được tạo từ CRM.",
+    mediaUrl: "",
     frequency: "IMMEDIATE",
     scheduledFor: "",
     saveAsDraft: false,
@@ -149,8 +155,8 @@ export function AutopostWorkbench() {
         }
 
         setSnapshot(data);
-        setSelectedTargetIds((current) =>
-          current.length ? current : data.targets.slice(0, 1).map((target) => target.id),
+        setSelectedTelegramGroupIds((current) =>
+          current.length ? current : data.telegramGroups.slice(0, 1).map((group) => group.id),
         );
         setError(null);
       } catch (loadError) {
@@ -181,6 +187,16 @@ export function AutopostWorkbench() {
     };
   }, [token]);
 
+  const selectedGroupCount = useMemo(() => {
+    if (!snapshot) {
+      return 0;
+    }
+
+    return selectAllTelegramGroups
+      ? snapshot.telegramGroups.length
+      : selectedTelegramGroupIds.length;
+  }, [selectAllTelegramGroups, selectedTelegramGroupIds.length, snapshot]);
+
   async function refreshSnapshot() {
     if (!token) {
       return;
@@ -192,34 +208,12 @@ export function AutopostWorkbench() {
     setSnapshot(data);
   }
 
-  async function handleCreateTarget(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!token) {
-      return;
-    }
-
-    setIsCreatingTarget(true);
-    setError(null);
-    setNotice(null);
-
-    try {
-      const next = await fetchJson<AutopostSnapshot>(`${apiBaseUrl}/autopost/targets`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify(targetForm),
-      });
-      setSnapshot(next);
-      setSelectedTargetIds((current) =>
-        current.length ? current : next.targets.slice(-1).map((target) => target.id),
-      );
-      setNotice(`Đã đăng ký target ${targetForm.displayName}.`);
-    } catch (targetError) {
-      setError(
-        targetError instanceof Error ? targetError.message : "Không thể tạo target mới.",
-      );
-    } finally {
-      setIsCreatingTarget(false);
-    }
+  function toggleTelegramGroup(groupId: string, checked: boolean) {
+    setSelectedTelegramGroupIds((current) =>
+      checked
+        ? [...new Set([...current, groupId])]
+        : current.filter((item) => item !== groupId),
+    );
   }
 
   async function handleCreateSchedule(event: FormEvent<HTMLFormElement>) {
@@ -242,7 +236,9 @@ export function AutopostWorkbench() {
         body: JSON.stringify({
           ...scheduleForm,
           scheduledFor: scheduleForm.scheduledFor || null,
-          targetIds: selectedTargetIds,
+          mediaUrl: scheduleForm.mediaUrl || null,
+          telegramGroupIds: selectAllTelegramGroups ? [] : selectedTelegramGroupIds,
+          selectAllTelegramGroups,
         }),
       });
       setSnapshot(result.snapshot);
@@ -368,78 +364,73 @@ export function AutopostWorkbench() {
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-            Target autopost
+            Group Telegram
           </p>
           <h3 className="mt-2 text-2xl font-black tracking-tight">
-            Khai báo channel/group để worker có nơi gửi bài
+            Lấy trực tiếp từ danh sách group đã sync
           </h3>
+          <p className="mt-3 text-sm leading-6 text-[color:var(--on-surface-variant)]">
+            Không cần khai báo channel thủ công nữa. Worker sẽ tự tạo target Telegram từ group
+            anh chọn khi lên lịch.
+          </p>
 
-          <form onSubmit={handleCreateTarget} className="mt-6 space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <select
-                value={targetForm.platform}
-                onChange={(event) =>
-                  setTargetForm((current) => ({
-                    ...current,
-                    platform: event.target.value as typeof current.platform,
-                  }))
-                }
-                className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
-              >
-                <option value="TELEGRAM">Telegram</option>
-                <option value="DISCORD">Discord</option>
-                <option value="TWITTER">Twitter</option>
-              </select>
-              <input
-                value={targetForm.externalId}
-                onChange={(event) =>
-                  setTargetForm((current) => ({ ...current, externalId: event.target.value }))
-                }
-                className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
-                placeholder="Chat ID / Channel ID"
-              />
-              <input
-                value={targetForm.displayName}
-                onChange={(event) =>
-                  setTargetForm((current) => ({ ...current, displayName: event.target.value }))
-                }
-                className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
-                placeholder="Tên hiển thị"
-              />
-            </div>
-
+          <div className="mt-6 flex flex-wrap gap-3">
             <button
-              type="submit"
-              disabled={isCreatingTarget}
-              className="rounded-[18px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white disabled:opacity-60"
+              type="button"
+              onClick={() => {
+                setSelectAllTelegramGroups(true);
+                setSelectedTelegramGroupIds([]);
+              }}
+              className={`rounded-full px-4 py-2 text-sm font-semibold ${
+                selectAllTelegramGroups
+                  ? "bg-[color:var(--primary)] text-white"
+                  : "bg-[color:var(--surface-low)]"
+              }`}
             >
-              {isCreatingTarget ? "Đang lưu target..." : "Thêm target"}
+              Chọn tất cả
             </button>
-          </form>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectAllTelegramGroups(false);
+                setSelectedTelegramGroupIds([]);
+              }}
+              className="rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold"
+            >
+              Bỏ chọn
+            </button>
+            <span className="inline-flex items-center rounded-full bg-[color:var(--primary-soft)] px-4 py-2 text-sm font-semibold text-[color:var(--primary)]">
+              Đã chọn {selectedGroupCount} group
+            </span>
+          </div>
 
-          <div className="mt-6 space-y-3">
-            {snapshot?.targets.map((target) => (
+          <div className="mt-5 space-y-3">
+            {snapshot?.telegramGroups.length ? null : (
+              <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm text-[color:var(--on-surface-variant)]">
+                Chưa có group nào được sync. Hãy vào màn Telegram để verify bot và đồng bộ
+                group trước.
+              </div>
+            )}
+
+            {snapshot?.telegramGroups.map((group) => (
               <label
-                key={target.id}
+                key={group.id}
                 className="flex items-start gap-3 rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4"
               >
                 <input
                   type="checkbox"
-                  checked={selectedTargetIds.includes(target.id)}
-                  onChange={(event) =>
-                    setSelectedTargetIds((current) =>
-                      event.target.checked
-                        ? [...new Set([...current, target.id])]
-                        : current.filter((item) => item !== target.id),
-                    )
+                  disabled={selectAllTelegramGroups}
+                  checked={
+                    selectAllTelegramGroups || selectedTelegramGroupIds.includes(group.id)
                   }
+                  onChange={(event) => toggleTelegramGroup(group.id, event.target.checked)}
                 />
                 <div className="min-w-0">
-                  <p className="text-sm font-bold">
-                    {target.displayName} · {target.platform}
-                  </p>
+                  <p className="text-sm font-bold">{group.title}</p>
                   <p className="mt-1 text-sm text-[color:var(--on-surface-variant)]">
-                    {target.externalId} · {target.status}
+                    {group.externalId}
+                    {group.username ? ` · ${group.username}` : ""}
+                    {group.type ? ` · ${group.type}` : ""}
                   </p>
                 </div>
               </label>
@@ -454,7 +445,7 @@ export function AutopostWorkbench() {
                 Lịch autopost
               </p>
               <h3 className="mt-2 text-2xl font-black tracking-tight">
-                Tạo draft, lên lịch và dispatch ngay từ CRM
+                Lên lịch post text hoặc ảnh cho nhiều group cùng lúc
               </h3>
             </div>
             <button
@@ -495,6 +486,19 @@ export function AutopostWorkbench() {
               placeholder="Nội dung gửi đi"
             />
 
+            <input
+              value={scheduleForm.mediaUrl}
+              onChange={(event) =>
+                setScheduleForm((current) => ({ ...current, mediaUrl: event.target.value }))
+              }
+              className="w-full rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
+              placeholder="URL hình ảnh (tùy chọn)"
+            />
+            <p className="text-sm text-[color:var(--on-surface-variant)]">
+              Nếu có URL hình, Telegram sẽ gửi ảnh bằng `sendPhoto`. Tiêu đề và nội dung sẽ đi
+              vào caption.
+            </p>
+
             <div className="grid gap-4 md:grid-cols-[1fr_auto]">
               <input
                 type="datetime-local"
@@ -525,7 +529,10 @@ export function AutopostWorkbench() {
             <div className="flex flex-wrap gap-3">
               <button
                 type="submit"
-                disabled={isCreatingSchedule || selectedTargetIds.length === 0}
+                disabled={
+                  isCreatingSchedule ||
+                  (!selectAllTelegramGroups && selectedTelegramGroupIds.length === 0)
+                }
                 className="rounded-[18px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white disabled:opacity-60"
               >
                 {isCreatingSchedule ? "Đang tạo lịch..." : "Tạo lịch"}
@@ -551,14 +558,21 @@ export function AutopostWorkbench() {
                   <div className="min-w-0">
                     <p className="text-sm font-bold">{schedule.title}</p>
                     <p className="mt-1 text-sm text-[color:var(--on-surface-variant)]">
-                      {schedule.target.displayName} · {schedule.frequency} · {formatDateTime(schedule.scheduledFor)}
+                      {schedule.target.displayName} · {schedule.frequency} ·{" "}
+                      {formatDateTime(schedule.scheduledFor)}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface)]">
                       {schedule.message}
                     </p>
+                    {schedule.mediaUrl ? (
+                      <p className="mt-2 text-xs text-[color:var(--on-surface-variant)]">
+                        Ảnh: {schedule.mediaUrl}
+                      </p>
+                    ) : null}
                     {schedule.latestLog ? (
                       <p className="mt-2 text-xs text-[color:var(--on-surface-variant)]">
-                        Log mới nhất: {schedule.latestLog.status} · {schedule.latestLog.detail ?? "Không có chi tiết"}
+                        Log mới nhất: {schedule.latestLog.status} ·{" "}
+                        {schedule.latestLog.detail ?? "Không có chi tiết"}
                       </p>
                     ) : null}
                   </div>
@@ -594,41 +608,53 @@ export function AutopostWorkbench() {
         </h3>
 
         <div className="mt-6 overflow-x-auto rounded-[24px] bg-[color:var(--surface-low)]">
-          <table className="min-w-[760px] w-full border-collapse text-left">
+          <table className="min-w-[860px] w-full border-collapse text-left">
             <thead>
               <tr className="text-xs uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
                 <th className="px-5 py-4 font-semibold">Lịch</th>
+                <th className="px-5 py-4 font-semibold">Loại bài</th>
                 <th className="px-5 py-4 font-semibold">Target</th>
                 <th className="px-5 py-4 font-semibold">Kết quả</th>
                 <th className="px-5 py-4 font-semibold">Thời gian</th>
               </tr>
             </thead>
             <tbody>
-              {snapshot?.logs.map((log, index) => (
-                <tr key={log.id} className={index % 2 === 1 ? "bg-white/70" : ""}>
-                  <td className="px-5 py-4 align-top">
-                    <p className="text-sm font-bold">{log.schedule.title}</p>
-                    <p className="mt-1 text-xs text-[color:var(--on-surface-variant)]">
-                      {log.schedule.platform}
-                    </p>
-                  </td>
-                  <td className="px-5 py-4 align-top text-sm text-[color:var(--on-surface-variant)]">
-                    <p>{log.schedule.targetName}</p>
-                    <p className="mt-1">{log.externalPostId ?? "Chưa có post id"}</p>
-                  </td>
-                  <td className="px-5 py-4 align-top">
-                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${getScheduleTone(log.status)}`}>
-                      {log.status}
-                    </span>
-                    <p className="mt-2 text-sm text-[color:var(--on-surface-variant)]">
-                      {log.detail ?? "Không có chi tiết"}
-                    </p>
-                  </td>
-                  <td className="px-5 py-4 align-top text-sm text-[color:var(--on-surface-variant)]">
-                    {formatDateTime(log.createdAt)}
-                  </td>
-                </tr>
-              ))}
+              {snapshot?.logs.map((log, index) => {
+                const schedule = snapshot.schedules.find((item) => item.id === log.schedule.id);
+
+                return (
+                  <tr key={log.id} className={index % 2 === 1 ? "bg-white/70" : ""}>
+                    <td className="px-5 py-4 align-top">
+                      <p className="text-sm font-bold">{log.schedule.title}</p>
+                      <p className="mt-1 text-xs text-[color:var(--on-surface-variant)]">
+                        {log.schedule.platform}
+                      </p>
+                    </td>
+                    <td className="px-5 py-4 align-top text-sm text-[color:var(--on-surface-variant)]">
+                      {schedule?.mediaUrl ? "Ảnh + caption" : "Text"}
+                    </td>
+                    <td className="px-5 py-4 align-top text-sm text-[color:var(--on-surface-variant)]">
+                      <p>{log.schedule.targetName}</p>
+                      <p className="mt-1">{log.externalPostId ?? "Chưa có post id"}</p>
+                    </td>
+                    <td className="px-5 py-4 align-top">
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${getScheduleTone(
+                          log.status,
+                        )}`}
+                      >
+                        {log.status}
+                      </span>
+                      <p className="mt-2 text-sm text-[color:var(--on-surface-variant)]">
+                        {log.detail ?? "Không có chi tiết"}
+                      </p>
+                    </td>
+                    <td className="px-5 py-4 align-top text-sm text-[color:var(--on-surface-variant)]">
+                      {formatDateTime(log.createdAt)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

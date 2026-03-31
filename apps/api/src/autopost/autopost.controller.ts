@@ -15,7 +15,10 @@ type CreateScheduleBody = {
   message?: string;
   frequency?: string;
   scheduledFor?: string;
+  mediaUrl?: string;
   targetIds?: string[];
+  telegramGroupIds?: string[];
+  selectAllTelegramGroups?: boolean;
   saveAsDraft?: boolean;
 };
 
@@ -46,7 +49,12 @@ export class AutopostController {
       message: body.message || '',
       frequency: body.frequency || 'IMMEDIATE',
       scheduledFor: body.scheduledFor || null,
+      mediaUrl: body.mediaUrl || null,
       targetIds: Array.isArray(body.targetIds) ? body.targetIds : [],
+      telegramGroupIds: Array.isArray(body.telegramGroupIds)
+        ? body.telegramGroupIds
+        : [],
+      selectAllTelegramGroups: Boolean(body.selectAllTelegramGroups),
       saveAsDraft: Boolean(body.saveAsDraft),
     });
   }

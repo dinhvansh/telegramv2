@@ -20,7 +20,10 @@ type CreateScheduleInput = {
   message: string;
   frequency: string;
   scheduledFor?: string | null;
+  mediaUrl?: string | null;
   targetIds: string[];
+  telegramGroupIds?: string[];
+  selectAllTelegramGroups?: boolean;
   saveAsDraft?: boolean;
 };
 
@@ -35,6 +38,7 @@ export class AutopostService {
     if (!process.env.DATABASE_URL) {
       return {
         targets: [],
+        telegramGroups: [],
         schedules: [],
         logs: [],
         stats: {
@@ -46,9 +50,13 @@ export class AutopostService {
       };
     }
 
-    const [targets, schedules, logs] = (await Promise.all([
+    const [targets, groups, schedules, logs] = (await Promise.all([
       this.prisma.autopostTarget.findMany({
         orderBy: [{ platform: 'asc' }, { displayName: 'asc' }],
+      }),
+      this.prisma.telegramGroup.findMany({
+        where: { isActive: true },
+        orderBy: [{ title: 'asc' }],
       }),
       this.prisma.autopostSchedule.findMany({
         include: {
@@ -71,7 +79,7 @@ export class AutopostService {
         orderBy: { createdAt: 'desc' },
         take: 20,
       }),
-    ])) as [any[], any[], any[]];
+    ])) as [any[], any[], any[], any[]];
 
     return {
       targets: targets.map((target: any) => ({
@@ -81,10 +89,20 @@ export class AutopostService {
         displayName: target.displayName,
         status: target.status,
       })),
+      telegramGroups: groups.map((group: any) => ({
+        id: group.id,
+        title: group.title,
+        externalId: group.externalId,
+        username: group.username
+          ? `@${String(group.username).replace(/^@/, '')}`
+          : null,
+        type: group.type,
+      })),
       schedules: schedules.map((schedule: any) => ({
         id: schedule.id,
         title: schedule.title,
         message: schedule.message,
+        mediaUrl: schedule.mediaUrl,
         frequency: schedule.frequency,
         scheduledFor: schedule.scheduledFor?.toISOString() || null,
         status: schedule.status,
@@ -188,11 +206,23 @@ export class AutopostService {
 
     const title = String(input.title || '').trim();
     const message = String(input.message || '').trim();
+    const mediaUrl = String(input.mediaUrl || '').trim() || null;
     const targetIds = Array.isArray(input.targetIds)
       ? input.targetIds.filter(Boolean)
       : [];
+    const telegramGroupIds = Array.isArray(input.telegramGroupIds)
+      ? input.telegramGroupIds.filter(Boolean)
+      : [];
 
-    if (!title || !message || !targetIds.length) {
+    const resolvedTargetIds = process.env.DATABASE_URL
+      ? await this.resolveTelegramTargetIds({
+          targetIds,
+          telegramGroupIds,
+          selectAllTelegramGroups: Boolean(input.selectAllTelegramGroups),
+        })
+      : targetIds;
+
+    if ((!title && !message) || !resolvedTargetIds.length) {
       return {
         created: 0,
         items: [],
@@ -208,11 +238,12 @@ export class AutopostService {
       : AutopostScheduleStatus.SCHEDULED;
 
     const createdItems = [];
-    for (const targetId of targetIds) {
+    for (const targetId of resolvedTargetIds) {
       const item = await this.prisma.autopostSchedule.create({
         data: {
           title,
           message,
+          mediaUrl,
           frequency:
             String(input.frequency || 'IMMEDIATE').trim() || 'IMMEDIATE',
           scheduledFor,
@@ -232,7 +263,10 @@ export class AutopostService {
       message: `Autopost ${input.saveAsDraft ? 'draft' : 'schedule'} created for ${createdItems.length} target(s)`,
       payload: {
         title,
-        targetIds,
+        targetIds: resolvedTargetIds,
+        telegramGroupIds,
+        selectAllTelegramGroups: Boolean(input.selectAllTelegramGroups),
+        mediaUrl,
         scheduledFor: scheduledFor?.toISOString() || null,
       },
     });
@@ -300,6 +334,7 @@ export class AutopostService {
     id: string;
     title: string;
     message: string;
+    mediaUrl?: string | null;
     target: {
       id: string;
       platform: AutopostTargetPlatform;
@@ -323,14 +358,28 @@ export class AutopostService {
         detail = 'Missing Telegram bot token.';
         externalPostId = null;
       } else {
+        const method = schedule.mediaUrl ? 'sendPhoto' : 'sendMessage';
         const response = await fetch(
-          `https://api.telegram.org/bot${botToken}/sendMessage`,
+          `https://api.telegram.org/bot${botToken}/${method}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: schedule.target.externalId,
-              text: `${schedule.title}\n\n${schedule.message}`,
+              ...(schedule.mediaUrl
+                ? {
+                    photo: schedule.mediaUrl,
+                    caption: this.formatTelegramPost(
+                      schedule.title,
+                      schedule.message,
+                    ),
+                  }
+                : {
+                    text: this.formatTelegramPost(
+                      schedule.title,
+                      schedule.message,
+                    ),
+                  }),
             }),
           },
         );
@@ -341,10 +390,12 @@ export class AutopostService {
         };
         if (!body.ok) {
           logStatus = AutopostDeliveryStatus.FAILED;
-          detail = body.description || 'Telegram sendMessage failed.';
+          detail = body.description || `Telegram ${method} failed.`;
           externalPostId = null;
         } else {
-          detail = 'Telegram message sent.';
+          detail = schedule.mediaUrl
+            ? 'Telegram photo post sent.'
+            : 'Telegram message sent.';
           externalPostId = body.result?.message_id
             ? String(body.result.message_id)
             : externalPostId;
@@ -400,6 +451,58 @@ export class AutopostService {
     });
 
     return setting?.value ? decryptSecretValue(setting.value) : envToken;
+  }
+
+  private async resolveTelegramTargetIds(input: {
+    targetIds: string[];
+    telegramGroupIds: string[];
+    selectAllTelegramGroups: boolean;
+  }) {
+    const directTargetIds = input.targetIds.filter(Boolean);
+    const groups = await this.prisma.telegramGroup.findMany({
+      where: input.selectAllTelegramGroups
+        ? { isActive: true }
+        : {
+            id: { in: input.telegramGroupIds.filter(Boolean) },
+            isActive: true,
+          },
+      orderBy: { title: 'asc' },
+    });
+
+    const syncedTargets = [];
+    for (const group of groups) {
+      const target = await this.prisma.autopostTarget.upsert({
+        where: {
+          platform_externalId: {
+            platform: AutopostTargetPlatform.TELEGRAM,
+            externalId: group.externalId,
+          },
+        },
+        update: {
+          displayName: group.title,
+          status: 'CONNECTED',
+        },
+        create: {
+          platform: AutopostTargetPlatform.TELEGRAM,
+          externalId: group.externalId,
+          displayName: group.title,
+          status: 'CONNECTED',
+        },
+      });
+      syncedTargets.push(target.id);
+    }
+
+    return [...new Set([...directTargetIds, ...syncedTargets])];
+  }
+
+  private formatTelegramPost(title: string, message: string) {
+    const normalizedTitle = String(title || '').trim();
+    const normalizedMessage = String(message || '').trim();
+    if (normalizedTitle && normalizedMessage) {
+      return `${normalizedTitle}\n\n${normalizedMessage}`;
+    }
+
+    return normalizedTitle || normalizedMessage;
   }
 
   private toPlatform(value: string) {
