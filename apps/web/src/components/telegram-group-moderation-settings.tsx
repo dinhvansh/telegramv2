@@ -59,6 +59,13 @@ type GroupItem = {
   id: string;
   title: string;
   externalId: string;
+  botMemberState?: string | null;
+  botRights?: {
+    canDeleteMessages: boolean;
+    canRestrictMembers: boolean;
+    canInviteUsers: boolean;
+    canManageTopics: boolean;
+  };
 };
 
 type ModerationScope = {
@@ -89,6 +96,21 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   }
 
   return (await response.json()) as T;
+}
+
+function describeBotRights(group: GroupItem | null) {
+  if (!group?.botRights) {
+    return "Chưa có dữ liệu quyền bot.";
+  }
+
+  const rights = [
+    group.botRights.canDeleteMessages ? "Xóa tin nhắn" : null,
+    group.botRights.canRestrictMembers ? "Khóa chat" : null,
+    group.botRights.canInviteUsers ? "Tạo link mời" : null,
+    group.botRights.canManageTopics ? "Quản lý chủ đề" : null,
+  ].filter(Boolean);
+
+  return rights.length ? rights.join(" · ") : "Bot chưa có quyền quản trị nào.";
 }
 
 export function TelegramGroupModerationSettings({
@@ -403,6 +425,12 @@ export function TelegramGroupModerationSettings({
               <p className="mt-2 text-sm text-[color:var(--on-surface-variant)]">
                 Chat ID: {group?.externalId ?? "n/a"}
               </p>
+              <p className="mt-2 text-sm text-[color:var(--on-surface-variant)]">
+                Tr?ng th?i bot: {group?.botMemberState ?? "ch?a r?"}
+              </p>
+              <p className="mt-2 text-sm text-[color:var(--on-surface-variant)]">
+                Quy?n bot: {describeBotRights(group)}
+              </p>
             </div>
             <Link
               href="/telegram"
@@ -598,11 +626,14 @@ export function TelegramGroupModerationSettings({
               </div>
 
               <div className="rounded-[24px] bg-[color:var(--surface-low)] p-5">
-                <p className="text-sm font-bold">Antiflood</p>
+                <p className="text-sm font-bold">Ch?ng spam li?n t?c</p>
+                <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">
+                  D?ng khi m?t user g?i qu? nhi?u tin nh?n trong m?t kho?ng th?i gian ng?n.
+                </p>
                 <div className="mt-4 grid gap-4">
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      Limit
+                      S? tin nh?n t?i ?a
                     </span>
                     <input
                       type="number"
@@ -623,7 +654,7 @@ export function TelegramGroupModerationSettings({
                   </label>
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      Window seconds
+                      C?a s? th?i gian (gi?y)
                     </span>
                     <input
                       type="number"
@@ -695,7 +726,10 @@ export function TelegramGroupModerationSettings({
               </div>
 
               <div className="rounded-[24px] bg-[color:var(--surface-low)] p-5">
-                <p className="text-sm font-bold">Probation / Anti-raid</p>
+                <p className="text-sm font-bold">User m?i / ch?ng v?o nh?m ? ?t</p>
+                <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">
+                  Probation d?ng ?? si?t user m?i trong th?i gian ??u. Anti-raid d?ng ?? ch?n l?n s?ng nhi?u nick m?i v?o nh?m li?n t?c.
+                </p>
                 <div className="mt-4 grid gap-4">
                   <label className="flex items-center justify-between gap-4 rounded-[16px] bg-white px-4 py-3 text-sm font-semibold">
                     <span>Bật probation</span>

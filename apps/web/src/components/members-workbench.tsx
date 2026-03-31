@@ -381,6 +381,7 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
       ],
       ...filteredMembers.map((member) => [
         member.displayName,
+        member.externalId,
         member.username ? `@${member.username}` : member.externalId,
         member.campaignLabel,
         member.groupTitle,
@@ -519,6 +520,7 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
               <thead>
                 <tr className="text-xs uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
                   <th className="px-5 py-4 font-semibold">User</th>
+                  <th className="px-5 py-4 font-semibold">ID s???</th>
                   <th className="px-5 py-4 font-semibold">Campaign</th>
                   <th className="px-5 py-4 font-semibold">Group</th>
                   <th className="px-5 py-4 font-semibold">Ngày vào</th>
@@ -542,6 +544,9 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
                       <p className="mt-1 text-sm text-[color:var(--on-surface-variant)]">
                         @{member.username ?? member.externalId}
                       </p>
+                    </td>
+                    <td className="px-5 py-4 align-top text-sm font-mono text-[color:var(--primary)]">
+                      {member.externalId}
                     </td>
                     <td className="px-5 py-4 align-top text-sm">{member.campaignLabel}</td>
                     <td className="px-5 py-4 align-top text-sm text-[color:var(--on-surface-variant)]">
@@ -577,7 +582,7 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
                 {!isLoading && !filteredMembers.length ? (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={9}
                       className="px-5 py-10 text-center text-sm text-[color:var(--on-surface-variant)]"
                     >
                       Không có thành viên nào theo filter hiện tại.
@@ -626,6 +631,9 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
                 <p className="text-lg font-black">{selectedMember.displayName}</p>
                 <p className="mt-1 text-sm text-[color:var(--on-surface-variant)]">
                   @{selectedMember.username ?? selectedMember.externalId}
+                </p>
+                <p className="mt-1 text-sm">
+                  <span className="font-semibold">ID s???:</span> {selectedMember.externalId}
                 </p>
                 <p className="mt-3 text-sm">
                   <span className="font-semibold">Campaign:</span> {selectedMember.campaignLabel}

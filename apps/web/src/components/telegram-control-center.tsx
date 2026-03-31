@@ -807,7 +807,7 @@ export function TelegramControlCenter({
                           href={`/telegram/groups/${group.id}/moderation`}
                           className="inline-flex rounded-full bg-[color:var(--surface-card)] px-4 py-2 font-semibold text-[color:var(--primary)] shadow-[0_4px_14px_rgba(42,52,57,0.08)]"
                         >
-                          M? c?u h?nh
+                          Mở cấu hình
                         </Link>
                         {!group.isActive ? (
                           <button
@@ -817,8 +817,8 @@ export function TelegramControlCenter({
                             className="inline-flex rounded-full bg-[color:var(--danger-soft)] px-4 py-2 font-semibold text-[color:var(--danger)] disabled:opacity-60"
                           >
                             {isActionRunning === `delete-group-${group.id}`
-                              ? "?ang x?a..."
-                              : "X?a"}
+                              ? "Đang xóa..."
+                              : "Xóa"}
                           </button>
                         ) : null}
                       </div>

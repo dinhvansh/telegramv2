@@ -160,8 +160,6 @@ export function AutopostWorkbench() {
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
   const [isUpdatingSchedule, setIsUpdatingSchedule] = useState(false);
   const [isSendingNow, setIsSendingNow] = useState(false);
-  const [isDispatchingAll, setIsDispatchingAll] = useState(false);
-  const [dispatchingScheduleId, setDispatchingScheduleId] = useState<string | null>(null);
   const [togglingScheduleId, setTogglingScheduleId] = useState<string | null>(null);
   const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null);
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
@@ -374,34 +372,6 @@ export function AutopostWorkbench() {
     }
   }
 
-  async function handleDispatchAll() {
-    if (!token) {
-      return;
-    }
-
-    setIsDispatchingAll(true);
-    setError(null);
-    setNotice(null);
-
-    try {
-      const result = await fetchJson<{
-        dispatched: number;
-        snapshot: AutopostSnapshot;
-      }>(`${apiBaseUrl}/autopost/dispatch`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setSnapshot(result.snapshot);
-      setNotice(`Đã chạy dispatch cho ${result.dispatched} lịch.`);
-    } catch (dispatchError) {
-      setError(
-        dispatchError instanceof Error ? dispatchError.message : "Không thể chạy dispatch.",
-      );
-    } finally {
-      setIsDispatchingAll(false);
-    }
-  }
-
   async function handleSendNow() {
     if (!token) {
       return;
@@ -432,34 +402,6 @@ export function AutopostWorkbench() {
       setError(sendError instanceof Error ? sendError.message : "Không thể gửi ngay.");
     } finally {
       setIsSendingNow(false);
-    }
-  }
-
-  async function handleDispatchOne(scheduleId: string) {
-    if (!token) {
-      return;
-    }
-
-    setDispatchingScheduleId(scheduleId);
-    setError(null);
-    setNotice(null);
-
-    try {
-      const result = await fetchJson<{
-        dispatched: number;
-        snapshot: AutopostSnapshot;
-      }>(`${apiBaseUrl}/autopost/schedules/${scheduleId}/dispatch`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setSnapshot(result.snapshot);
-      setNotice(`Đã dispatch lịch ${scheduleId}.`);
-    } catch (dispatchError) {
-      setError(
-        dispatchError instanceof Error ? dispatchError.message : "Không thể dispatch lịch này.",
-      );
-    } finally {
-      setDispatchingScheduleId(null);
     }
   }
 
@@ -810,14 +752,6 @@ export function AutopostWorkbench() {
                   Hủy sửa
                 </button>
               ) : null}
-              <button
-                type="button"
-                onClick={() => void handleDispatchAll()}
-                disabled={isDispatchingAll}
-                className="rounded-[18px] bg-[color:var(--surface-low)] px-5 py-3 text-sm font-bold"
-              >
-                {isDispatchingAll ? "Đang dispatch..." : "Dispatch lịch đến hạn"}
-              </button>
             </div>
           </form>
 
@@ -857,13 +791,6 @@ export function AutopostWorkbench() {
                     >
                       {schedule.status}
                     </span>
-                    <button
-                      onClick={() => void handleDispatchOne(schedule.id)}
-                      disabled={dispatchingScheduleId === schedule.id}
-                      className="rounded-[16px] bg-white/80 px-4 py-2 text-sm font-semibold"
-                    >
-                      {dispatchingScheduleId === schedule.id ? "Đang gửi..." : "Gửi ngay"}
-                    </button>
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
