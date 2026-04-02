@@ -68,6 +68,20 @@ export class ModerationController {
     return this.moderationService.getMembers(campaignId);
   }
 
+  @Get('member360')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('moderation.review')
+  getMember360Summary() {
+    return this.moderationService.getMember360Summary();
+  }
+
+  @Get('member360/:externalId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('moderation.review')
+  getMember360Profile(@Param('externalId') externalId: string) {
+    return this.moderationService.getMember360Profile(externalId);
+  }
+
   @Get('members/:memberId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('moderation.review')

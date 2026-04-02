@@ -13,7 +13,7 @@ export class ModerationCleanupService {
     private readonly systemLogsService: SystemLogsService,
   ) {}
 
-  @Cron('10 0 * * *', {
+  @Cron('10 * * * *', {
     timeZone: 'Asia/Saigon',
   })
   async cleanupAllowedSpamEvents() {
@@ -39,9 +39,6 @@ export class ModerationCleanupService {
         where: {
           decision: 'ALLOW',
           createdAt: { lt: cutoff },
-          manualDecision: null,
-          reviewedAt: null,
-          lastActionAt: null,
         },
         select: { id: true },
       });

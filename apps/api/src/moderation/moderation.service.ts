@@ -39,6 +39,59 @@ type ModerationMember = {
   leftAt: string | null;
 };
 
+type Member360SummaryItem = {
+  externalId: string;
+  displayName: string;
+  avatarInitials: string;
+  username: string | null;
+  ownerName: string | null;
+  note: string | null;
+  groupsActiveCount: number;
+  groupsTotalCount: number;
+  joinCount: number;
+  leftCount: number;
+  warningTotal: number;
+  lastActivityAt: string | null;
+  currentGroups: Array<{
+    groupTitle: string;
+    campaignLabel: string;
+    joinedAt: string;
+    warningCount: number;
+  }>;
+};
+
+type Member360TimelineEvent = {
+  id: string;
+  type: 'join' | 'left' | 'warn';
+  timestamp: string;
+  detail: string;
+  groupTitle: string;
+  campaignLabel: string | null;
+};
+
+type Member360ProfileResponse = {
+  found: boolean;
+  profile: null | {
+    externalId: string;
+    displayName: string;
+    avatarInitials: string;
+    username: string | null;
+    ownerName: string | null;
+    note: string | null;
+    groupsActiveCount: number;
+    groupsTotalCount: number;
+    joinCount: number;
+    leftCount: number;
+    warningTotal: number;
+    lastActivityAt: string | null;
+    currentGroups: ModerationMember[];
+    memberships: ModerationMember[];
+    timeline: Member360TimelineEvent[];
+    moderationTimeline: Member360TimelineEvent[];
+    inviteTimeline: Member360TimelineEvent[];
+  };
+};
+
 type WarningEscalationPreview = {
   memberId: string | null;
   currentWarningCount: number;
@@ -195,6 +248,298 @@ export class ModerationService {
         } satisfies ModerationMember;
       }),
     );
+  }
+
+  async getMember360Summary() {
+    const payload = await this.getMembers();
+    const grouped = new Map<string, Member360SummaryItem>();
+
+    for (const member of payload.members) {
+      const existing = grouped.get(member.externalId);
+      if (existing) {
+        existing.groupsTotalCount += 1;
+        existing.joinCount += 1;
+        existing.leftCount += member.leftAt ? 1 : 0;
+        existing.warningTotal += member.warningCount;
+        existing.lastActivityAt =
+          !existing.lastActivityAt ||
+          new Date(member.joinedAt).getTime() >
+            new Date(existing.lastActivityAt).getTime()
+            ? member.joinedAt
+            : existing.lastActivityAt;
+
+        if (member.membershipStatus === 'active') {
+          existing.groupsActiveCount += 1;
+          existing.currentGroups.push({
+            groupTitle: member.groupTitle,
+            campaignLabel: member.campaignLabel,
+            joinedAt: member.joinedAt,
+            warningCount: member.warningCount,
+          });
+        }
+        continue;
+      }
+
+      grouped.set(member.externalId, {
+        externalId: member.externalId,
+        displayName: member.displayName,
+        avatarInitials: member.avatarInitials,
+        username: member.username,
+        ownerName: member.ownerName,
+        note: member.note,
+        groupsActiveCount: member.membershipStatus === 'active' ? 1 : 0,
+        groupsTotalCount: 1,
+        joinCount: 1,
+        leftCount: member.leftAt ? 1 : 0,
+        warningTotal: member.warningCount,
+        lastActivityAt: member.joinedAt,
+        currentGroups:
+          member.membershipStatus === 'active'
+            ? [
+                {
+                  groupTitle: member.groupTitle,
+                  campaignLabel: member.campaignLabel,
+                  joinedAt: member.joinedAt,
+                  warningCount: member.warningCount,
+                },
+              ]
+            : [],
+      });
+    }
+
+    return {
+      items: Array.from(grouped.values()).sort((left, right) => {
+        const leftTime = left.lastActivityAt
+          ? new Date(left.lastActivityAt).getTime()
+          : 0;
+        const rightTime = right.lastActivityAt
+          ? new Date(right.lastActivityAt).getTime()
+          : 0;
+        return rightTime - leftTime;
+      }),
+    };
+  }
+
+  async getMember360Profile(
+    externalId: string,
+  ): Promise<Member360ProfileResponse> {
+    const payload = await this.getMembers();
+    const memberships = payload.members.filter(
+      (member) => member.externalId === externalId,
+    );
+
+    if (!memberships.length) {
+      return {
+        found: false,
+        profile: null,
+      };
+    }
+
+    const currentGroups = memberships.filter(
+      (member) => member.membershipStatus === 'active',
+    );
+
+    const timeline: Member360TimelineEvent[] = memberships
+      .flatMap((member) => [
+        {
+          id: `${member.id}-join`,
+          type: 'join' as const,
+          timestamp: member.joinedAt,
+          detail: `Vào ${member.groupTitle}${member.campaignLabel ? ` qua ${member.campaignLabel}` : ''}`,
+          groupTitle: member.groupTitle,
+          campaignLabel: member.campaignLabel || null,
+        },
+        ...(member.leftAt
+          ? [
+              {
+                id: `${member.id}-left`,
+                type: 'left' as const,
+                timestamp: member.leftAt,
+                detail: `Rời ${member.groupTitle}`,
+                groupTitle: member.groupTitle,
+                campaignLabel: member.campaignLabel || null,
+              },
+            ]
+          : []),
+        ...(member.warningCount > 0 && member.lastWarnedAt
+          ? [
+              {
+                id: `${member.id}-warn`,
+                type: 'warn' as const,
+                timestamp: member.lastWarnedAt,
+                detail: `${member.warningCount} cảnh báo tại ${member.groupTitle}`,
+                groupTitle: member.groupTitle,
+                campaignLabel: member.campaignLabel || null,
+              },
+            ]
+          : []),
+      ])
+      .sort(
+        (left, right) =>
+          new Date(right.timestamp).getTime() -
+          new Date(left.timestamp).getTime(),
+      );
+
+    const first = memberships[0];
+
+    let moderationTimeline: Member360TimelineEvent[] = [];
+    let inviteTimeline: Member360TimelineEvent[] = [];
+
+    if (process.env.DATABASE_URL) {
+      const [spamEvents, inviteEvents, telegramUser] = await Promise.all([
+        this.prisma.spamEvent.findMany({
+          where: {
+            actorExternalId: externalId,
+            OR: [
+              { decision: { not: SpamDecision.ALLOW } },
+              { manualDecision: { not: null } },
+              { lastActionAt: { not: null } },
+            ],
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        }),
+        this.prisma.inviteLinkEvent.findMany({
+          where: {
+            actorExternalId: externalId,
+          },
+          include: {
+            inviteLink: {
+              include: {
+                campaign: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        }),
+        this.prisma.telegramUser.findUnique({
+          where: { externalId },
+          include: {
+            membershipSessions: {
+              orderBy: { joinedAt: 'desc' },
+            },
+          },
+        }),
+      ]);
+
+      moderationTimeline = spamEvents.map((event) => {
+        const matchedRules = Array.isArray(event.matchedRules)
+          ? event.matchedRules.join(', ')
+          : '';
+        const actionLogs = Array.isArray(event.actionLogs)
+          ? event.actionLogs
+          : [];
+        const actionVariant =
+          actionLogs.length && typeof actionLogs[0] === 'object'
+            ? String(
+                (actionLogs[0] as { actionVariant?: string }).actionVariant ||
+                  '',
+              )
+            : '';
+
+        return {
+          id: `spam-${event.id}`,
+          type: 'warn',
+          timestamp:
+            event.lastActionAt?.toISOString() ||
+            event.reviewedAt?.toISOString() ||
+            event.createdAt.toISOString(),
+          detail: actionVariant
+            ? `Moderation ${event.decision}: ${actionVariant}${matchedRules ? ` · ${matchedRules}` : ''}`
+            : `Moderation ${event.decision}${matchedRules ? ` · ${matchedRules}` : ''}`,
+          groupTitle: event.groupTitle,
+          campaignLabel: event.campaignLabel || null,
+        };
+      });
+
+      inviteTimeline = inviteEvents.map((event) => ({
+        id: `invite-${event.id}`,
+        type:
+          event.eventType === 'USER_LEFT'
+            ? 'left'
+            : event.eventType === 'JOIN_REQUEST'
+              ? 'warn'
+              : 'join',
+        timestamp: event.createdAt.toISOString(),
+        detail:
+          event.detail ||
+          (event.eventType === 'JOIN_REQUEST'
+            ? 'Tạo yêu cầu tham gia'
+            : event.eventType === 'USER_JOINED'
+              ? 'Vào nhóm qua link mời'
+              : 'Rời nhóm'),
+        groupTitle: event.groupTitle,
+        campaignLabel: event.inviteLink?.campaign?.name || null,
+      }));
+
+      if (telegramUser?.membershipSessions.length) {
+        const sessionTimeline = telegramUser.membershipSessions.flatMap(
+          (session) => [
+            {
+              id: `session-${session.id}-join`,
+              type: 'join' as const,
+              timestamp: session.joinedAt.toISOString(),
+              detail: `Session #${session.sessionNo} vào ${session.groupTitle}${session.campaignLabel ? ` qua ${session.campaignLabel}` : ''}`,
+              groupTitle: session.groupTitle,
+              campaignLabel: session.campaignLabel || null,
+            },
+            ...(session.leftAt
+              ? [
+                  {
+                    id: `session-${session.id}-left`,
+                    type: 'left' as const,
+                    timestamp: session.leftAt.toISOString(),
+                    detail: `Session #${session.sessionNo} rời ${session.groupTitle}${session.leaveReason ? ` · ${session.leaveReason}` : ''}`,
+                    groupTitle: session.groupTitle,
+                    campaignLabel: session.campaignLabel || null,
+                  },
+                ]
+              : []),
+          ],
+        );
+
+        timeline.splice(
+          0,
+          timeline.length,
+          ...[...timeline, ...sessionTimeline].sort(
+            (left, right) =>
+              new Date(right.timestamp).getTime() -
+              new Date(left.timestamp).getTime(),
+          ),
+        );
+      }
+    }
+
+    return {
+      found: true,
+      profile: {
+        externalId,
+        displayName: first.displayName,
+        avatarInitials: first.avatarInitials,
+        username: first.username,
+        ownerName: first.ownerName,
+        note: first.note,
+        groupsActiveCount: currentGroups.length,
+        groupsTotalCount: memberships.length,
+        joinCount: memberships.length,
+        leftCount: memberships.filter((member) => member.leftAt).length,
+        warningTotal: memberships.reduce(
+          (total, member) => total + member.warningCount,
+          0,
+        ),
+        lastActivityAt:
+          memberships
+            .map((member) => member.joinedAt)
+            .sort()
+            .at(-1) || null,
+        currentGroups,
+        memberships,
+        timeline,
+        moderationTimeline,
+        inviteTimeline,
+      },
+    };
   }
 
   async getMemberDetail(memberId: string) {

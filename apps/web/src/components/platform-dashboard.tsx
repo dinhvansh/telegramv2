@@ -43,6 +43,7 @@ type PlatformDashboardProps = {
     | "dashboard"
     | "campaigns"
     | "members"
+    | "member360"
     | "moderation"
     | "autopost"
     | "roles"
@@ -58,6 +59,7 @@ const pagePermissionMap: Record<
   dashboard: [],
   campaigns: ["campaign.manage"],
   members: ["campaign.manage", "moderation.review"],
+  member360: ["campaign.manage", "moderation.review"],
   moderation: ["moderation.review"],
   autopost: ["autopost.execute"],
   roles: ["settings.manage"],

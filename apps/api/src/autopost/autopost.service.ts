@@ -20,6 +20,8 @@ type CreateScheduleInput = {
   message: string;
   frequency: string;
   scheduledFor?: string | null;
+  baseDate?: string | null;
+  timeSlots?: string[];
   mediaUrl?: string | null;
   targetIds: string[];
   telegramGroupIds?: string[];
@@ -230,31 +232,32 @@ export class AutopostService {
       };
     }
 
-    const scheduledFor = input.scheduledFor
-      ? new Date(input.scheduledFor)
-      : null;
+    const scheduleDates = this.resolveScheduleDates(input);
     const status = input.saveAsDraft
       ? AutopostScheduleStatus.DRAFT
       : AutopostScheduleStatus.SCHEDULED;
 
     const createdItems = [];
+    const scheduleDatesToCreate = scheduleDates.length ? scheduleDates : [null];
     for (const targetId of resolvedTargetIds) {
-      const item = await this.prisma.autopostSchedule.create({
-        data: {
-          title,
-          message,
-          mediaUrl,
-          frequency:
-            String(input.frequency || 'IMMEDIATE').trim() || 'IMMEDIATE',
-          scheduledFor,
-          status,
-          targetId,
-        },
-        include: {
-          target: true,
-        },
-      });
-      createdItems.push(item);
+      for (const scheduledFor of scheduleDatesToCreate) {
+        const item = await this.prisma.autopostSchedule.create({
+          data: {
+            title,
+            message,
+            mediaUrl,
+            frequency:
+              String(input.frequency || 'IMMEDIATE').trim() || 'IMMEDIATE',
+            scheduledFor,
+            status,
+            targetId,
+          },
+          include: {
+            target: true,
+          },
+        });
+        createdItems.push(item);
+      }
     }
 
     await this.systemLogsService.log({
@@ -267,7 +270,9 @@ export class AutopostService {
         telegramGroupIds,
         selectAllTelegramGroups: Boolean(input.selectAllTelegramGroups),
         mediaUrl,
-        scheduledFor: scheduledFor?.toISOString() || null,
+        scheduledFor: scheduleDatesToCreate.map(
+          (item) => item?.toISOString() || null,
+        ),
       },
     });
 
@@ -434,9 +439,9 @@ export class AutopostService {
       selectAllTelegramGroups: Boolean(input.selectAllTelegramGroups),
     });
     const primaryTargetId = targetIds[0] || existing.targetId;
-    const scheduledFor = input.scheduledFor
-      ? new Date(input.scheduledFor)
-      : null;
+    const scheduledFor =
+      this.resolveScheduleDates(input)[0] ||
+      (input.scheduledFor ? new Date(input.scheduledFor) : null);
 
     await this.prisma.autopostSchedule.update({
       where: { id: scheduleId },
@@ -741,6 +746,117 @@ export class AutopostService {
     return {
       status: AutopostScheduleStatus.COMPLETED,
     };
+  }
+
+  private resolveScheduleDates(input: CreateScheduleInput) {
+    const normalizedFrequency = String(input.frequency || 'ONCE')
+      .trim()
+      .toUpperCase();
+
+    if (normalizedFrequency === 'ONCE') {
+      if (!input.scheduledFor) {
+        return [];
+      }
+
+      const date = new Date(input.scheduledFor);
+      return Number.isNaN(date.getTime()) ? [] : [date];
+    }
+
+    const slots = this.normalizeTimeSlots(
+      Array.isArray(input.timeSlots) ? input.timeSlots : [],
+    );
+    if (!slots.length) {
+      return [];
+    }
+
+    const baseDate = this.resolveBaseDate(input.baseDate, input.scheduledFor);
+    const dates = slots
+      .map((slot) => this.combineDateAndTime(baseDate, slot))
+      .filter((item): item is Date => Boolean(item))
+      .map((item) => this.rollRecurringForward(item, normalizedFrequency))
+      .sort((a, b) => a.getTime() - b.getTime());
+
+    return dates;
+  }
+
+  private normalizeTimeSlots(timeSlots: string[]) {
+    return Array.from(
+      new Set(
+        timeSlots
+          .map((item) => String(item || '').trim())
+          .filter((item) => /^\d{2}:\d{2}$/.test(item)),
+      ),
+    );
+  }
+
+  private resolveBaseDate(
+    baseDate: string | null | undefined,
+    scheduledFor: string | null | undefined,
+  ) {
+    if (baseDate) {
+      const parsed = new Date(`${baseDate}T00:00:00`);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
+
+    if (scheduledFor) {
+      const parsed = new Date(scheduledFor);
+      if (!Number.isNaN(parsed.getTime())) {
+        parsed.setHours(0, 0, 0, 0);
+        return parsed;
+      }
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today;
+  }
+
+  private combineDateAndTime(baseDate: Date, timeSlot: string) {
+    const [hoursText, minutesText] = timeSlot.split(':');
+    const hours = Number(hoursText);
+    const minutes = Number(minutesText);
+    if (
+      Number.isNaN(hours) ||
+      Number.isNaN(minutes) ||
+      hours < 0 ||
+      hours > 23 ||
+      minutes < 0 ||
+      minutes > 59
+    ) {
+      return null;
+    }
+
+    const scheduled = new Date(baseDate);
+    scheduled.setHours(hours, minutes, 0, 0);
+    return scheduled;
+  }
+
+  private rollRecurringForward(date: Date, frequency: string) {
+    const now = new Date();
+    const next = new Date(date);
+
+    while (next.getTime() <= now.getTime()) {
+      if (frequency === 'DAILY') {
+        next.setDate(next.getDate() + 1);
+        continue;
+      }
+
+      if (frequency === 'WEEKLY') {
+        next.setDate(next.getDate() + 7);
+        continue;
+      }
+
+      if (frequency === 'MONTHLY') {
+        next.setMonth(next.getMonth() + 1);
+        continue;
+      }
+
+      break;
+    }
+
+    return next;
   }
 
   private async getTelegramBotToken() {

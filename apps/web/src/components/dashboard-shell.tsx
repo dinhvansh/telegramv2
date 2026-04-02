@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { AutopostWorkbench } from "@/components/autopost-workbench";
 import { CampaignsWorkbench } from "@/components/campaigns-workbench";
+import { Member360Workbench } from "@/components/member360-workbench";
 import { MembersWorkbench } from "@/components/members-workbench";
 import { ModerationWorkbench } from "@/components/moderation-workbench";
 import { RolesWorkbench } from "@/components/roles-workbench";
@@ -54,6 +55,7 @@ type DashboardShellProps = {
     | "dashboard"
     | "campaigns"
     | "members"
+    | "member360"
     | "moderation"
     | "autopost"
     | "roles"
@@ -171,6 +173,21 @@ export function DashboardShell({
         </>
       ),
       description: "Danh sách user, owner và ghi chú chăm sóc.",
+    },
+    {
+      key: "member360",
+      href: "/member360",
+      requiredPermissions: ["campaign.manage", "moderation.review"],
+      label: "Member 360",
+      icon: (
+        <>
+          <circle cx="9" cy="8" r="3" />
+          <path d="M4 20a5 5 0 0 1 10 0" />
+          <circle cx="18" cy="10" r="2" />
+          <path d="M15.5 19a3.5 3.5 0 0 1 5 0" />
+        </>
+      ),
+      description: "Hồ sơ user, group hiện tại và lịch sử ra/vào.",
     },
     {
       key: "moderation",
@@ -657,6 +674,7 @@ export function DashboardShell({
 
           {page === "campaigns" ? <CampaignsWorkbench /> : null}
           {page === "members" ? <MembersWorkbench embedded /> : null}
+          {page === "member360" ? <Member360Workbench /> : null}
           {page === "moderation" ? <ModerationWorkbench /> : null}
           {page === "autopost" ? <AutopostWorkbench /> : null}
           {page === "roles" ? <RolesWorkbench currentUser={user} /> : null}

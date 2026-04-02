@@ -3594,6 +3594,7 @@ export class TelegramService {
         await this.persistCommunityMemberEvent({
           eventType: 'user_joined',
           groupTitle: processed.groupTitle,
+          groupExternalId: processed.groupExternalId || null,
           campaignLabel: resolvedCampaignLabel,
           campaignId: resolvedCampaignId,
           actorUsername: member.username ?? null,
@@ -3602,6 +3603,7 @@ export class TelegramService {
             .filter(Boolean)
             .join(' ')
             .trim(),
+          joinSource: inviteRecord?.label || 'invite_link',
         });
         await this.persistInviteLinkEvent({
           inviteLinkId: inviteRecord?.id || null,
@@ -3621,6 +3623,7 @@ export class TelegramService {
       await this.persistCommunityMemberEvent({
         eventType: 'user_left',
         groupTitle: processed.groupTitle,
+        groupExternalId: processed.groupExternalId || null,
         campaignLabel: resolvedCampaignLabel,
         campaignId: resolvedCampaignId,
         actorUsername: member.username ?? null,
@@ -3629,6 +3632,7 @@ export class TelegramService {
           .filter(Boolean)
           .join(' ')
           .trim(),
+        leaveReason: 'telegram_left_event',
       });
       await this.persistInviteLinkEvent({
         inviteLinkId: inviteRecord?.id || null,
@@ -3747,11 +3751,14 @@ export class TelegramService {
   private async persistCommunityMemberEvent(input: {
     eventType: string;
     groupTitle: string;
+    groupExternalId?: string | null;
     campaignLabel: string;
     campaignId?: string | null;
     actorUsername?: string | null;
     actorExternalId?: string | null;
     displayName?: string | null;
+    joinSource?: string | null;
+    leaveReason?: string | null;
   }) {
     if (!process.env.DATABASE_URL) {
       return;
@@ -3772,26 +3779,42 @@ export class TelegramService {
       return;
     }
 
-    const whereClause = externalId
-      ? {
-          externalId,
-          groupTitle: input.groupTitle,
-        }
-      : {
-          username,
-          groupTitle: input.groupTitle,
-        };
+    const telegramUser = await this.ensureTelegramUser({
+      externalId: externalId || username || displayName,
+      username,
+      displayName,
+    });
+
+    const memberMatchConditions: Array<{
+      telegramUserId?: string;
+      externalId?: string;
+      username?: string | null;
+    }> = [];
+
+    if (telegramUser?.id) {
+      memberMatchConditions.push({ telegramUserId: telegramUser.id });
+    }
+    if (externalId) {
+      memberMatchConditions.push({ externalId });
+    }
+    if (username) {
+      memberMatchConditions.push({ username });
+    }
 
     const latestMember = await this.prisma.communityMember.findFirst({
-      where: whereClause,
+      where: {
+        groupTitle: input.groupTitle,
+        OR: memberMatchConditions,
+      },
       orderBy: [{ leftAt: 'asc' }, { joinedAt: 'desc' }],
     });
 
     if (input.eventType === 'user_joined') {
       await this.prisma.communityMember.updateMany({
         where: {
-          ...(whereClause as object),
+          groupTitle: input.groupTitle,
           leftAt: null,
+          ...(telegramUser?.id ? { telegramUserId: telegramUser.id } : {}),
           ...(latestMember?.id
             ? {
                 NOT: {
@@ -3805,10 +3828,17 @@ export class TelegramService {
         },
       });
 
+      await this.closeOpenMembershipSessions({
+        telegramUserId: telegramUser.id,
+        groupTitle: input.groupTitle,
+        leaveReason: 'superseded_by_rejoin',
+      });
+
       if (latestMember && !latestMember.leftAt) {
-        await this.prisma.communityMember.update({
+        const updatedMember = await this.prisma.communityMember.update({
           where: { id: latestMember.id },
           data: {
+            telegramUserId: telegramUser.id,
             displayName,
             avatarInitials: this.buildAvatarInitials(displayName),
             username,
@@ -3818,11 +3848,21 @@ export class TelegramService {
             leftAt: null,
           },
         });
+        await this.createMembershipSession({
+          telegramUserId: telegramUser.id,
+          communityMemberId: updatedMember.id,
+          groupTitle: input.groupTitle,
+          groupExternalId: input.groupExternalId || null,
+          campaignId: input.campaignId || updatedMember.campaignId || null,
+          campaignLabel: input.campaignLabel || updatedMember.campaignLabel,
+          joinSource: input.joinSource || input.eventType,
+        });
         return;
       }
 
-      await this.prisma.communityMember.create({
+      const createdMember = await this.prisma.communityMember.create({
         data: {
+          telegramUserId: telegramUser.id,
           displayName,
           avatarInitials: this.buildAvatarInitials(displayName),
           externalId: externalId || username || displayName,
@@ -3834,6 +3874,15 @@ export class TelegramService {
           leftAt: null,
         },
       });
+      await this.createMembershipSession({
+        telegramUserId: telegramUser.id,
+        communityMemberId: createdMember.id,
+        groupTitle: input.groupTitle,
+        groupExternalId: input.groupExternalId || null,
+        campaignId: input.campaignId || null,
+        campaignLabel: input.campaignLabel,
+        joinSource: input.joinSource || input.eventType,
+      });
       return;
     }
 
@@ -3844,7 +3893,133 @@ export class TelegramService {
           leftAt: new Date(),
         },
       });
+      await this.closeLatestMembershipSession({
+        telegramUserId: telegramUser.id,
+        communityMemberId: latestMember.id,
+        groupTitle: input.groupTitle,
+        leaveReason: input.leaveReason || input.eventType,
+      });
     }
+  }
+
+  private async ensureTelegramUser(input: {
+    externalId: string;
+    username?: string | null;
+    displayName: string;
+  }) {
+    return this.prisma.telegramUser.upsert({
+      where: {
+        externalId: input.externalId,
+      },
+      update: {
+        username: input.username || null,
+        displayName: input.displayName,
+        avatarInitials: this.buildAvatarInitials(input.displayName),
+        lastSeenAt: new Date(),
+      },
+      create: {
+        externalId: input.externalId,
+        username: input.username || null,
+        displayName: input.displayName,
+        avatarInitials: this.buildAvatarInitials(input.displayName),
+      },
+    });
+  }
+
+  private async createMembershipSession(input: {
+    telegramUserId: string;
+    communityMemberId: string;
+    groupTitle: string;
+    groupExternalId?: string | null;
+    campaignId?: string | null;
+    campaignLabel?: string | null;
+    joinSource?: string | null;
+  }) {
+    const lastSession = await this.prisma.groupMembershipSession.findFirst({
+      where: {
+        communityMemberId: input.communityMemberId,
+      },
+      orderBy: {
+        sessionNo: 'desc',
+      },
+    });
+
+    return this.prisma.groupMembershipSession.create({
+      data: {
+        telegramUserId: input.telegramUserId,
+        communityMemberId: input.communityMemberId,
+        sessionNo: (lastSession?.sessionNo || 0) + 1,
+        groupTitle: input.groupTitle,
+        groupExternalId: input.groupExternalId || null,
+        campaignId: input.campaignId || null,
+        campaignLabel: input.campaignLabel || null,
+        joinSource: input.joinSource || null,
+        joinedAt: new Date(),
+      },
+    });
+  }
+
+  private async closeLatestMembershipSession(input: {
+    telegramUserId: string;
+    communityMemberId?: string | null;
+    groupTitle: string;
+    leaveReason: string;
+  }) {
+    const openSession = await this.prisma.groupMembershipSession.findFirst({
+      where: {
+        telegramUserId: input.telegramUserId,
+        groupTitle: input.groupTitle,
+        leftAt: null,
+        ...(input.communityMemberId
+          ? { communityMemberId: input.communityMemberId }
+          : {}),
+      },
+      orderBy: {
+        joinedAt: 'desc',
+      },
+    });
+
+    if (!openSession) {
+      return;
+    }
+
+    await this.prisma.groupMembershipSession.update({
+      where: { id: openSession.id },
+      data: {
+        leftAt: new Date(),
+        leaveReason: input.leaveReason,
+      },
+    });
+  }
+
+  private async closeOpenMembershipSessions(input: {
+    telegramUserId: string;
+    groupTitle: string;
+    leaveReason: string;
+  }) {
+    const openSessions = await this.prisma.groupMembershipSession.findMany({
+      where: {
+        telegramUserId: input.telegramUserId,
+        groupTitle: input.groupTitle,
+        leftAt: null,
+      },
+    });
+
+    if (!openSessions.length) {
+      return;
+    }
+
+    await this.prisma.groupMembershipSession.updateMany({
+      where: {
+        id: {
+          in: openSessions.map((session) => session.id),
+        },
+      },
+      data: {
+        leftAt: new Date(),
+        leaveReason: input.leaveReason,
+      },
+    });
   }
 
   private buildAvatarInitials(displayName: string) {

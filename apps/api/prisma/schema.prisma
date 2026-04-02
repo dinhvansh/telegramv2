@@ -227,10 +227,29 @@ model Campaign {
   telegramGroupId String?
   inviteLinks     CampaignInviteLink[]
   communityMembers CommunityMember[]
+  membershipSessions GroupMembershipSession[]
+}
+
+model TelegramUser {
+  id                 String                   @id @default(cuid())
+  externalId         String                   @unique
+  username           String?
+  displayName        String
+  avatarInitials     String
+  firstSeenAt        DateTime                 @default(now())
+  lastSeenAt         DateTime                 @default(now())
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  communityMembers   CommunityMember[]
+  membershipSessions GroupMembershipSession[]
+
+  @@index([username])
 }
 
 model CommunityMember {
   id             String    @id @default(cuid())
+  telegramUserId  String?
+  telegramUser    TelegramUser? @relation(fields: [telegramUserId], references: [id], onDelete: SetNull)
   displayName    String
   avatarInitials String
   externalId     String
@@ -247,8 +266,35 @@ model CommunityMember {
   leftAt         DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @default(now()) @updatedAt
+  sessions       GroupMembershipSession[]
 
   @@index([campaignId])
+  @@index([telegramUserId])
+  @@index([externalId, groupTitle])
+}
+
+model GroupMembershipSession {
+  id               String           @id @default(cuid())
+  telegramUserId   String
+  communityMemberId String
+  sessionNo        Int
+  groupTitle       String
+  groupExternalId  String?
+  campaignId       String?
+  campaignLabel    String?
+  joinSource       String?
+  joinedAt         DateTime
+  leftAt           DateTime?
+  leaveReason      String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  telegramUser     TelegramUser     @relation(fields: [telegramUserId], references: [id], onDelete: Cascade)
+  communityMember  CommunityMember  @relation(fields: [communityMemberId], references: [id], onDelete: Cascade)
+  campaign         Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([telegramUserId, groupTitle])
+  @@index([communityMemberId, joinedAt])
+  @@unique([communityMemberId, sessionNo])
 }
 
 model MetricCard {

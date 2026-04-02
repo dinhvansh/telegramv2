@@ -755,7 +755,7 @@ export class TelegramActionsService {
             result,
           },
         ],
-        lastActionAt: new Date(),
+        ...(result.enforced ? { lastActionAt: new Date() } : {}),
       },
     });
   }
@@ -898,6 +898,8 @@ export class TelegramActionsService {
       return;
     }
 
+    const now = new Date();
+
     await this.prisma.communityMember.updateMany({
       where: {
         externalId: String(input.userId),
@@ -905,7 +907,21 @@ export class TelegramActionsService {
         leftAt: null,
       },
       data: {
-        leftAt: new Date(),
+        leftAt: now,
+      },
+    });
+
+    await this.prisma.groupMembershipSession.updateMany({
+      where: {
+        telegramUser: {
+          externalId: String(input.userId),
+        },
+        groupTitle: input.groupTitle,
+        leftAt: null,
+      },
+      data: {
+        leftAt: now,
+        leaveReason: input.actionVariant,
       },
     });
   }

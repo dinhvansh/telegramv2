@@ -243,7 +243,6 @@ export function AutopostWorkbench() {
   const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null);
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [expandedScheduleGroupIds, setExpandedScheduleGroupIds] = useState<string[]>([]);
-  const [isGroupPickerOpen, setIsGroupPickerOpen] = useState(false);
   const [scheduleForm, setScheduleForm] = useState({
     title: "Bản tin tự động",
     message: "Nội dung autopost được tạo từ CRM.",
@@ -405,12 +404,6 @@ export function AutopostWorkbench() {
         : current.filter((item) => item !== groupId),
     );
   }
-
-  const selectedGroups = useMemo(
-    () =>
-      snapshot?.telegramGroups.filter((group) => selectedTelegramGroupIds.includes(group.id)) ?? [],
-    [selectedTelegramGroupIds, snapshot?.telegramGroups],
-  );
 
   async function readFileAsDataUrl(file: File) {
     return new Promise<string>((resolve, reject) => {
@@ -766,129 +759,97 @@ export function AutopostWorkbench() {
                 <div>
                   <p className="text-sm font-bold">Nhóm Telegram nhận bài</p>
                   <p className="mt-1 text-sm text-[color:var(--on-surface-variant)]">
-                    Chọn nhiều group trong một menu gọn rồi lên lịch trong cùng một form.
+                    Chọn nhiều group trong một combobox, không cần mở riêng một cột quản lý.
                   </p>
                 </div>
                 <span className="inline-flex items-center rounded-full bg-white px-4 py-2 text-sm font-semibold text-[color:var(--primary)]">
                   Đã chọn {selectedGroupCount} group
                 </span>
               </div>
-              <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto] xl:items-center">
-                <div className="relative">
+
+              <details className="mt-4 group rounded-[20px] bg-white p-4">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold">
+                  <span>
+                    {selectAllTelegramGroups
+                      ? "Tất cả group Telegram"
+                      : selectedTelegramGroupIds.length
+                        ? `Đã chọn ${selectedTelegramGroupIds.length} group`
+                        : "Chọn group Telegram"}
+                  </span>
+                  <span className="text-xs text-[color:var(--on-surface-variant)] group-open:hidden">
+                    Mở danh sách
+                  </span>
+                  <span className="hidden text-xs text-[color:var(--on-surface-variant)] group-open:inline">
+                    Thu gọn
+                  </span>
+                </summary>
+
+                <div className="mt-4 flex flex-wrap gap-3">
                   <button
                     type="button"
-                    onClick={() => setIsGroupPickerOpen((current) => !current)}
-                    className="flex w-full items-center justify-between rounded-[18px] bg-white px-4 py-4 text-left text-sm font-semibold"
+                    onClick={() => {
+                      setSelectAllTelegramGroups(true);
+                      setSelectedTelegramGroupIds([]);
+                    }}
+                    className={`rounded-full px-4 py-2 text-sm font-semibold ${
+                      selectAllTelegramGroups
+                        ? "bg-[color:var(--primary)] text-white"
+                        : "bg-[color:var(--surface-low)]"
+                    }`}
                   >
-                    <span className="truncate">
-                      {selectAllTelegramGroups
-                        ? "Tất cả group Telegram"
-                        : selectedTelegramGroupIds.length
-                          ? selectedGroups.map((group) => group.title).join(", ")
-                          : "Chọn group Telegram"}
-                    </span>
-                    <span className="ml-3 text-xs text-[color:var(--on-surface-variant)]">
-                      {isGroupPickerOpen ? "Thu gọn" : "Mở"}
-                    </span>
+                    Chọn tất cả
                   </button>
-
-                  {isGroupPickerOpen ? (
-                    <div className="absolute left-0 right-0 top-[calc(100%+12px)] z-20 rounded-[20px] border border-[color:var(--outline)] bg-white p-4 shadow-[0_16px_40px_rgba(42,52,57,0.14)]">
-                      <div className="flex flex-wrap gap-3">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectAllTelegramGroups(true);
-                            setSelectedTelegramGroupIds([]);
-                          }}
-                          className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                            selectAllTelegramGroups
-                              ? "bg-[color:var(--primary)] text-white"
-                              : "bg-[color:var(--surface-low)]"
-                          }`}
-                        >
-                          Chọn tất cả
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectAllTelegramGroups(false);
-                            setSelectedTelegramGroupIds([]);
-                          }}
-                          className="rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold"
-                        >
-                          Bỏ chọn
-                        </button>
-                      </div>
-
-                      <div className="mt-4 max-h-72 space-y-3 overflow-y-auto pr-1">
-                        {snapshot?.telegramGroups.length ? null : (
-                          <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm text-[color:var(--on-surface-variant)]">
-                            Chưa có group nào được sync. Hãy vào màn Telegram để verify bot và đồng bộ
-                            group trước.
-                          </div>
-                        )}
-
-                        {snapshot?.telegramGroups.map((group) => (
-                          <label
-                            key={group.id}
-                            className="flex items-start gap-3 rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4"
-                          >
-                            <input
-                              type="checkbox"
-                              disabled={selectAllTelegramGroups}
-                              checked={
-                                selectAllTelegramGroups || selectedTelegramGroupIds.includes(group.id)
-                              }
-                              onChange={(event) =>
-                                toggleTelegramGroup(group.id, event.target.checked)
-                              }
-                            />
-                            <div className="min-w-0">
-                              <p className="text-sm font-bold">{group.title}</p>
-                              <p className="mt-1 text-sm text-[color:var(--on-surface-variant)]">
-                                {group.externalId}
-                                {group.username ? ` · ${group.username}` : ""}
-                                {group.type ? ` · ${group.type}` : ""}
-                              </p>
-                            </div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectAllTelegramGroups(false);
+                      setSelectedTelegramGroupIds([]);
+                    }}
+                    className="rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold"
+                  >
+                    Bỏ chọn
+                  </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectAllTelegramGroups(true);
-                    setSelectedTelegramGroupIds([]);
-                  }}
-                  className={`rounded-[18px] px-4 py-4 text-sm font-semibold ${
-                    selectAllTelegramGroups
-                      ? "bg-[color:var(--primary)] text-white"
-                      : "bg-white"
-                  }`}
-                >
-                  Tất cả
-                </button>
+                <div className="mt-4 max-h-72 space-y-3 overflow-y-auto pr-1">
+                  {snapshot?.telegramGroups.length ? null : (
+                    <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm text-[color:var(--on-surface-variant)]">
+                      Chưa có group nào được sync. Hãy vào màn Telegram để verify bot và đồng bộ
+                      group trước.
+                    </div>
+                  )}
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectAllTelegramGroups(false);
-                    setSelectedTelegramGroupIds([]);
-                  }}
-                  className="rounded-[18px] bg-white px-4 py-4 text-sm font-semibold"
-                >
-                  Xóa chọn
-                </button>
-              </div>
+                  {snapshot?.telegramGroups.map((group) => (
+                    <label
+                      key={group.id}
+                      className="flex items-start gap-3 rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4"
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={selectAllTelegramGroups}
+                        checked={
+                          selectAllTelegramGroups || selectedTelegramGroupIds.includes(group.id)
+                        }
+                        onChange={(event) => toggleTelegramGroup(group.id, event.target.checked)}
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold">{group.title}</p>
+                        <p className="mt-1 text-sm text-[color:var(--on-surface-variant)]">
+                          {group.externalId}
+                          {group.username ? ` · ${group.username}` : ""}
+                          {group.type ? ` · ${group.type}` : ""}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </details>
 
               {!selectAllTelegramGroups && selectedTelegramGroupIds.length ? (
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {selectedGroups.map((group) => (
+                  {snapshot?.telegramGroups
+                    .filter((group) => selectedTelegramGroupIds.includes(group.id))
+                    .map((group) => (
                       <span
                         key={group.id}
                         className="inline-flex items-center gap-2 rounded-full bg-[color:var(--primary-soft)] px-3 py-2 text-sm font-semibold text-[color:var(--primary)]"
@@ -901,7 +862,7 @@ export function AutopostWorkbench() {
                           ×
                         </button>
                       </span>
-                  ))}
+                    ))}
                 </div>
               ) : null}
             </div>
