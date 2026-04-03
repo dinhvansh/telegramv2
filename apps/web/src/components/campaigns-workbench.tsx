@@ -11,6 +11,8 @@ type CampaignItem = {
   name: string;
   channel: string;
   inviteCode: string;
+  assigneeUserId?: string | null;
+  assigneeName?: string | null;
   status: "Active" | "Paused" | "Review";
   joinedCount: number;
   leftCount: number;
@@ -20,7 +22,16 @@ type CampaignItem = {
 type EditCampaignForm = {
   id: string;
   name: string;
+  assigneeUserId: string;
   status: CampaignItem["status"];
+};
+
+type CampaignAssigneeOption = {
+  id: string;
+  name: string;
+  email: string;
+  username: string | null;
+  department: string | null;
 };
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -77,8 +88,15 @@ function getLeaveRate(campaign: CampaignItem) {
   return (campaign.leftCount / campaign.joinedCount) * 100;
 }
 
-export function CampaignsWorkbench() {
+export function CampaignsWorkbench({
+  isAssignedCampaignView = false,
+  canManageCampaigns = true,
+}: {
+  isAssignedCampaignView?: boolean;
+  canManageCampaigns?: boolean;
+}) {
   const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
+  const [assignees, setAssignees] = useState<CampaignAssigneeOption[]>([]);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -93,8 +111,46 @@ export function CampaignsWorkbench() {
     setToken(window.localStorage.getItem(authStorageKey));
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadAssignees(currentToken: string) {
+      try {
+        const data = await fetchJson<CampaignAssigneeOption[]>(
+          `${apiBaseUrl}/campaigns/assignees`,
+          {
+            headers: {
+              Authorization: `Bearer ${currentToken}`,
+            },
+          },
+        );
+
+        if (active) {
+          setAssignees(data);
+        }
+      } catch {
+        if (active) {
+          setAssignees([]);
+        }
+      }
+    }
+
+    if (!token) {
+      setAssignees([]);
+      return;
+    }
+
+    void loadAssignees(token);
+
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
   async function reloadCampaigns() {
-    const data = await fetchJson<CampaignItem[]>(`${apiBaseUrl}/campaigns`);
+    const data = await fetchJson<CampaignItem[]>(`${apiBaseUrl}/campaigns`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
     setCampaigns(data);
   }
 
@@ -115,6 +171,7 @@ export function CampaignsWorkbench() {
         },
         body: JSON.stringify({
           name: editingCampaign.name.trim(),
+          assigneeUserId: editingCampaign.assigneeUserId || null,
           status: editingCampaign.status,
         }),
       });
@@ -224,7 +281,9 @@ export function CampaignsWorkbench() {
 
     async function load() {
       try {
-        const data = await fetchJson<CampaignItem[]>(`${apiBaseUrl}/campaigns`);
+        const data = await fetchJson<CampaignItem[]>(`${apiBaseUrl}/campaigns`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
         if (!active) {
           return;
         }
@@ -253,7 +312,7 @@ export function CampaignsWorkbench() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     function handleRefresh() {
@@ -307,6 +366,11 @@ export function CampaignsWorkbench() {
             <h3 className="mt-2 text-2xl font-black tracking-tight">
               Theo dõi số vào nhóm, còn ở lại và đã rời trên từng chiến dịch
             </h3>
+            {isAssignedCampaignView ? (
+              <div className="mt-3 inline-flex rounded-full bg-[color:var(--primary-soft)] px-4 py-2 text-sm font-semibold text-[color:var(--primary)]">
+                Campaign của tôi
+              </div>
+            ) : null}
           </div>
           <div className="rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold text-[color:var(--on-surface-variant)]">
             {campaigns.length} campaign
@@ -331,6 +395,7 @@ export function CampaignsWorkbench() {
               <tr className="text-xs uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
                 <th className="px-5 py-4 font-semibold">Campaign</th>
                 <th className="px-5 py-4 font-semibold">Kênh</th>
+                <th className="px-5 py-4 font-semibold">Phụ trách</th>
                 <th className="px-5 py-4 font-semibold">Đã tham gia</th>
                 <th className="px-5 py-4 font-semibold">Đang ở lại</th>
                 <th className="px-5 py-4 font-semibold">Đã rời</th>
@@ -351,6 +416,11 @@ export function CampaignsWorkbench() {
                   </td>
                   <td className="px-5 py-4 align-top text-sm text-[color:var(--on-surface-variant)]">
                     {campaign.channel}
+                  </td>
+                  <td className="px-5 py-4 align-top text-sm">
+                    <span className="inline-flex rounded-full bg-white px-3 py-1 font-semibold text-[color:var(--on-surface)]">
+                      {campaign.assigneeName ?? "Chưa gán"}
+                    </span>
                   </td>
                   <td className="px-5 py-4 align-top text-sm font-semibold">
                     {campaign.joinedCount}
@@ -391,6 +461,7 @@ export function CampaignsWorkbench() {
                     </span>
                   </td>
                   <td className="px-5 py-4 align-top text-sm">
+                    {canManageCampaigns ? (
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -398,6 +469,7 @@ export function CampaignsWorkbench() {
                           setEditingCampaign({
                             id: campaign.id,
                             name: campaign.name,
+                            assigneeUserId: campaign.assigneeUserId ?? "",
                             status: campaign.status,
                           })
                         }
@@ -426,6 +498,11 @@ export function CampaignsWorkbench() {
                         {deletingCampaignId === campaign.id ? "Đang xóa..." : "Xóa"}
                       </button>
                     </div>
+                    ) : (
+                      <span className="inline-flex rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-xs font-semibold text-[color:var(--on-surface-variant)]">
+                        Chá»‰ xem
+                      </span>
+                    )}
                   </td>
                   <td className="px-5 py-4 align-top text-sm">
                     <Link
@@ -441,7 +518,7 @@ export function CampaignsWorkbench() {
               {!isLoading && !campaigns.length ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="px-5 py-10 text-center text-sm text-[color:var(--on-surface-variant)]"
                   >
                     Chưa có campaign nào.
@@ -486,6 +563,34 @@ export function CampaignsWorkbench() {
                   }
                   className="w-full rounded-[18px] border border-transparent bg-[color:var(--surface-low)] px-4 py-3 outline-none transition focus:border-[color:var(--primary)]"
                 />
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
+                  Người phụ trách
+                </span>
+                <select
+                  value={editingCampaign.assigneeUserId}
+                  onChange={(event) =>
+                    setEditingCampaign((current) =>
+                      current
+                        ? {
+                            ...current,
+                            assigneeUserId: event.target.value,
+                          }
+                        : current,
+                    )
+                  }
+                  className="w-full rounded-[18px] border border-transparent bg-[color:var(--surface-low)] px-4 py-3 outline-none transition focus:border-[color:var(--primary)]"
+                >
+                  <option value="">Chưa gán</option>
+                  {assignees.map((assignee) => (
+                    <option key={assignee.id} value={assignee.id}>
+                      {assignee.name}
+                      {assignee.department ? ` · ${assignee.department}` : ""}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <label className="block space-y-2">

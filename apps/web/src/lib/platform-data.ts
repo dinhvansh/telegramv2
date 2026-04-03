@@ -51,6 +51,22 @@ export type PlatformSnapshot = {
   metrics: MetricCard[];
   campaigns: Campaign[];
   eventFeed: EventFeedItem[];
+  botSummary: {
+    botName: string;
+    botExternalId: string | null;
+    activeGroupCount: number;
+    totalGroupCount: number;
+    webhookRegistered: boolean;
+  };
+  groupInsights: Array<{
+    title: string;
+    memberCount: number;
+    monthlyJoins: number;
+    previousMonthlyJoins: number;
+    growthRate: number;
+    activeUsers: number;
+    activityRate: number;
+  }>;
   moderationRules: string[];
   roadmap: RoadmapPhase[];
   autopostCapabilities: AutopostCapability[];
@@ -169,6 +185,51 @@ export const fallbackPlatformSnapshot: PlatformSnapshot = {
       title: "campaign_metric_updated",
       detail: "Campaign Partner Referral East tăng thêm 112 joins trong 40 phút.",
       tone: "primary",
+    },
+  ],
+  botSummary: {
+    botName: "SkynetBot",
+    botExternalId: "7858331890",
+    activeGroupCount: 4,
+    totalGroupCount: 4,
+    webhookRegistered: true,
+  },
+  groupInsights: [
+    {
+      title: "Nexus Global",
+      memberCount: 72,
+      monthlyJoins: 18,
+      previousMonthlyJoins: 12,
+      growthRate: 50,
+      activeUsers: 31,
+      activityRate: 43.1,
+    },
+    {
+      title: "Partner Circle",
+      memberCount: 52,
+      monthlyJoins: 11,
+      previousMonthlyJoins: 10,
+      growthRate: 10,
+      activeUsers: 18,
+      activityRate: 34.6,
+    },
+    {
+      title: "Inner Room",
+      memberCount: 6,
+      monthlyJoins: 4,
+      previousMonthlyJoins: 2,
+      growthRate: 100,
+      activeUsers: 3,
+      activityRate: 50,
+    },
+    {
+      title: "Alpha Testers",
+      memberCount: 8,
+      monthlyJoins: 2,
+      previousMonthlyJoins: 5,
+      growthRate: -60,
+      activeUsers: 2,
+      activityRate: 25,
     },
   ],
   moderationRules: [

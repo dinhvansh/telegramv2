@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { TelegramControlCenter } from "@/components/telegram-control-center";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
@@ -613,6 +614,8 @@ export function ModerationWorkbench() {
         </div>
       ) : null}
 
+      <TelegramControlCenter embedded />
+
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
           <div className="flex items-end justify-between gap-4">
@@ -868,7 +871,7 @@ export function ModerationWorkbench() {
                                       {formatTelegramMethod(operation.method)}:{" "}
                                       {operation.userGuidance ||
                                         operation.description ||
-                                        "KhÃ´ng cÃ³ chi tiáº¿t"}
+                                        "Kh?ng c? chi ti?t"}
                                     </p>
                                   ))}
                                 </div>

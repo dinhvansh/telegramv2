@@ -87,6 +87,7 @@ model User {
   passwordHash String
   createdAt    DateTime   @default(now())
   userRoles    UserRole[]
+  campaigns    Campaign[] @relation("CampaignAssignee")
 }
 
 model Role {
@@ -215,19 +216,23 @@ model TelegramGroupModerationSettings {
 }
 
 model Campaign {
-  id              String               @id @default(cuid())
-  name            String
-  channel         String
-  joinRate        String
-  status          CampaignStatus
-  inviteCode      String               @unique
-  conversionRate  Float                @default(0)
-  createdAt       DateTime             @default(now())
-  telegramGroup   TelegramGroup?       @relation(fields: [telegramGroupId], references: [id])
-  telegramGroupId String?
-  inviteLinks     CampaignInviteLink[]
-  communityMembers CommunityMember[]
+  id                 String                  @id @default(cuid())
+  name               String
+  channel            String
+  joinRate           String
+  status             CampaignStatus
+  inviteCode         String                  @unique
+  conversionRate     Float                   @default(0)
+  createdAt          DateTime                @default(now())
+  telegramGroup      TelegramGroup?          @relation(fields: [telegramGroupId], references: [id])
+  telegramGroupId    String?
+  assigneeUserId     String?
+  assigneeUser       User?                   @relation("CampaignAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  inviteLinks        CampaignInviteLink[]
+  communityMembers   CommunityMember[]
   membershipSessions GroupMembershipSession[]
+
+  @@index([assigneeUserId])
 }
 
 model TelegramUser {
@@ -236,6 +241,8 @@ model TelegramUser {
   username           String?
   displayName        String
   avatarInitials     String
+  phoneNumber        String?
+  customerSource     String?
   firstSeenAt        DateTime                 @default(now())
   lastSeenAt         DateTime                 @default(now())
   createdAt          DateTime                 @default(now())

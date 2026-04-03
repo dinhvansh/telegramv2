@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const apiBaseUrl = "/api";
+const authStorageKey = "telegram-ops-access-token";
 
 type CampaignMember = {
   id: string;
@@ -70,16 +71,23 @@ function getStatusLabel(status: string) {
 }
 
 export function CampaignDetailView({ campaignId }: { campaignId: string }) {
+  const [token, setToken] = useState<string | null>(null);
   const [campaign, setCampaign] = useState<CampaignDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    setToken(window.localStorage.getItem(authStorageKey));
+  }, []);
 
   useEffect(() => {
     let active = true;
 
     async function load() {
       try {
-        const data = await fetchJson<CampaignDetail>(`${apiBaseUrl}/campaigns/${campaignId}`);
+        const data = await fetchJson<CampaignDetail>(`${apiBaseUrl}/campaigns/${campaignId}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
         if (!active) {
           return;
         }
@@ -108,7 +116,7 @@ export function CampaignDetailView({ campaignId }: { campaignId: string }) {
     return () => {
       active = false;
     };
-  }, [campaignId]);
+  }, [campaignId, token]);
 
   if (isLoading) {
     return (

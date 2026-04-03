@@ -382,7 +382,6 @@ export function TelegramGroupModerationSettings({
   }
 
   const toggleFieldKeys = [
-    ["moderationEnabled", "Bật moderation"],
     ["lockUrl", "Chặn URL"],
     ["lockInvitelink", "Chặn link mời Telegram"],
     ["lockForward", "Chặn tin chuyển tiếp"],
@@ -409,6 +408,34 @@ export function TelegramGroupModerationSettings({
     ["rawLoggingEnabled", "Lưu raw webhook"],
     ["detailedLoggingEnabled", "Lưu log chi tiết"],
   ] as const;
+
+  const toggleDescriptions: Partial<Record<(typeof toggleFieldKeys)[number][0], string>> = {
+    lockUrl: "Chặn tin nhắn có URL web thông thường.",
+    lockInvitelink: "Chặn link mời Telegram như t.me/+ hoặc joinchat.",
+    lockForward: "Chặn tin chuyển tiếp từ group hoặc channel khác.",
+    lockEmail: "Chặn nội dung có địa chỉ email.",
+    lockPhone: "Chặn nội dung có số điện thoại.",
+    lockBot: "Chặn tin gửi thông qua bot khác hoặc via bot.",
+    lockPhoto: "Chặn ảnh gửi vào group.",
+    lockVideo: "Chặn video gửi vào group.",
+    lockDocument: "Chặn file, tài liệu và đính kèm.",
+    lockSticker: "Chặn sticker và nội dung giải trí dạng sticker.",
+    lockInlineButtons: "Chặn tin có nút inline bên dưới nội dung.",
+    lockInlineButtonUrls: "Chặn riêng trường hợp nút inline có gắn link.",
+    exemptAdmins: "Admin Telegram sẽ không bị áp các rule tự động.",
+    exemptOwners: "User đang được CRM gắn owner sẽ được bỏ qua automation.",
+    lockWarns: "Vi phạm lock sẽ cộng cảnh báo trước khi nâng mức xử lý.",
+    antifloodEnabled: "Bắt user gửi quá nhiều tin trong thời gian ngắn.",
+    antifloodDeleteAll: "Khi flood, xóa cả chuỗi tin spam thay vì chỉ xử lý 1 tin cuối.",
+    resetAntifloodOnRejoin: "User ra rồi vào lại sẽ không bị mang count flood cũ.",
+    probationEnabled: "Theo dõi gắt hơn với user mới vào nhóm trong thời gian đầu.",
+    antiRaidEnabled: "Chặn làn sóng nhiều nick mới vào nhóm liên tục.",
+    aiModerationEnabled: "Dùng AI để hỗ trợ chấm các case mơ hồ hoặc đáng ngờ.",
+    aiOverrideAction: "Cho phép AI nâng mức xử lý nếu độ tin cậy đủ cao.",
+    silentActions: "Bot vẫn xử lý nhưng không gửi announce ra group.",
+    rawLoggingEnabled: "Lưu raw webhook để debug và kiểm tra payload thật.",
+    detailedLoggingEnabled: "Lưu thêm log chi tiết cho từng bước moderation.",
+  };
 
   return (
     <div className="min-h-screen bg-[color:var(--surface)] px-5 py-8 text-[color:var(--on-surface)] lg:px-10">
@@ -439,6 +466,35 @@ export function TelegramGroupModerationSettings({
               Quay lại danh sách group
             </Link>
           </div>
+
+          <div className="mt-6 rounded-[24px] bg-[color:var(--surface-low)] p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-bold">Bật kiểm duyệt tự động</p>
+                <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">
+                  Đây là công tắc tổng của group. Khi tắt, bot sẽ không áp các logic chặn spam,
+                  cảnh báo, AI hay anti-raid bên dưới.
+                </p>
+              </div>
+              <label className="inline-flex items-center gap-3 rounded-full bg-white px-4 py-3 text-sm font-semibold">
+                <span>{form.moderationEnabled ? "Đang bật" : "Đang tắt"}</span>
+                <input
+                  type="checkbox"
+                  checked={form.moderationEnabled}
+                  onChange={(event) =>
+                    setForm((current) =>
+                      current
+                        ? {
+                            ...current,
+                            moderationEnabled: event.target.checked,
+                          }
+                        : current,
+                    )
+                  }
+                />
+              </label>
+            </div>
+          </div>
         </header>
 
         <form
@@ -450,13 +506,24 @@ export function TelegramGroupModerationSettings({
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
                 Ma trận khóa nội dung
               </p>
+              <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">
+                Bật hoặc tắt từng kiểu nội dung cần chặn. Mỗi mục bên dưới là một logic độc lập,
+                có thể dùng riêng hoặc kết hợp với cảnh báo, antiflood và AI.
+              </p>
               <div className="mt-5 grid gap-3 lg:grid-cols-2">
                 {toggleFieldKeys.map(([key, label]) => (
                   <label
                     key={key}
                     className="flex flex-col gap-3 rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <span className="text-sm font-semibold">{label}</span>
+                    <div className="min-w-0">
+                      <span className="text-sm font-semibold">{label}</span>
+                      {toggleDescriptions[key] ? (
+                        <p className="mt-1 text-xs leading-5 text-[color:var(--on-surface-variant)]">
+                          {toggleDescriptions[key]}
+                        </p>
+                      ) : null}
+                    </div>
                     <input
                       type="checkbox"
                       checked={Boolean(form[key])}
@@ -479,6 +546,10 @@ export function TelegramGroupModerationSettings({
             <section className="space-y-5">
               <div className="rounded-[24px] bg-[color:var(--surface-low)] p-5">
                 <p className="text-sm font-bold">Miễn trừ / Danh sách tin cậy</p>
+                <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">
+                  Những user nằm trong danh sách này sẽ không bị bot tự động warn, mute, kick
+                  hoặc ban. Dùng cho owner, admin vận hành hoặc tài khoản nội bộ.
+                </p>
                 <div className="mt-4 grid gap-4">
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
@@ -528,6 +599,10 @@ export function TelegramGroupModerationSettings({
 
               <div className="rounded-[24px] bg-[color:var(--surface-low)] p-5">
                 <p className="text-sm font-bold">Quy tắc cảnh báo</p>
+                <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">
+                  Dùng để cộng dồn vi phạm nhẹ. Khi user chạm ngưỡng cảnh báo, bot sẽ tự nâng lên
+                  hành động ở bên dưới như khóa chat, kick hoặc ban.
+                </p>
                 <div className="mt-4 grid gap-4">
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
@@ -549,6 +624,9 @@ export function TelegramGroupModerationSettings({
                       }
                       className="w-full rounded-[16px] bg-white px-4 py-3 text-sm outline-none"
                     />
+                    <p className="mt-2 text-xs text-[color:var(--on-surface-variant)]">
+                      Ví dụ để 2 nghĩa là user vi phạm 2 lần sẽ bị nâng sang hành động bên dưới.
+                    </p>
                   </label>
 
                   <label className="block">
@@ -698,6 +776,9 @@ export function TelegramGroupModerationSettings({
                       <option value="ban">Cấm vĩnh viễn</option>
                       <option value="tban">Cấm tạm thời</option>
                     </select>
+                    <p className="mt-2 text-xs text-[color:var(--on-surface-variant)]">
+                      Đây là hình phạt khi user vượt số tin tối đa trong khoảng thời gian đã đặt.
+                    </p>
                   </label>
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
@@ -959,6 +1040,10 @@ export function TelegramGroupModerationSettings({
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
                       Từ khóa bổ sung
                     </p>
+                    <p className="mt-2 text-sm text-[color:var(--on-surface-variant)]">
+                      Dùng cho các cụm từ spam đặc thù như tên thương hiệu giả, keyword lừa đảo hoặc
+                      câu mời chào mà group này thường gặp.
+                    </p>
                     <div className="mt-3 flex flex-col gap-3 sm:flex-row">
                       <input
                         value={keywordInput}
@@ -998,6 +1083,10 @@ export function TelegramGroupModerationSettings({
                   <div className="rounded-[20px] bg-white/55 p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
                       Domain allow / block
+                    </p>
+                    <p className="mt-2 text-sm text-[color:var(--on-surface-variant)]">
+                      `Block` để chặn domain spam. `Allow` để đưa domain hợp lệ vào danh sách cho
+                      phép của riêng group này.
                     </p>
                     <label className="mt-3 block">
                       <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">

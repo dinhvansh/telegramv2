@@ -3,6 +3,11 @@ import { CampaignStatus, EventTone } from '@prisma/client';
 import { fallbackSnapshot } from './fallback-snapshot';
 import { PrismaService } from '../prisma/prisma.service';
 
+type SnapshotViewer = {
+  userId: string;
+  permissions: string[];
+};
+
 const toneMap: Record<EventTone, 'primary' | 'success' | 'warning' | 'danger'> =
   {
     PRIMARY: 'primary',
@@ -33,6 +38,17 @@ function parseTargetCount(value: string | null | undefined) {
 export class PlatformService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private canViewAllCampaigns(viewer?: SnapshotViewer) {
+    if (!viewer) {
+      return true;
+    }
+
+    return viewer.permissions.some(
+      (permission) =>
+        permission === 'settings.manage' || permission === 'moderation.review',
+    );
+  }
+
   async getHealth() {
     if (!process.env.DATABASE_URL) {
       return {
@@ -53,29 +69,41 @@ export class PlatformService {
     };
   }
 
-  async getSnapshot() {
+  async getSnapshot(viewer?: SnapshotViewer) {
     if (!process.env.DATABASE_URL) {
       return fallbackSnapshot;
     }
 
     try {
+      const campaignWhere = this.canViewAllCampaigns(viewer)
+        ? undefined
+        : {
+            assigneeUserId: viewer?.userId,
+          };
+
+      const campaigns = await this.prisma.campaign.findMany({
+        where: campaignWhere,
+        orderBy: { createdAt: 'asc' },
+        include: {
+          communityMembers: true,
+          telegramGroup: true,
+        },
+      });
+
       const [
         metrics,
-        campaigns,
         eventFeed,
         moderationRules,
         roadmap,
         autopostCapabilities,
         roles,
         settings,
+        botConfig,
+        telegramGroups,
+        communityMembers,
+        activityEvents,
       ] = await Promise.all([
         this.prisma.metricCard.findMany({ orderBy: { label: 'asc' } }),
-        this.prisma.campaign.findMany({
-          orderBy: { createdAt: 'asc' },
-          include: {
-            communityMembers: true,
-          },
-        }),
         this.prisma.eventFeedItem.findMany({ orderBy: { createdAt: 'desc' } }),
         this.prisma.moderationRule.findMany({ orderBy: { sortOrder: 'asc' } }),
         this.prisma.roadmapPhase.findMany({
@@ -85,41 +113,227 @@ export class PlatformService {
         this.prisma.autopostCapability.findMany({ orderBy: { title: 'asc' } }),
         this.prisma.role.findMany({ orderBy: { createdAt: 'asc' } }),
         this.prisma.systemSetting.findMany({ orderBy: { key: 'asc' } }),
+        this.prisma.telegramBotConfig.findFirst({
+          orderBy: { updatedAt: 'desc' },
+        }),
+        this.prisma.telegramGroup.findMany({
+          orderBy: [{ isActive: 'desc' }, { title: 'asc' }],
+        }),
+        this.prisma.communityMember.findMany({
+          where: this.canViewAllCampaigns(viewer)
+            ? undefined
+            : {
+                campaignId: {
+                  in: campaigns.map((campaign) => campaign.id),
+                },
+              },
+          select: {
+            externalId: true,
+            groupTitle: true,
+            joinedAt: true,
+            leftAt: true,
+          },
+        }),
+        this.prisma.spamEvent.findMany({
+          where: {
+            eventType: 'message_received',
+            createdAt: {
+              gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+            },
+          },
+          select: {
+            actorExternalId: true,
+            groupTitle: true,
+          },
+        }),
       ]);
+
+      const scopedCampaigns = campaigns.map((campaign) => {
+        const joinedCount = campaign.communityMembers.length;
+        const leftCount = campaign.communityMembers.filter(
+          (member) => member.leftAt,
+        ).length;
+        const activeCount = joinedCount - leftCount;
+        const targetCount = parseTargetCount(campaign.joinRate);
+
+        return {
+          name: campaign.name,
+          channel: campaign.channel,
+          inviteCode: campaign.inviteCode,
+          targetCount,
+          joinedCount,
+          activeCount,
+          leftCount,
+          status: campaignStatusMap[campaign.status],
+        };
+      });
+
+      const joinedTotal = scopedCampaigns.reduce(
+        (total, campaign) => total + campaign.joinedCount,
+        0,
+      );
+      const activeTotal = scopedCampaigns.reduce(
+        (total, campaign) => total + campaign.activeCount,
+        0,
+      );
+      const leftTotal = scopedCampaigns.reduce(
+        (total, campaign) => total + campaign.leftCount,
+        0,
+      );
+      const targetTotal = scopedCampaigns.reduce(
+        (total, campaign) => total + campaign.targetCount,
+        0,
+      );
+      const progressValue =
+        targetTotal > 0 ? `${Math.round((joinedTotal / targetTotal) * 100)}%` : '0%';
+
+      const scopedMetrics = this.canViewAllCampaigns(viewer)
+        ? metrics.map((metric) => ({
+            label: metric.label,
+            value: metric.value,
+            trend: metric.trend,
+            tone: toneMap[metric.tone],
+          }))
+        : [
+            {
+              label: 'Campaign được giao',
+              value: String(scopedCampaigns.length),
+              trend: 'Theo user hiện tại',
+              tone: 'primary' as const,
+            },
+            {
+              label: 'Khách đã tham gia',
+              value: String(joinedTotal),
+              trend: progressValue,
+              tone: 'success' as const,
+            },
+            {
+              label: 'Khách đang ở lại',
+              value: String(activeTotal),
+              trend: `${leftTotal} đã rời`,
+              tone: 'warning' as const,
+            },
+          ];
+
+      const allowedGroupTitles =
+        this.canViewAllCampaigns(viewer) || campaigns.length === 0
+          ? new Set(telegramGroups.map((group) => group.title))
+          : new Set(
+              campaigns
+                .map((campaign) => campaign.telegramGroup?.title ?? campaign.channel)
+                .filter(Boolean),
+            );
+
+      const startCurrentMonth = new Date();
+      startCurrentMonth.setDate(1);
+      startCurrentMonth.setHours(0, 0, 0, 0);
+
+      const startPreviousMonth = new Date(startCurrentMonth);
+      startPreviousMonth.setMonth(startPreviousMonth.getMonth() - 1);
+
+      const activeMemberCounts = new Map<string, number>();
+      const currentMonthJoins = new Map<string, number>();
+      const previousMonthJoins = new Map<string, number>();
+
+      for (const member of communityMembers) {
+        if (!allowedGroupTitles.has(member.groupTitle)) {
+          continue;
+        }
+
+        if (!member.leftAt) {
+          activeMemberCounts.set(
+            member.groupTitle,
+            (activeMemberCounts.get(member.groupTitle) ?? 0) + 1,
+          );
+        }
+
+        if (member.joinedAt >= startCurrentMonth) {
+          currentMonthJoins.set(
+            member.groupTitle,
+            (currentMonthJoins.get(member.groupTitle) ?? 0) + 1,
+          );
+        } else if (
+          member.joinedAt >= startPreviousMonth &&
+          member.joinedAt < startCurrentMonth
+        ) {
+          previousMonthJoins.set(
+            member.groupTitle,
+            (previousMonthJoins.get(member.groupTitle) ?? 0) + 1,
+          );
+        }
+      }
+
+      const activeUsersByGroup = new Map<string, Set<string>>();
+
+      for (const event of activityEvents) {
+        if (!event.groupTitle || !event.actorExternalId) {
+          continue;
+        }
+        if (!allowedGroupTitles.has(event.groupTitle)) {
+          continue;
+        }
+
+        const bucket =
+          activeUsersByGroup.get(event.groupTitle) ?? new Set<string>();
+        bucket.add(event.actorExternalId);
+        activeUsersByGroup.set(event.groupTitle, bucket);
+      }
+
+      const groupsForDashboard = telegramGroups.filter((group) =>
+        allowedGroupTitles.has(group.title),
+      );
+
+      const groupInsights = groupsForDashboard
+        .map((group) => {
+          const memberCount = activeMemberCounts.get(group.title) ?? 0;
+          const monthlyJoins = currentMonthJoins.get(group.title) ?? 0;
+          const previousMonthlyJoins = previousMonthJoins.get(group.title) ?? 0;
+          const activeUsers = activeUsersByGroup.get(group.title)?.size ?? 0;
+          const growthRate =
+            previousMonthlyJoins > 0
+              ? ((monthlyJoins - previousMonthlyJoins) /
+                  previousMonthlyJoins) *
+                100
+              : monthlyJoins > 0
+                ? 100
+                : 0;
+          const activityRate =
+            memberCount > 0 ? (activeUsers / memberCount) * 100 : 0;
+
+          return {
+            title: group.title,
+            memberCount,
+            monthlyJoins,
+            previousMonthlyJoins,
+            growthRate: Number(growthRate.toFixed(1)),
+            activeUsers,
+            activityRate: Number(activityRate.toFixed(1)),
+          };
+        })
+        .sort((a, b) => b.memberCount - a.memberCount);
+
+      const botSummary = {
+        botName:
+          botConfig?.botDisplayName ?? botConfig?.botUsername ?? 'Chưa xác định',
+        botExternalId: botConfig?.botExternalId ?? null,
+        activeGroupCount: groupsForDashboard.filter((group) => group.isActive)
+          .length,
+        totalGroupCount: groupsForDashboard.length,
+        webhookRegistered: botConfig?.webhookRegistered ?? false,
+      };
 
       return {
         navItems: fallbackSnapshot.navItems,
-        metrics: metrics.map((metric) => ({
-          label: metric.label,
-          value: metric.value,
-          trend: metric.trend,
-          tone: toneMap[metric.tone],
-        })),
-        campaigns: campaigns.map((campaign) => {
-          const joinedCount = campaign.communityMembers.length;
-          const leftCount = campaign.communityMembers.filter(
-            (member) => member.leftAt,
-          ).length;
-          const activeCount = joinedCount - leftCount;
-          const targetCount = parseTargetCount(campaign.joinRate);
-
-          return {
-            name: campaign.name,
-            channel: campaign.channel,
-            inviteCode: campaign.inviteCode,
-            targetCount,
-            joinedCount,
-            activeCount,
-            leftCount,
-            status: campaignStatusMap[campaign.status],
-          };
-        }),
+        metrics: scopedMetrics,
+        campaigns: scopedCampaigns,
         eventFeed: eventFeed.map((event) => ({
           time: event.timeLabel,
           title: event.title,
           detail: event.detail,
           tone: toneMap[event.tone],
         })),
+        botSummary,
+        groupInsights,
         moderationRules: moderationRules.map((rule) => rule.content),
         roadmap: roadmap.map((phase) => ({
           phase: phase.name,

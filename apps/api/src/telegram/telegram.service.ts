@@ -335,6 +335,18 @@ export class TelegramService {
     const botConfig = await this.getBotConfigState();
     const webhookUrl =
       botConfig?.webhookUrl || this.buildWebhookUrl(config.publicBaseUrl);
+    const groupStats = process.env.DATABASE_URL
+      ? await this.prisma.telegramGroup.aggregate({
+          _count: { id: true },
+          where: {},
+        })
+      : null;
+    const activeGroupStats = process.env.DATABASE_URL
+      ? await this.prisma.telegramGroup.aggregate({
+          _count: { id: true },
+          where: { isActive: true },
+        })
+      : null;
 
     return {
       mode: config.botToken ? 'token-configured' : 'mock-only',
@@ -350,6 +362,8 @@ export class TelegramService {
       tokenPreview: this.maskToken(config.botToken),
       lastVerifiedAt: botConfig?.lastVerifiedAt?.toISOString() || null,
       lastDiscoveredAt: botConfig?.lastDiscoveredAt?.toISOString() || null,
+      activeGroupsCount: activeGroupStats?._count.id ?? 0,
+      totalGroupsCount: groupStats?._count.id ?? 0,
     };
   }
 
@@ -978,10 +992,22 @@ export class TelegramService {
       };
     }
 
+    const previousBotConfig = await this.prisma.telegramBotConfig.findUnique({
+      where: { singletonKey: 'default' },
+    });
+    const nextBotExternalId = response.result?.id
+      ? String(response.result.id)
+      : null;
+    const botChanged = Boolean(
+      previousBotConfig?.botExternalId &&
+      nextBotExternalId &&
+      previousBotConfig.botExternalId !== nextBotExternalId,
+    );
+
     const botConfig = await this.prisma.telegramBotConfig.upsert({
       where: { singletonKey: 'default' },
       update: {
-        botExternalId: response.result?.id ? String(response.result.id) : null,
+        botExternalId: nextBotExternalId,
         botUsername: response.result?.username || config.botUsername || null,
         botDisplayName: response.result?.first_name || null,
         isVerified: Boolean(response.ok),
@@ -989,13 +1015,29 @@ export class TelegramService {
       },
       create: {
         singletonKey: 'default',
-        botExternalId: response.result?.id ? String(response.result.id) : null,
+        botExternalId: nextBotExternalId,
         botUsername: response.result?.username || config.botUsername || null,
         botDisplayName: response.result?.first_name || null,
         isVerified: Boolean(response.ok),
         lastVerifiedAt: response.ok ? new Date() : null,
       },
     });
+
+    if (botChanged) {
+      await this.prisma.telegramGroup.updateMany({
+        where: { isActive: true },
+        data: {
+          isActive: false,
+          discoveredFrom: 'bot_switched',
+          botMemberState: null,
+          botCanDeleteMessages: false,
+          botCanRestrictMembers: false,
+          botCanInviteUsers: false,
+          botCanManageTopics: false,
+          lastSyncedAt: new Date(),
+        },
+      });
+    }
 
     await this.systemLogsService.log({
       level: response.ok ? 'INFO' : 'WARN',
@@ -1008,6 +1050,7 @@ export class TelegramService {
       payload: {
         botId: botConfig.botExternalId,
         botUsername: botConfig.botUsername,
+        botChanged,
       },
     });
 
@@ -1537,6 +1580,17 @@ export class TelegramService {
           ),
         })
       : null;
+    const deleteMessageIds: string[] | null =
+      runtimeModeration?.deleteAll && processed.actorExternalId
+        ? await this.collectRecentFloodMessageIds({
+            actorExternalId: processed.actorExternalId,
+            groupTitle: processed.groupTitle,
+            windowSeconds: runtimeModeration.deleteWindowSeconds || 0,
+            currentMessageId: processed.messageExternalId,
+            joinedAt: latestMembership?.joinedAt ?? null,
+          })
+        : null;
+
     const action =
       resolvedModeration && config.botToken
         ? await this.telegramActionsService.executeModerationDecision({
@@ -1551,16 +1605,7 @@ export class TelegramService {
             chatId: processed.groupExternalId,
             userId: processed.actorExternalId,
             messageId: processed.messageExternalId,
-            deleteMessageIds:
-              runtimeModeration?.deleteAll && processed.actorExternalId
-                ? await this.collectRecentFloodMessageIds({
-                    actorExternalId: processed.actorExternalId,
-                    groupTitle: processed.groupTitle,
-                    windowSeconds: runtimeModeration.deleteWindowSeconds || 0,
-                    currentMessageId: processed.messageExternalId,
-                    joinedAt: latestMembership?.joinedAt ?? null,
-                  })
-                : null,
+            deleteMessageIds,
             muteDurationHours:
               runtimeModeration?.muteDurationHours ||
               resolvedModeration.warningContext?.muteDurationHours ||
@@ -2245,7 +2290,7 @@ export class TelegramService {
     windowSeconds: number;
     currentMessageId?: string | null;
     joinedAt?: Date | null;
-  }) {
+  }): Promise<string[]> {
     const currentMessageId = String(input.currentMessageId || '').trim();
     if (!process.env.DATABASE_URL || input.windowSeconds <= 0) {
       return currentMessageId ? [currentMessageId] : [];

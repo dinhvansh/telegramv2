@@ -12,6 +12,14 @@ type LoginInput = {
 
 const fallbackUsers = [
   {
+    id: 'fallback-viewer',
+    email: 'viewer@nexus.local',
+    password: 'viewer123',
+    name: 'Campaign Viewer',
+    roles: ['Viewer'],
+    permissions: ['campaign.view'],
+  },
+  {
     id: 'fallback-admin',
     email: 'admin@nexus.local',
     password: 'admin123',

@@ -20,6 +20,7 @@ type SessionUser = {
 type CreateCampaignInput = {
   name: string;
   telegramGroupId: string;
+  assigneeUserId: string;
   targetCount: string;
   status: "Active" | "Paused" | "Review";
   inviteMemberLimit: string;
@@ -31,6 +32,14 @@ type TelegramGroupOption = {
   title: string;
   externalId: string;
   isActive: boolean;
+};
+
+type CampaignAssigneeOption = {
+  id: string;
+  name: string;
+  email: string;
+  username: string | null;
+  department: string | null;
 };
 
 type CampaignNoticeState = {
@@ -57,9 +66,9 @@ const pagePermissionMap: Record<
   string[]
 > = {
   dashboard: [],
-  campaigns: ["campaign.manage"],
-  members: ["campaign.manage", "moderation.review"],
-  member360: ["campaign.manage", "moderation.review"],
+  campaigns: ["campaign.manage", "campaign.view"],
+  members: ["campaign.manage", "campaign.view", "moderation.review"],
+  member360: ["campaign.manage", "campaign.view", "moderation.review"],
   moderation: ["moderation.review"],
   autopost: ["autopost.execute"],
   roles: ["settings.manage"],
@@ -117,9 +126,11 @@ export function PlatformDashboard({
   const [campaignError, setCampaignError] = useState<string | null>(null);
   const [campaignNotice, setCampaignNotice] = useState<CampaignNoticeState | null>(null);
   const [telegramGroups, setTelegramGroups] = useState<TelegramGroupOption[]>([]);
+  const [campaignAssignees, setCampaignAssignees] = useState<CampaignAssigneeOption[]>([]);
   const [campaignForm, setCampaignForm] = useState<CreateCampaignInput>({
     name: "Spring Operator Push",
     telegramGroupId: "",
+    assigneeUserId: "",
     targetCount: "100",
     status: "Active",
     inviteMemberLimit: "",
@@ -127,6 +138,12 @@ export function PlatformDashboard({
   });
 
   const canCreateCampaign = user?.permissions.includes("campaign.manage") ?? false;
+  const canViewCampaignData =
+    user?.permissions.includes("campaign.manage") ||
+    user?.permissions.includes("campaign.view") ||
+    user?.permissions.includes("moderation.review") ||
+    user?.permissions.includes("settings.manage") ||
+    false;
 
   useEffect(() => {
     const savedToken = window.localStorage.getItem(authStorageKey);
@@ -171,7 +188,11 @@ export function PlatformDashboard({
               Authorization: `Bearer ${currentToken}`,
             },
           }),
-          fetchJson<PlatformSnapshot>(`${apiBaseUrl}/platform`),
+          fetchJson<PlatformSnapshot>(`${apiBaseUrl}/platform`, {
+            headers: {
+              Authorization: `Bearer ${currentToken}`,
+            },
+          }),
         ]);
 
         if (isMounted) {
@@ -253,8 +274,54 @@ export function PlatformDashboard({
     };
   }, [token]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadCampaignAssignees(currentToken: string) {
+      try {
+        const items = await fetchJson<CampaignAssigneeOption[]>(
+          `${apiBaseUrl}/campaigns/assignees`,
+          {
+            headers: {
+              Authorization: `Bearer ${currentToken}`,
+            },
+          },
+        );
+
+        if (!isMounted) {
+          return;
+        }
+
+        setCampaignAssignees(items);
+      } catch {
+        if (isMounted) {
+          setCampaignAssignees([]);
+        }
+      }
+    }
+
+    if (!token || !canCreateCampaign) {
+      setCampaignAssignees([]);
+      return;
+    }
+
+    void loadCampaignAssignees(token);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [canCreateCampaign, token]);
+
   async function reloadSnapshot() {
-    const data = await fetchJson<PlatformSnapshot>(`${apiBaseUrl}/platform`);
+    if (!token) {
+      return;
+    }
+
+    const data = await fetchJson<PlatformSnapshot>(`${apiBaseUrl}/platform`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
     setSnapshot(data);
     setStatus("connected");
   }
@@ -334,6 +401,7 @@ export function PlatformDashboard({
         body: JSON.stringify({
           name: campaignForm.name,
           telegramGroupId: campaignForm.telegramGroupId,
+          assigneeUserId: campaignForm.assigneeUserId || null,
           joinRate: campaignForm.targetCount,
           status: campaignForm.status,
           inviteRequiresApproval: campaignForm.inviteRequiresApproval,
@@ -354,6 +422,7 @@ export function PlatformDashboard({
       setCampaignForm({
         name: "",
         telegramGroupId: telegramGroups[0]?.id || "",
+        assigneeUserId: "",
         targetCount: "100",
         status: "Active",
         inviteMemberLimit: "",
@@ -505,12 +574,14 @@ export function PlatformDashboard({
         page={page}
         onLogout={handleLogout}
         canCreateCampaign={canCreateCampaign}
+        canViewCampaignData={Boolean(canViewCampaignData)}
         onCreateCampaign={() => {
           setCampaignError(null);
           setCampaignNotice(null);
           setCampaignForm((current) => ({
             ...current,
             telegramGroupId: current.telegramGroupId || telegramGroups[0]?.id || "",
+            assigneeUserId: current.assigneeUserId || "",
           }));
           setIsCreateModalOpen(true);
         }}
@@ -608,6 +679,33 @@ export function PlatformDashboard({
                   <p className="mt-2 text-xs leading-5 text-[color:var(--on-surface-variant)]">
                     Campaign phải chọn từ group Telegram đã quét được để CRM giữ đúng chat ID,
                     tạo link mời và theo dõi thành viên vào nhóm theo từng nguồn.
+                  </p>
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
+                    Người phụ trách
+                  </span>
+                  <select
+                    value={campaignForm.assigneeUserId}
+                    onChange={(event) =>
+                      setCampaignForm((current) => ({
+                        ...current,
+                        assigneeUserId: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
+                  >
+                    <option value="">Chưa gán</option>
+                    {campaignAssignees.map((assignee) => (
+                      <option key={assignee.id} value={assignee.id}>
+                        {assignee.name}
+                        {assignee.department ? ` · ${assignee.department}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs leading-5 text-[color:var(--on-surface-variant)]">
+                    Gán campaign cho cộng tác viên hoặc người phụ trách để sau này theo dõi số khách đã join theo đúng người được giao.
                   </p>
                 </label>
 

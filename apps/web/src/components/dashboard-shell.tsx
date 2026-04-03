@@ -64,17 +64,10 @@ type DashboardShellProps = {
   user?: { name: string; email: string; roles: string[]; permissions?: string[] };
   onLogout?: () => void;
   canCreateCampaign?: boolean;
+  canViewCampaignData?: boolean;
   onCreateCampaign?: () => void;
   isCreatingCampaign?: boolean;
 };
-
-function getCampaignProgress(targetCount: number, joinedCount: number) {
-  if (!targetCount) {
-    return 0;
-  }
-
-  return Math.min(100, (joinedCount / targetCount) * 100);
-}
 
 function buildLine(values: number[]) {
   const safe = values.length ? values : [0];
@@ -113,6 +106,16 @@ function MiniChart({
   );
 }
 
+function formatDelta(value: number) {
+  if (value > 0) {
+    return `+${value.toFixed(1)}%`;
+  }
+  if (value < 0) {
+    return `${value.toFixed(1)}%`;
+  }
+  return "0%";
+}
+
 export function DashboardShell({
   snapshot,
   status = "fallback",
@@ -120,10 +123,22 @@ export function DashboardShell({
   user,
   onLogout,
   canCreateCampaign = false,
+  canViewCampaignData = false,
   onCreateCampaign,
   isCreatingCampaign = false,
 }: DashboardShellProps) {
   const userPermissions = user?.permissions ?? [];
+  const canManageCampaigns =
+    userPermissions.includes("campaign.manage") ||
+    userPermissions.includes("moderation.review") ||
+    userPermissions.includes("settings.manage");
+  const canEditMembers =
+    userPermissions.includes("campaign.manage") ||
+    userPermissions.includes("moderation.review");
+  const isAssignedCampaignView =
+    canViewCampaignData &&
+    !userPermissions.includes("moderation.review") &&
+    !userPermissions.includes("settings.manage");
   const hasAnyPermission = (requiredPermissions: readonly string[]) =>
     requiredPermissions.length === 0 ||
     requiredPermissions.some((permission) => userPermissions.includes(permission));
@@ -147,7 +162,7 @@ export function DashboardShell({
     {
       key: "campaigns",
       href: "/campaigns",
-      requiredPermissions: ["campaign.manage"],
+      requiredPermissions: ["campaign.manage", "campaign.view"],
       label: "Campaign",
       icon: (
         <>
@@ -162,7 +177,7 @@ export function DashboardShell({
     {
       key: "members",
       href: "/members",
-      requiredPermissions: ["campaign.manage", "moderation.review"],
+      requiredPermissions: ["campaign.manage", "campaign.view", "moderation.review"],
       label: "Thành viên",
       icon: (
         <>
@@ -177,7 +192,7 @@ export function DashboardShell({
     {
       key: "member360",
       href: "/member360",
-      requiredPermissions: ["campaign.manage", "moderation.review"],
+      requiredPermissions: ["campaign.manage", "campaign.view", "moderation.review"],
       label: "Member 360",
       icon: (
         <>
@@ -192,8 +207,8 @@ export function DashboardShell({
     {
       key: "moderation",
       href: "/moderation",
-      requiredPermissions: ["moderation.review"],
-      label: "Chống spam",
+      requiredPermissions: ["moderation.review", "settings.manage"],
+      label: "Bot & Moderation",
       icon: (
         <>
           <path d="M12 3 4 7v5c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V7z" />
@@ -201,7 +216,7 @@ export function DashboardShell({
           <path d="M12 16h.01" />
         </>
       ),
-      description: "Rule chống spam và hàng đợi review.",
+      description: "Bot đang dùng, group đang sync và moderation.",
     },
     {
       key: "autopost",
@@ -232,19 +247,6 @@ export function DashboardShell({
       description: "Vai trò và quyền truy cập.",
     },
     {
-      key: "telegram",
-      href: "/telegram",
-      requiredPermissions: ["settings.manage"],
-      label: "Telegram",
-      icon: (
-        <>
-          <path d="M21 4 3 11l7 2 2 7 9-16Z" />
-          <path d="m10 13 5-5" />
-        </>
-      ),
-      description: "Bot config, webhook và vòng đời group.",
-    },
-    {
       key: "settings",
       href: "/settings",
       requiredPermissions: ["settings.manage"],
@@ -270,32 +272,14 @@ export function DashboardShell({
     hasAnyPermission(item.requiredPermissions),
   );
 
-  const topCampaigns = snapshot.campaigns
-    .map((campaign, index) => ({
-      ...campaign,
-      score:
-        campaign.targetCount > 0
-          ? getCampaignProgress(campaign.targetCount, campaign.joinedCount)
-          : Math.max(24, 82 - index * 12),
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 4);
-  const chartValues = topCampaigns.map((item) => item.score);
-  const eventValues = snapshot.eventFeed
+  const groupMemberValues = snapshot.groupInsights
     .slice(0, 6)
-    .reverse()
-    .map(
-      (event, index) =>
-        30 +
-        index * 8 +
-        (event.tone === "danger" ? 20 : event.tone === "warning" ? 14 : 10),
-    );
-  const campaignStateCounts = snapshot.campaigns.reduce(
-    (acc, campaign) => {
-      acc[campaign.status] += 1;
-      return acc;
-    },
-    { Active: 0, Paused: 0, Review: 0 },
+    .map((group) => group.memberCount);
+  const activeGrowthGroups = snapshot.groupInsights.filter(
+    (group) =>
+      group.memberCount > 0 ||
+      group.monthlyJoins > 0 ||
+      group.previousMonthlyJoins > 0,
   );
 
   return (
@@ -369,13 +353,15 @@ export function DashboardShell({
                     Thoát
                   </button>
                 ) : null}
-                <button
-                  onClick={onCreateCampaign}
-                  disabled={!canCreateCampaign || isCreatingCampaign}
-                  className="rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-4 py-2 text-xs font-bold text-white shadow-[0_16px_40px_rgba(0,83,219,0.24)] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isCreatingCampaign ? "Đang xử lý..." : "Tạo mới"}
-                </button>
+                {canCreateCampaign ? (
+                  <button
+                    onClick={onCreateCampaign}
+                    disabled={isCreatingCampaign}
+                    className="rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-4 py-2 text-xs font-bold text-white shadow-[0_16px_40px_rgba(0,83,219,0.24)] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isCreatingCampaign ? "Đang xử lý..." : "Tạo mới"}
+                  </button>
+                ) : null}
               </div>
             </div>
 
@@ -423,13 +409,15 @@ export function DashboardShell({
                     Thoát
                   </button>
                 ) : null}
-                <button
-                  onClick={onCreateCampaign}
-                  disabled={!canCreateCampaign || isCreatingCampaign}
-                  className="rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-4 py-2 text-xs font-bold text-white shadow-[0_16px_40px_rgba(0,83,219,0.24)] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isCreatingCampaign ? "Đang xử lý..." : "Tạo mới"}
-                </button>
+                {canCreateCampaign ? (
+                  <button
+                    onClick={onCreateCampaign}
+                    disabled={isCreatingCampaign}
+                    className="rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-4 py-2 text-xs font-bold text-white shadow-[0_16px_40px_rgba(0,83,219,0.24)] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isCreatingCampaign ? "Đang xử lý..." : "Tạo mới"}
+                  </button>
+                ) : null}
               </div>
             </div>
 
@@ -461,220 +449,133 @@ export function DashboardShell({
         <div className="space-y-10 px-5 py-8 lg:px-10 lg:py-10">
           {page === "dashboard" ? (
             <div className="space-y-6">
-              <section className="grid gap-6 xl:grid-cols-[1.45fr_0.9fr]">
+              <section>
                 <div className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
                   <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
                     <div className="max-w-3xl">
-                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-                        Tổng quan
-                      </p>
-                      <h3 className="mt-2 text-3xl font-black leading-tight tracking-tight">
-                        Theo dõi nhanh campaign, moderation và trạng thái hệ thống.
-                      </h3>
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">{"T\u1ed5ng quan"}</p>
+                      <h3 className="mt-2 text-3xl font-black leading-tight tracking-tight">{"Theo d\u00f5i nhanh bot \u0111ang ch\u1ea1y, t\u0103ng tr\u01b0\u1edfng group v\u00e0 m\u1ee9c \u0111\u1ed9 ho\u1ea1t \u0111\u1ed9ng c\u1ee7a user."}</h3>
+                      {isAssignedCampaignView ? (
+                        <div className="mt-4 inline-flex rounded-full bg-[color:var(--primary-soft)] px-4 py-2 text-sm font-semibold text-[color:var(--primary)]">{"Ch\u1ebf \u0111\u1ed9 c\u1ed9ng t\u00e1c vi\u00ean: ch\u1ec9 hi\u1ec7n campaign \u0111\u01b0\u1ee3c giao"}</div>
+                      ) : null}
                     </div>
                     <div className="rounded-[24px] bg-[linear-gradient(135deg,rgba(0,83,219,0.1),rgba(0,107,98,0.08))] px-5 py-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">
-                        Tổng sự kiện
-                      </p>
-                      <p className="mt-2 text-3xl font-black tracking-tight">
-                        {snapshot.eventFeed.length}
-                      </p>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">{"Group \u0111\u1ed3ng b\u1ed9"}</p>
+                      <p className="mt-2 text-3xl font-black tracking-tight">{snapshot.botSummary.activeGroupCount}/{snapshot.botSummary.totalGroupCount}</p>
                     </div>
                   </div>
 
                   <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                     {snapshot.metrics.map((metric) => (
-                      <article
-                        key={metric.label}
-                        className="rounded-[24px] bg-[color:var(--surface-low)] px-5 py-5"
-                      >
+                      <article key={metric.label} className="rounded-[24px] bg-[color:var(--surface-low)] px-5 py-5">
                         <div className="flex items-start justify-between gap-4">
-                          <div
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${toneClassMap[metric.tone]}`}
-                          >
-                            {metric.trend}
-                          </div>
-                          <span className="text-xs font-bold uppercase tracking-[0.18em] text-[color:var(--on-surface-variant)]">
-                            live
-                          </span>
+                          <div className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${toneClassMap[metric.tone]}`}>{metric.trend}</div>
+                          <span className="text-xs font-bold uppercase tracking-[0.18em] text-[color:var(--on-surface-variant)]">live</span>
                         </div>
-                        <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">
-                          {metric.label}
-                        </p>
-                        <p className="mt-2 text-3xl font-black tracking-tight">
-                          {metric.value}
-                        </p>
+                        <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">{metric.label}</p>
+                        <p className="mt-2 text-3xl font-black tracking-tight">{metric.value}</p>
                       </article>
                     ))}
                   </div>
 
-                  <div className="mt-8 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-                    <article className="rounded-[28px] bg-[linear-gradient(180deg,rgba(0,83,219,0.1),rgba(255,255,255,0.96))] p-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">
-                        Xu hướng campaign
-                      </p>
-                      <h4 className="mt-1 text-lg font-black tracking-tight">
-                        Campaign có tỷ lệ vào nhóm cao
-                      </h4>
-                      <div className="mt-4 rounded-[24px] bg-white/75 p-3">
-                        <MiniChart values={chartValues} tone="primary" />
+                  <div className="mt-8 grid gap-5 xl:grid-cols-[0.82fr_1.18fr]">
+                    <article className="rounded-[28px] bg-[linear-gradient(180deg,rgba(0,83,219,0.08),rgba(255,255,255,0.96))] p-5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">{"Bot \u0111ang ch\u1ea1y"}</p>
+                      <h4 className="mt-1 text-lg font-black tracking-tight">{snapshot.botSummary.botName}</h4>
+                      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-[20px] bg-white/75 px-4 py-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--on-surface-variant)]">Bot ID</p>
+                          <p className="mt-2 text-lg font-black tracking-tight">{snapshot.botSummary.botExternalId ?? "Ch\u01b0a x\u00e1c \u0111\u1ecbnh"}</p>
+                        </div>
+                        <div className="rounded-[20px] bg-white/75 px-4 py-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--on-surface-variant)]">Webhook</p>
+                          <p className="mt-2 text-lg font-black tracking-tight">{snapshot.botSummary.webhookRegistered ? "\u0110\u00e3 \u0111\u0103ng k\u00fd" : "Ch\u01b0a \u0111\u0103ng k\u00fd"}</p>
+                        </div>
+                      </div>
+                      <div className="mt-4 rounded-[20px] bg-white/75 px-4 py-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--on-surface-variant)]">{"Group \u0111ang qu\u1ea3n l\u00fd"}</p>
+                            <p className="mt-2 text-lg font-black tracking-tight">{snapshot.botSummary.activeGroupCount}/{snapshot.botSummary.totalGroupCount} group</p>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <MiniChart values={groupMemberValues} tone="primary" />
+                          </div>
+                        </div>
                       </div>
                     </article>
 
                     <article className="rounded-[28px] bg-[color:var(--surface-low)] p-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">
-                        Tỷ trọng campaign
-                      </p>
-                      <h4 className="mt-1 text-lg font-black tracking-tight">
-                        Trạng thái hiện tại
-                      </h4>
-                      <div className="mt-5 space-y-4">
-                        {[
-                          {
-                            label: "Đang chạy",
-                            value: campaignStateCounts.Active,
-                            tone: "success" as const,
-                          },
-                          {
-                            label: "Chờ review",
-                            value: campaignStateCounts.Review,
-                            tone: "warning" as const,
-                          },
-                          {
-                            label: "Tạm dừng",
-                            value: campaignStateCounts.Paused,
-                            tone: "danger" as const,
-                          },
-                        ].map((item) => (
-                          <div key={item.label} className="space-y-2">
-                            <div className="flex items-center justify-between gap-3 text-sm">
-                              <span className="font-semibold">{item.label}</span>
-                              <span className="text-xs font-bold">{item.value}</span>
-                            </div>
-                            <div className="h-2.5 rounded-full bg-white/80">
-                              <div
-                                className="h-full rounded-full"
-                                style={{
-                                  width: `${Math.max(
-                                    (item.value /
-                                      Math.max(snapshot.campaigns.length, 1)) *
-                                      100,
-                                    item.value ? 12 : 0,
-                                  )}%`,
-                                  backgroundColor: toneStrokeMap[item.tone],
-                                }}
-                              />
-                            </div>
-                          </div>
-                        ))}
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">{"Group \u0111\u1ed3ng b\u1ed9"}</p>
+                          <h4 className="mt-1 text-lg font-black tracking-tight">{"Th\u00e0nh vi\u00ean, t\u0103ng tr\u01b0\u1edfng th\u00e1ng v\u00e0 m\u1ee9c \u0111\u1ed9 ho\u1ea1t \u0111\u1ed9ng"}</h4>
+                        </div>
+                        <div className="rounded-full bg-white/80 px-3 py-1 text-xs font-bold text-[color:var(--on-surface-variant)]">{activeGrowthGroups.length} group</div>
+                      </div>
+                      <div className="mt-5 space-y-3">
+                        {activeGrowthGroups.map((group) => {
+                          const growthTone = group.growthRate > 0 ? "success" : group.growthRate < 0 ? "danger" : "warning";
+                          return (
+                            <article key={group.title} className="rounded-[20px] bg-white/75 px-4 py-4">
+                              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                <div>
+                                  <p className="text-base font-black tracking-tight">{group.title}</p>
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    <span className="rounded-full bg-[color:var(--surface-low)] px-3 py-1 text-xs font-bold text-[color:var(--on-surface)]">{group.memberCount} {"th\u00e0nh vi\u00ean"}</span>
+                                    <span className={`rounded-full px-3 py-1 text-xs font-bold ${toneClassMap[growthTone]}`}>{formatDelta(group.growthRate)} {"so v\u1edbi th\u00e1ng tr\u01b0\u1edbc"}</span>
+                                    <span className="rounded-full bg-[color:var(--primary-soft)] px-3 py-1 text-xs font-bold text-[color:var(--primary)]">{group.activeUsers} {"user ho\u1ea1t \u0111\u1ed9ng"}</span>
+                                  </div>
+                                </div>
+                                <div className="grid min-w-[220px] gap-2 text-sm text-[color:var(--on-surface-variant)] sm:grid-cols-2">
+                                  <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em]">{"Join th\u00e1ng n\u00e0y"}</p>
+                                    <p className="mt-1 text-base font-black text-[color:var(--on-surface)]">{group.monthlyJoins}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em]">{"Join th\u00e1ng tr\u01b0\u1edbc"}</p>
+                                    <p className="mt-1 text-base font-black text-[color:var(--on-surface)]">{group.previousMonthlyJoins}</p>
+                                  </div>
+                                  <div className="sm:col-span-2">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em]">{"T\u1ef7 l\u1ec7 ho\u1ea1t \u0111\u1ed9ng user"}</p>
+                                      <span className="text-xs font-bold text-[color:var(--on-surface)]">{group.activityRate.toFixed(1)}%</span>
+                                    </div>
+                                    <div className="mt-2 h-2.5 rounded-full bg-[color:var(--surface-low)]">
+                                      <div className="h-full rounded-full bg-[color:var(--primary)]" style={{ width: `${Math.max(Math.min(group.activityRate, 100), group.activityRate ? 8 : 0)}%` }} />
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </article>
+                          );
+                        })}
                       </div>
                     </article>
                   </div>
                 </div>
-
-                <aside className="space-y-6">
-                  <div className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
-                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-                      Nhật ký sự kiện
-                    </p>
-                    <div className="mt-4 rounded-[24px] bg-[color:var(--surface-low)] p-4">
-                      <MiniChart values={eventValues} tone="danger" />
-                    </div>
-                    <div className="mt-5 space-y-3">
-                      {snapshot.eventFeed.slice(0, 4).map((event) => (
-                        <article
-                          key={`${event.time}-${event.title}`}
-                          className="rounded-[20px] bg-[color:var(--surface-low)] px-4 py-4"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-bold">{event.title}</p>
-                            <span
-                              className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${toneClassMap[event.tone]}`}
-                            >
-                              {event.time}
-                            </span>
-                          </div>
-                          <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">
-                            {event.detail}
-                          </p>
-                        </article>
-                      ))}
-                    </div>
-                  </div>
-                </aside>
-              </section>
-
-              <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-                      Top campaign
-                    </p>
-                    <h3 className="mt-2 text-xl font-black tracking-tight">
-                      Campaign nên theo dõi
-                    </h3>
-                  </div>
-                  <div className="rounded-full bg-[color:var(--surface-low)] px-3 py-1 text-xs font-bold text-[color:var(--on-surface-variant)]">
-                    {topCampaigns.length} campaign
-                  </div>
-                </div>
-                <div className="mt-6 grid gap-4 xl:grid-cols-2">
-                  {topCampaigns.map((campaign) => {
-                    const tone =
-                      campaign.status === "Active"
-                        ? "success"
-                        : campaign.status === "Review"
-                          ? "warning"
-                          : "danger";
-                    return (
-                      <article
-                        key={`${campaign.name}-${campaign.channel}`}
-                        className="rounded-[24px] bg-[color:var(--surface-low)] px-5 py-5"
-                      >
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <p className="text-lg font-black tracking-tight">
-                              {campaign.name}
-                            </p>
-                            <p className="mt-1 text-sm text-[color:var(--on-surface-variant)]">
-                              {campaign.channel}
-                            </p>
-                          </div>
-                          <div
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${toneClassMap[tone]}`}
-                          >
-                            {campaign.status}
-                          </div>
-                        </div>
-                        <div className="mt-4 flex items-center justify-between gap-3 text-sm">
-                          <span className="text-[color:var(--on-surface-variant)]">
-                            {campaign.joinedCount}/{campaign.targetCount || 0} mục tiêu
-                          </span>
-                          <span className="font-bold">{campaign.score}%</span>
-                        </div>
-                        <div className="mt-2 h-2.5 rounded-full bg-white/80">
-                          <div
-                            className="h-full rounded-full"
-                            style={{
-                              width: `${Math.min(Math.max(campaign.score, 10), 100)}%`,
-                              backgroundColor: toneStrokeMap[tone],
-                            }}
-                          />
-                        </div>
-                        <p className="mt-3 text-xs text-[color:var(--on-surface-variant)]">
-                          Invite hiện tại: {campaign.inviteCode}
-                        </p>
-                      </article>
-                    );
-                  })}
-                </div>
               </section>
             </div>
           ) : null}
-
-          {page === "campaigns" ? <CampaignsWorkbench /> : null}
-          {page === "members" ? <MembersWorkbench embedded /> : null}
-          {page === "member360" ? <Member360Workbench /> : null}
+          {page === "campaigns" ? (
+            <CampaignsWorkbench
+              isAssignedCampaignView={isAssignedCampaignView}
+              canManageCampaigns={canManageCampaigns}
+            />
+          ) : null}
+          {page === "members" ? (
+            <MembersWorkbench
+              embedded
+              isAssignedCampaignView={isAssignedCampaignView}
+              canEditMembers={canEditMembers}
+            />
+          ) : null}
+          {page === "member360" ? (
+            <Member360Workbench
+              isAssignedCampaignView={isAssignedCampaignView}
+              canEditMembers={canEditMembers}
+            />
+          ) : null}
           {page === "moderation" ? <ModerationWorkbench /> : null}
           {page === "autopost" ? <AutopostWorkbench /> : null}
           {page === "roles" ? <RolesWorkbench currentUser={user} /> : null}

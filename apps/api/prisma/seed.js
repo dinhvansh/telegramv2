@@ -727,8 +727,17 @@ async function main() {
       description: 'Quản lý campaign, autopost và theo dõi tăng trưởng.',
     },
   });
+  const viewerRole = await prisma.role.create({
+    data: {
+      name: 'Viewer',
+      description: 'Read-only view of assigned campaigns and customers.',
+    },
+  });
 
   const permissions = await Promise.all([
+    prisma.permission.create({
+      data: { code: 'campaign.view', description: 'View assigned campaigns and member progress' },
+    }),
     prisma.permission.create({
       data: { code: 'campaign.manage', description: 'Manage campaigns and invite links' },
     }),
@@ -751,23 +760,28 @@ async function main() {
       })),
       {
         roleId: moderatorRole.id,
-        permissionId: permissions[1].id,
+        permissionId: permissions[2].id,
       },
       {
-        roleId: operatorRole.id,
+        roleId: viewerRole.id,
         permissionId: permissions[0].id,
       },
       {
         roleId: operatorRole.id,
-        permissionId: permissions[3].id,
+        permissionId: permissions[1].id,
+      },
+      {
+        roleId: operatorRole.id,
+        permissionId: permissions[4].id,
       },
     ],
   });
 
   const adminPasswordHash = await bcrypt.hash('admin123', 10);
   const operatorPasswordHash = await bcrypt.hash('operator123', 10);
+  const viewerPasswordHash = await bcrypt.hash('viewer123', 10);
 
-  const [adminUser, operatorUser] = await Promise.all([
+  const [adminUser, operatorUser, viewerUser] = await Promise.all([
     prisma.user.create({
       data: {
         email: 'admin@nexus.local',
@@ -786,6 +800,16 @@ async function main() {
         department: 'Tăng trưởng',
         status: UserStatus.ACTIVE,
         passwordHash: operatorPasswordHash,
+      },
+    }),
+    prisma.user.create({
+      data: {
+        email: 'viewer@nexus.local',
+        username: 'campaign_viewer',
+        name: 'Campaign Viewer',
+        department: 'Quan sÃ¡t',
+        status: UserStatus.ACTIVE,
+        passwordHash: viewerPasswordHash,
       },
     }),
   ]);
@@ -825,6 +849,10 @@ async function main() {
       {
         userId: operatorUser.id,
         roleId: operatorRole.id,
+      },
+      {
+        userId: viewerUser.id,
+        roleId: viewerRole.id,
       },
       {
         userId: moderatorUser.id,

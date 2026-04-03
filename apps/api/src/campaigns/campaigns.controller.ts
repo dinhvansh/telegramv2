@@ -2,12 +2,15 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   Post,
   Put,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -16,6 +19,7 @@ import { CampaignsService } from './campaigns.service';
 type CreateCampaignBody = {
   name: string;
   telegramGroupId: string;
+  assigneeUserId?: string | null;
   joinRate?: string;
   status?: 'Active' | 'Paused' | 'Review';
   inviteMemberLimit?: number | null;
@@ -24,32 +28,94 @@ type CreateCampaignBody = {
 
 type UpdateCampaignBody = {
   name?: string;
+  assigneeUserId?: string | null;
   joinRate?: string;
   status?: 'Active' | 'Paused' | 'Review';
+};
+
+type AuthenticatedRequest = Request & {
+  user: {
+    sub: string;
+    email: string;
+    roles: string[];
+    permissions: string[];
+  };
 };
 
 @Controller('campaigns')
 export class CampaignsController {
   constructor(private readonly campaignsService: CampaignsService) {}
 
+  private assertCampaignReadAccess(request: AuthenticatedRequest) {
+    const permissions = request.user.permissions ?? [];
+    return (
+      permissions.includes('campaign.manage') ||
+      permissions.includes('campaign.view')
+    );
+  }
+
   @Get()
-  getCampaigns() {
-    return this.campaignsService.findAll();
+  @UseGuards(JwtAuthGuard)
+  getCampaigns(@Req() request: AuthenticatedRequest) {
+    if (!this.assertCampaignReadAccess(request)) {
+      throw new ForbiddenException('Missing required permission');
+    }
+    return this.campaignsService.findAll({
+      userId: request.user.sub,
+      permissions: request.user.permissions,
+    });
+  }
+
+  @Get('assignees')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('campaign.manage')
+  getAssignees() {
+    return this.campaignsService.findAssignees();
   }
 
   @Get(':campaignId/invite-links')
-  getInviteLinks(@Param('campaignId') campaignId: string) {
-    return this.campaignsService.findInviteLinks(campaignId);
+  @UseGuards(JwtAuthGuard)
+  getInviteLinks(
+    @Param('campaignId') campaignId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    if (!this.assertCampaignReadAccess(request)) {
+      throw new ForbiddenException('Missing required permission');
+    }
+    return this.campaignsService.findInviteLinks(campaignId, {
+      userId: request.user.sub,
+      permissions: request.user.permissions,
+    });
   }
 
   @Get(':campaignId')
-  getCampaign(@Param('campaignId') campaignId: string) {
-    return this.campaignsService.findOne(campaignId);
+  @UseGuards(JwtAuthGuard)
+  getCampaign(
+    @Param('campaignId') campaignId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    if (!this.assertCampaignReadAccess(request)) {
+      throw new ForbiddenException('Missing required permission');
+    }
+    return this.campaignsService.findOne(campaignId, {
+      userId: request.user.sub,
+      permissions: request.user.permissions,
+    });
   }
 
   @Get(':campaignId/members')
-  getCampaignMembers(@Param('campaignId') campaignId: string) {
-    return this.campaignsService.findMembers(campaignId);
+  @UseGuards(JwtAuthGuard)
+  getCampaignMembers(
+    @Param('campaignId') campaignId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    if (!this.assertCampaignReadAccess(request)) {
+      throw new ForbiddenException('Missing required permission');
+    }
+    return this.campaignsService.findMembers(campaignId, {
+      userId: request.user.sub,
+      permissions: request.user.permissions,
+    });
   }
 
   @Post()

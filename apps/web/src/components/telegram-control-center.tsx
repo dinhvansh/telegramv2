@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
@@ -93,12 +93,12 @@ function formatDateTime(value: string | null) {
 function rightsSummary(group: TelegramGroupItem) {
   const rights = [
     group.botRights.canDeleteMessages ? "xóa tin" : null,
-    group.botRights.canRestrictMembers ? "restrict" : null,
+    group.botRights.canRestrictMembers ? "khóa chat" : null,
     group.botRights.canInviteUsers ? "tạo link" : null,
-    group.botRights.canManageTopics ? "topic" : null,
+    group.botRights.canManageTopics ? "quản lý topic" : null,
   ].filter(Boolean);
 
-  return rights.length ? rights.join(", ") : "chưa có quyền";
+  return rights.length ? rights.join(", ") : "Chưa có quyền";
 }
 
 function generateWebhookSecret() {
@@ -140,38 +140,45 @@ export function TelegramControlCenter({
     setToken(savedToken);
   }, []);
 
+  async function refreshData(currentToken: string) {
+    const [telegramStatus, telegramGroups] = await Promise.all([
+      fetchJson<TelegramStatus>(`${apiBaseUrl}/telegram/status`, {
+        headers: { Authorization: `Bearer ${currentToken}` },
+      }),
+      fetchJson<GroupsResponse>(`${apiBaseUrl}/telegram/groups`, {
+        headers: { Authorization: `Bearer ${currentToken}` },
+      }),
+    ]);
+
+    setStatus(telegramStatus);
+    setGroups(telegramGroups.items);
+    setForm((current) => ({
+      ...current,
+      botUsername: telegramStatus.botUsername ?? current.botUsername,
+      publicBaseUrl: telegramStatus.webhookUrl
+        ? telegramStatus.webhookUrl.replace(/\/api\/telegram\/webhook$/, "")
+        : current.publicBaseUrl,
+    }));
+  }
+
   useEffect(() => {
     let isMounted = true;
 
     async function load(currentToken: string) {
       try {
-        const [profile, telegramStatus, telegramGroups] = await Promise.all([
-          fetchJson<SessionUser>(`${apiBaseUrl}/auth/me`, {
-            headers: { Authorization: `Bearer ${currentToken}` },
-          }),
-          fetchJson<TelegramStatus>(`${apiBaseUrl}/telegram/status`, {
-            headers: { Authorization: `Bearer ${currentToken}` },
-          }),
-          fetchJson<GroupsResponse>(`${apiBaseUrl}/telegram/groups`, {
-            headers: { Authorization: `Bearer ${currentToken}` },
-          }),
-        ]);
+        const profile = await fetchJson<SessionUser>(`${apiBaseUrl}/auth/me`, {
+          headers: { Authorization: `Bearer ${currentToken}` },
+        });
 
         if (!isMounted) {
           return;
         }
 
         setUser(profile);
-        setStatus(telegramStatus);
-        setGroups(telegramGroups.items);
-        setForm((current) => ({
-          ...current,
-          botUsername: telegramStatus.botUsername ?? current.botUsername,
-          publicBaseUrl: telegramStatus.webhookUrl
-            ? telegramStatus.webhookUrl.replace(/\/api\/telegram\/webhook$/, "")
-            : current.publicBaseUrl,
-        }));
-        setAuthError(null);
+        await refreshData(currentToken);
+        if (isMounted) {
+          setAuthError(null);
+        }
       } catch {
         if (!isMounted) {
           return;
@@ -201,20 +208,6 @@ export function TelegramControlCenter({
       isMounted = false;
     };
   }, [token]);
-
-  async function refreshData(currentToken: string) {
-    const [telegramStatus, telegramGroups] = await Promise.all([
-      fetchJson<TelegramStatus>(`${apiBaseUrl}/telegram/status`, {
-        headers: { Authorization: `Bearer ${currentToken}` },
-      }),
-      fetchJson<GroupsResponse>(`${apiBaseUrl}/telegram/groups`, {
-        headers: { Authorization: `Bearer ${currentToken}` },
-      }),
-    ]);
-
-    setStatus(telegramStatus);
-    setGroups(telegramGroups.items);
-  }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -283,16 +276,38 @@ export function TelegramControlCenter({
 
   async function handleSaveConfig(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const nextWebhookSecret = form.webhookSecret.trim() || generateWebhookSecret();
+    const payload = {
+      ...form,
+      webhookSecret: nextWebhookSecret,
+    };
+
+    if (nextWebhookSecret !== form.webhookSecret) {
+      setForm((current) => ({
+        ...current,
+        webhookSecret: nextWebhookSecret,
+      }));
+    }
 
     await runAction(
       "save",
-      () =>
-        fetchJson(`${apiBaseUrl}/telegram/config`, {
+      async () => {
+        await fetchJson(`${apiBaseUrl}/telegram/config`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
-          body: JSON.stringify(form),
-        }),
-      "Đã lưu cấu hình Telegram.",
+          body: JSON.stringify(payload),
+        });
+        await fetchJson(`${apiBaseUrl}/telegram/verify-bot`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        await fetchJson(`${apiBaseUrl}/telegram/register-webhook`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        return { ok: true };
+      },
+      "Đã lưu cấu hình, verify bot và đăng ký webhook.",
     );
   }
 
@@ -302,7 +317,7 @@ export function TelegramControlCenter({
     }
 
     const confirmed = window.confirm(
-      `X?a group "${group.title}" kh?i CRM? Ch? n?n x?a b?n ghi inactive c?.`,
+      `Xóa group "${group.title}" khỏi CRM? Chỉ nên xóa bản ghi inactive cũ.`,
     );
 
     if (!confirmed) {
@@ -322,7 +337,28 @@ export function TelegramControlCenter({
           ok: result.deleted,
           description: result.reason ?? null,
         })),
-      "?? x?a group inactive kh?i CRM.",
+      "Đã xóa group inactive khỏi CRM.",
+    );
+  }
+
+  async function handleToggleModeration(group: TelegramGroupItem) {
+    if (!token) {
+      return;
+    }
+
+    const nextValue = !group.moderationEnabled;
+
+    await runAction(
+      `toggle-moderation-${group.id}`,
+      () =>
+        fetchJson(`${apiBaseUrl}/telegram/groups/${group.id}/moderation`, {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ moderationEnabled: nextValue }),
+        }).then(() => ({ ok: true })),
+      nextValue
+        ? `Đã bật kiểm duyệt tự động cho ${group.title}.`
+        : `Đã tắt kiểm duyệt tự động cho ${group.title}.`,
     );
   }
 
@@ -331,9 +367,7 @@ export function TelegramControlCenter({
       return;
     }
 
-    const actionKey = group
-      ? `refresh-rights-${group.id}`
-      : "refresh-rights-all";
+    const actionKey = group ? `refresh-rights-${group.id}` : "refresh-rights-all";
     const url = group
       ? `${apiBaseUrl}/telegram/groups/${group.id}/refresh-rights`
       : `${apiBaseUrl}/telegram/refresh-rights`;
@@ -345,7 +379,7 @@ export function TelegramControlCenter({
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
         }).then((result) => ({
-          ok: result.ok ?? result.failed === 0,
+          ok: result.ok ?? (result.failed === 0),
           description:
             result.failed && result.failed > 0
               ? `Có ${result.failed} group không làm mới được quyền bot.`
@@ -354,6 +388,11 @@ export function TelegramControlCenter({
       group ? "Đã làm mới quyền bot cho group." : "Đã làm mới quyền bot cho toàn bộ group.",
     );
   }
+
+  const activeGroupsCount = useMemo(
+    () => groups.filter((group) => group.isActive).length,
+    [groups],
+  );
 
   if (isLoading) {
     return (
@@ -379,13 +418,13 @@ export function TelegramControlCenter({
       return (
         <div className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.08)]">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-            Telegram CRM
+            Bot & Moderation
           </p>
           <h2 className="mt-2 text-2xl font-black tracking-tight">
             Phiên đăng nhập chưa sẵn sàng
           </h2>
           <p className="mt-3 text-sm leading-7 text-[color:var(--on-surface-variant)]">
-            Đăng nhập bằng flow chính, sau đó mở menu Telegram bên trái.
+            Đăng nhập bằng flow chính, sau đó quay lại màn Bot & Moderation.
           </p>
         </div>
       );
@@ -397,7 +436,7 @@ export function TelegramControlCenter({
         <div className="grid w-full max-w-6xl gap-8 lg:grid-cols-[1.15fr_0.85fr]">
           <section className="rounded-[32px] bg-[color:var(--surface-card)] p-8 shadow-[0_8px_32px_rgba(42,52,57,0.08)] lg:p-10">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-              Telegram CRM
+              Bot & Moderation
             </p>
             <h1 className="mt-3 text-4xl font-black leading-tight tracking-tight">
               Quản lý bot, webhook và group sync trong một màn hình.
@@ -473,31 +512,35 @@ export function TelegramControlCenter({
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-                Telegram Control Center
+                Bot & Moderation
               </p>
-              <h1 className={`mt-2 font-black tracking-tight ${embedded ? "text-2xl sm:text-3xl" : "text-3xl"}`}>
-                CRM-first bot onboarding và group sync
+              <h1
+                className={`mt-2 font-black tracking-tight ${
+                  embedded ? "text-2xl sm:text-3xl" : "text-3xl"
+                }`}
+              >
+                Quản lý bot và đồng bộ group
               </h1>
               <p
                 className={`mt-3 max-w-3xl text-sm leading-7 text-[color:var(--on-surface-variant)] ${
                   embedded ? "hidden sm:block" : ""
                 }`}
               >
-                Cấu hình bot từ CRM, verify với Telegram, đăng ký webhook rồi
+                Cấu hình bot từ CRM, lưu lại để verify bot và đăng ký webhook, rồi
                 đồng bộ những group mà bot đang hoạt động.
               </p>
             </div>
 
             <div className={`flex flex-wrap items-center gap-3 ${embedded ? "hidden sm:flex" : ""}`}>
               <div className="rounded-full bg-[color:var(--surface-low)] px-4 py-3 text-sm text-[color:var(--on-surface-variant)]">
-                {user.name} · {user.roles.join(", ")}
+                {user.name}
               </div>
               {!embedded ? (
                 <button
                   onClick={handleLogout}
                   className="rounded-full bg-[color:var(--surface-low)] px-4 py-3 text-sm font-semibold"
                 >
-                  Đăng xuất
+                  Thoát
                 </button>
               ) : null}
             </div>
@@ -564,7 +607,7 @@ export function TelegramControlCenter({
                 <label className="block">
                   <div className="mb-2 flex items-center justify-between gap-3">
                     <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                      Webhook secret
+                      Secret webhook
                     </span>
                     <button
                       type="button"
@@ -587,8 +630,12 @@ export function TelegramControlCenter({
                         webhookSecret: event.target.value,
                       }))
                     }
+                    placeholder="Có thể để trống, hệ thống sẽ tự sinh khi lưu"
                     className="w-full rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
                   />
+                  <p className="mt-2 text-xs text-[color:var(--on-surface-variant)]">
+                    Không bắt buộc nhập tay. Bấm lưu là hệ thống tự tạo nếu đang để trống.
+                  </p>
                 </label>
               </div>
 
@@ -615,47 +662,7 @@ export function TelegramControlCenter({
                 disabled={isActionRunning !== null}
                 className="rounded-[18px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white disabled:opacity-60"
               >
-                {isActionRunning === "save" ? "Đang lưu..." : "Lưu cấu hình"}
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  void runAction(
-                    "verify",
-                    () =>
-                      fetchJson(`${apiBaseUrl}/telegram/verify-bot`, {
-                        method: "POST",
-                        headers: { Authorization: `Bearer ${token}` },
-                      }),
-                    "Đã verify bot.",
-                  )
-                }
-                disabled={isActionRunning !== null}
-                className="rounded-[18px] bg-[color:var(--surface-low)] px-5 py-3 text-sm font-semibold disabled:opacity-60"
-              >
-                {isActionRunning === "verify" ? "Đang verify..." : "Verify bot"}
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  void runAction(
-                    "webhook",
-                    () =>
-                      fetchJson(`${apiBaseUrl}/telegram/register-webhook`, {
-                        method: "POST",
-                        headers: { Authorization: `Bearer ${token}` },
-                      }),
-                    "Đã đăng ký webhook.",
-                  )
-                }
-                disabled={isActionRunning !== null}
-                className="rounded-[18px] bg-[color:var(--surface-low)] px-5 py-3 text-sm font-semibold disabled:opacity-60"
-              >
-                {isActionRunning === "webhook"
-                  ? "Đang đăng ký..."
-                  : "Đăng ký webhook"}
+                {isActionRunning === "save" ? "Đang kích hoạt..." : "Lưu và kích hoạt"}
               </button>
 
               <button
@@ -674,28 +681,38 @@ export function TelegramControlCenter({
                 disabled={isActionRunning !== null}
                 className="rounded-[18px] bg-[color:var(--surface-low)] px-5 py-3 text-sm font-semibold disabled:opacity-60"
               >
-                {isActionRunning === "discover"
-                  ? "Đang đồng bộ..."
-                  : "Đồng bộ group"}
+                {isActionRunning === "discover" ? "Đang đồng bộ..." : "Đồng bộ group"}
               </button>
             </div>
           </form>
 
           <aside className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.08)]">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-              Trạng thái runtime
-            </p>
-            <div className="mt-5 grid gap-3">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
+                  Tóm tắt bot
+                </p>
+                <h3 className="mt-2 text-xl font-black tracking-tight">
+                  {status?.botDisplayName ?? status?.botUsername ?? "Chưa kết nối bot"}
+                </h3>
+              </div>
+              <span
+                className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${
+                  status?.webhookRegistered
+                    ? "bg-[color:var(--success-soft)] text-[color:var(--success)]"
+                    : "bg-[color:var(--warning-soft)] text-[color:var(--warning)]"
+                }`}
+              >
+                {status?.webhookRegistered ? "Webhook OK" : "Chưa đăng ký"}
+              </span>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
               {[
-                ["Mode", status?.mode ?? "unknown"],
-                ["Configured", status?.botConfigured ? "yes" : "no"],
-                ["Verified", status?.botVerified ? "yes" : "no"],
-                ["Webhook", status?.webhookRegistered ? "registered" : "not registered"],
-                ["Bot ID", status?.botId ?? "n/a"],
-                ["Bot", status?.botUsername ?? status?.botDisplayName ?? "n/a"],
-                ["Webhook URL", status?.webhookUrl ?? "n/a"],
-                ["Lần verify gần nhất", formatDateTime(status?.lastVerifiedAt ?? null)],
-                ["Lần đồng bộ gần nhất", formatDateTime(status?.lastDiscoveredAt ?? null)],
+                ["Bot ID", status?.botId ?? "-"],
+                ["Username", status?.botUsername ? `@${status.botUsername}` : "Chưa verify"],
+                ["Group đang dùng", `${activeGroupsCount}/${groups.length} group`],
+                ["Trạng thái", status?.botConfigured ? "Đã kết nối" : "Chưa cấu hình"],
               ].map(([label, value]) => (
                 <div
                   key={label}
@@ -708,6 +725,30 @@ export function TelegramControlCenter({
                 </div>
               ))}
             </div>
+
+            <div className="mt-4 rounded-[20px] bg-[color:var(--surface-low)] px-4 py-4">
+              <div className="grid gap-3 text-sm sm:grid-cols-2">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
+                    URL webhook
+                  </p>
+                  <p className="mt-2 break-all font-medium">
+                    {status?.webhookUrl ?? "Chưa có"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
+                    Cập nhật gần nhất
+                  </p>
+                  <p className="mt-2 font-medium">
+                    Verify: {formatDateTime(status?.lastVerifiedAt ?? null)}
+                  </p>
+                  <p className="mt-1 font-medium">
+                    Sync group: {formatDateTime(status?.lastDiscoveredAt ?? null)}
+                  </p>
+                </div>
+              </div>
+            </div>
           </aside>
         </section>
 
@@ -715,10 +756,10 @@ export function TelegramControlCenter({
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-                Telegram Groups
+                Group Telegram
               </p>
               <h2 className="mt-2 text-2xl font-black tracking-tight">
-                Danh sách group đã được CRM ghi nhận
+                Danh sách group CRM đang quản lý
               </h2>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -746,7 +787,7 @@ export function TelegramControlCenter({
                   <th className="px-5 py-4 font-semibold">Chat ID</th>
                   <th className="px-5 py-4 font-semibold">Trạng thái</th>
                   <th className="px-5 py-4 font-semibold">Quyền bot</th>
-                  <th className="px-5 py-4 font-semibold">Moderation</th>
+                  <th className="px-5 py-4 font-semibold">Kiểm duyệt</th>
                   <th className="px-5 py-4 font-semibold">Lần sync cuối</th>
                   <th className="px-5 py-4 font-semibold">Thao tác</th>
                 </tr>
@@ -771,22 +812,36 @@ export function TelegramControlCenter({
                             : "bg-[color:var(--danger-soft)] text-[color:var(--danger)]"
                         }`}
                       >
-                        {group.botMemberState ?? (group.isActive ? "active" : "inactive")}
+                        {group.isActive ? "Đang dùng" : "Inactive"}
                       </span>
                     </td>
                     <td className="px-5 py-4 align-top text-sm text-[color:var(--on-surface-variant)]">
                       {rightsSummary(group)}
                     </td>
                     <td className="px-5 py-4 align-top text-sm">
-                      <span
-                        className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${
-                          group.moderationEnabled
-                            ? "bg-[color:var(--success-soft)] text-[color:var(--success)]"
-                            : "bg-[color:var(--warning-soft)] text-[color:var(--warning)]"
-                        }`}
-                      >
-                        {group.moderationEnabled ? "enabled" : "disabled"}
-                      </span>
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleModeration(group)}
+                          disabled={isActionRunning === `toggle-moderation-${group.id}`}
+                          className={`inline-flex w-fit items-center rounded-full px-4 py-2 text-sm font-semibold shadow-[0_4px_14px_rgba(42,52,57,0.08)] disabled:opacity-60 ${
+                            group.moderationEnabled
+                              ? "bg-[color:var(--success)] text-white"
+                              : "bg-[color:var(--surface-card)] text-[color:var(--primary)]"
+                          }`}
+                        >
+                          {isActionRunning === `toggle-moderation-${group.id}`
+                            ? "Đang cập nhật..."
+                            : group.moderationEnabled
+                              ? "Tắt kiểm duyệt"
+                              : "Bật kiểm duyệt"}
+                        </button>
+                        <p className="text-xs text-[color:var(--on-surface-variant)]">
+                          {group.moderationEnabled
+                            ? "Đang bật tự động chặn spam cho group này."
+                            : "Đang tắt, bot chỉ theo dõi và chưa tự xử lý spam."}
+                        </p>
+                      </div>
                     </td>
                     <td className="px-5 py-4 align-top text-sm text-[color:var(--on-surface-variant)]">
                       {formatDateTime(group.lastSyncedAt)}
@@ -807,7 +862,7 @@ export function TelegramControlCenter({
                           href={`/telegram/groups/${group.id}/moderation`}
                           className="inline-flex rounded-full bg-[color:var(--surface-card)] px-4 py-2 font-semibold text-[color:var(--primary)] shadow-[0_4px_14px_rgba(42,52,57,0.08)]"
                         >
-                          Mở cấu hình
+                          Cấu hình chống spam
                         </Link>
                         {!group.isActive ? (
                           <button
@@ -831,7 +886,7 @@ export function TelegramControlCenter({
                       colSpan={7}
                       className="px-5 py-10 text-center text-sm text-[color:var(--on-surface-variant)]"
                     >
-                      Chưa có group nào được đồng bộ. Hãy verify bot và chạy đồng bộ group trước.
+                      Chưa có group nào được đồng bộ. Hãy lưu và kích hoạt bot rồi bấm Đồng bộ group khi cần.
                     </td>
                   </tr>
                 ) : null}

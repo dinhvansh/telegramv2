@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CampaignStatus } from '@prisma/client';
+import { CampaignStatus, Prisma } from '@prisma/client';
 import { fallbackSnapshot } from '../platform/fallback-snapshot';
 import { PrismaService } from '../prisma/prisma.service';
 import { TelegramService } from '../telegram/telegram.service';
@@ -11,6 +11,7 @@ import { TelegramService } from '../telegram/telegram.service';
 type CreateCampaignInput = {
   name: string;
   telegramGroupId: string;
+  assigneeUserId?: string | null;
   joinRate?: string;
   status?: 'Active' | 'Paused' | 'Review';
   inviteMemberLimit?: number | null;
@@ -19,8 +20,14 @@ type CreateCampaignInput = {
 
 type UpdateCampaignInput = {
   name?: string;
+  assigneeUserId?: string | null;
   joinRate?: string;
   status?: 'Active' | 'Paused' | 'Review';
+};
+
+type CampaignViewer = {
+  userId: string;
+  permissions: string[];
 };
 
 const statusToDb: Record<
@@ -86,7 +93,67 @@ export class CampaignsService {
     private readonly telegramService: TelegramService,
   ) {}
 
-  async findAll() {
+  private canViewAllCampaigns(viewer?: CampaignViewer) {
+    if (!viewer) {
+      return true;
+    }
+
+    return viewer.permissions.some(
+      (permission) =>
+        permission === 'settings.manage' || permission === 'moderation.review',
+    );
+  }
+
+  private buildCampaignAccessWhere(
+    viewer?: CampaignViewer,
+  ): Prisma.CampaignWhereInput | undefined {
+    if (!viewer || this.canViewAllCampaigns(viewer)) {
+      return undefined;
+    }
+
+    return {
+      assigneeUserId: viewer.userId,
+    };
+  }
+
+  async findAssignees() {
+    if (!process.env.DATABASE_URL) {
+      return [
+        {
+          id: 'fallback-admin',
+          name: 'Nexus Admin',
+          email: 'admin@nexus.local',
+          username: 'admin',
+          department: 'Vận hành',
+        },
+        {
+          id: 'fallback-operator',
+          name: 'Campaign Operator',
+          email: 'operator@nexus.local',
+          username: 'operator',
+          department: 'Vận hành',
+        },
+      ];
+    }
+
+    return this.prisma.user.findMany({
+      where: {
+        status: {
+          not: 'DISABLED',
+        },
+      },
+      orderBy: [{ name: 'asc' }, { email: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        username: true,
+        department: true,
+      },
+    });
+  }
+
+  async findAll(viewer?: CampaignViewer) {
     if (!process.env.DATABASE_URL) {
       return fallbackSnapshot.campaigns.map((campaign, index) => ({
         id: `fallback-${index + 1}`,
@@ -99,12 +166,21 @@ export class CampaignsService {
         joinedCount: campaign.joinedCount,
         leftCount: campaign.leftCount,
         activeCount: campaign.activeCount,
+        assigneeUserId: null,
+        assigneeName: null,
       }));
     }
 
     const campaigns = await this.prisma.campaign.findMany({
+      where: this.buildCampaignAccessWhere(viewer),
       include: {
         telegramGroup: true,
+        assigneeUser: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         communityMembers: {
           orderBy: { joinedAt: 'desc' },
         },
@@ -141,6 +217,8 @@ export class CampaignsService {
         joinedCount: summary.joinedCount,
         leftCount: summary.leftCount,
         activeCount: summary.activeCount,
+        assigneeUserId: campaign.assigneeUserId,
+        assigneeName: campaign.assigneeUser?.name ?? null,
         inviteLinks: campaign.inviteLinks.map((inviteLink) => ({
           id: inviteLink.id,
           label: inviteLink.label,
@@ -155,7 +233,7 @@ export class CampaignsService {
     });
   }
 
-  async findOne(campaignId: string) {
+  async findOne(campaignId: string, viewer?: CampaignViewer) {
     if (!process.env.DATABASE_URL) {
       const campaign = fallbackSnapshot.campaigns.find(
         (_, index) => `fallback-${index + 1}` === campaignId,
@@ -178,15 +256,26 @@ export class CampaignsService {
           activeCount: campaign.activeCount,
           leftCount: campaign.leftCount,
         },
+        assigneeUserId: null,
+        assigneeName: null,
         inviteLinks: [],
         members: [],
       };
     }
 
-    const campaign = await this.prisma.campaign.findUnique({
-      where: { id: campaignId },
+    const campaign = await this.prisma.campaign.findFirst({
+      where: {
+        id: campaignId,
+        ...(this.buildCampaignAccessWhere(viewer) || {}),
+      },
       include: {
         telegramGroup: true,
+        assigneeUser: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         communityMembers: {
           orderBy: [{ leftAt: 'asc' }, { joinedAt: 'desc' }],
         },
@@ -217,6 +306,8 @@ export class CampaignsService {
       conversionRate: campaign.conversionRate,
       telegramGroupId: campaign.telegramGroupId,
       telegramGroupTitle: campaign.telegramGroup?.title || campaign.channel,
+      assigneeUserId: campaign.assigneeUserId,
+      assigneeName: campaign.assigneeUser?.name ?? null,
       summary,
       inviteLinks: campaign.inviteLinks.map((inviteLink) => ({
         id: inviteLink.id,
@@ -240,7 +331,7 @@ export class CampaignsService {
     };
   }
 
-  async findMembers(campaignId: string) {
+  async findMembers(campaignId: string, viewer?: CampaignViewer) {
     if (!process.env.DATABASE_URL) {
       return {
         items: [],
@@ -252,8 +343,11 @@ export class CampaignsService {
       };
     }
 
-    const campaign = await this.prisma.campaign.findUnique({
-      where: { id: campaignId },
+    const campaign = await this.prisma.campaign.findFirst({
+      where: {
+        id: campaignId,
+        ...(this.buildCampaignAccessWhere(viewer) || {}),
+      },
       include: {
         communityMembers: {
           orderBy: [{ leftAt: 'asc' }, { joinedAt: 'desc' }],
@@ -287,6 +381,8 @@ export class CampaignsService {
         joinedCount: 0,
         leftCount: 0,
         activeCount: 0,
+        assigneeUserId: input.assigneeUserId || null,
+        assigneeName: null,
       };
     }
 
@@ -309,6 +405,19 @@ export class CampaignsService {
       );
     }
 
+    if (input.assigneeUserId) {
+      const assignee = await this.prisma.user.findUnique({
+        where: { id: input.assigneeUserId },
+        select: { id: true, status: true },
+      });
+
+      if (!assignee || assignee.status === 'DISABLED') {
+        throw new BadRequestException(
+          'Người phụ trách không hợp lệ hoặc đã bị khóa.',
+        );
+      }
+    }
+
     const campaign = await this.prisma.campaign.create({
       data: {
         name: input.name,
@@ -318,6 +427,7 @@ export class CampaignsService {
         status,
         conversionRate: 0,
         telegramGroupId: telegramGroup.id,
+        assigneeUserId: input.assigneeUserId || null,
       },
     });
 
@@ -400,6 +510,8 @@ export class CampaignsService {
       joinedCount: 0,
       leftCount: 0,
       activeCount: 0,
+      assigneeUserId: updatedCampaign.assigneeUserId,
+      assigneeName: null,
     };
   }
 
@@ -411,6 +523,8 @@ export class CampaignsService {
         name: input.name ?? 'Fallback campaign',
         joinRate: input.joinRate ?? '0% conversion',
         status: input.status ?? 'Active',
+        assigneeUserId: input.assigneeUserId ?? null,
+        assigneeName: null,
       };
     }
 
@@ -422,14 +536,37 @@ export class CampaignsService {
       throw new NotFoundException('Không tìm thấy campaign.');
     }
 
+    if (input.assigneeUserId) {
+      const assignee = await this.prisma.user.findUnique({
+        where: { id: input.assigneeUserId },
+        select: { id: true, status: true, name: true },
+      });
+
+      if (!assignee || assignee.status === 'DISABLED') {
+        throw new BadRequestException(
+          'Người phụ trách không hợp lệ hoặc đã bị khóa.',
+        );
+      }
+    }
+
     const updatedCampaign = await this.prisma.campaign.update({
       where: { id: campaignId },
       data: {
         ...(input.name !== undefined ? { name: input.name.trim() } : {}),
         ...(input.joinRate !== undefined ? { joinRate: input.joinRate } : {}),
+        ...(input.assigneeUserId !== undefined
+          ? { assigneeUserId: input.assigneeUserId || null }
+          : {}),
         ...(input.status !== undefined
           ? { status: statusToDb[input.status] }
           : {}),
+      },
+      include: {
+        assigneeUser: {
+          select: {
+            name: true,
+          },
+        },
       },
     });
 
@@ -439,6 +576,8 @@ export class CampaignsService {
       name: updatedCampaign.name,
       joinRate: updatedCampaign.joinRate,
       status: statusFromDb[updatedCampaign.status],
+      assigneeUserId: updatedCampaign.assigneeUserId,
+      assigneeName: updatedCampaign.assigneeUser?.name ?? null,
     };
   }
 
@@ -478,9 +617,21 @@ export class CampaignsService {
     };
   }
 
-  async findInviteLinks(campaignId: string) {
+  async findInviteLinks(campaignId: string, viewer?: CampaignViewer) {
     if (!process.env.DATABASE_URL) {
       return [];
+    }
+
+    const campaign = await this.prisma.campaign.findFirst({
+      where: {
+        id: campaignId,
+        ...(this.buildCampaignAccessWhere(viewer) || {}),
+      },
+      select: { id: true },
+    });
+
+    if (!campaign) {
+      throw new NotFoundException('KhÃ´ng tÃ¬m tháº¥y campaign.');
     }
 
     const inviteLinks = await this.prisma.campaignInviteLink.findMany({

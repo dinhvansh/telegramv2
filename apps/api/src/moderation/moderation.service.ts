@@ -24,6 +24,8 @@ type ModerationMember = {
   avatarInitials: string;
   externalId: string;
   username: string | null;
+  phoneNumber: string | null;
+  customerSource: string | null;
   campaignLabel: string;
   campaignId: string | null;
   groupTitle: string;
@@ -44,6 +46,8 @@ type Member360SummaryItem = {
   displayName: string;
   avatarInitials: string;
   username: string | null;
+  phoneNumber: string | null;
+  customerSource: string | null;
   ownerName: string | null;
   note: string | null;
   groupsActiveCount: number;
@@ -76,6 +80,8 @@ type Member360ProfileResponse = {
     displayName: string;
     avatarInitials: string;
     username: string | null;
+    phoneNumber: string | null;
+    customerSource: string | null;
     ownerName: string | null;
     note: string | null;
     groupsActiveCount: number;
@@ -90,6 +96,17 @@ type Member360ProfileResponse = {
     moderationTimeline: Member360TimelineEvent[];
     inviteTimeline: Member360TimelineEvent[];
   };
+};
+
+type Member360ImportRow = {
+  externalId: string;
+  phoneNumber: string | null;
+  customerSource: string | null;
+};
+
+type ModerationViewer = {
+  userId: string;
+  permissions: string[];
 };
 
 type WarningEscalationPreview = {
@@ -122,6 +139,8 @@ const fallbackMembers: ModerationMember[] = [
     avatarInitials: 'JD',
     externalId: '5029112',
     username: 'juli_dev',
+    phoneNumber: '0905123456',
+    customerSource: 'CRM seed',
     campaignLabel: 'Winter_24',
     campaignId: null,
     groupTitle: 'Dev_Ops_Global',
@@ -142,6 +161,8 @@ const fallbackMembers: ModerationMember[] = [
     avatarInitials: 'MK',
     externalId: '1129384',
     username: 'marko_k',
+    phoneNumber: null,
+    customerSource: 'Import thử nghiệm',
     campaignLabel: 'Trực tiếp',
     campaignId: null,
     groupTitle: 'Support_QA',
@@ -162,6 +183,8 @@ const fallbackMembers: ModerationMember[] = [
     avatarInitials: 'SL',
     externalId: '9928374',
     username: 'slee_crypto',
+    phoneNumber: '0988112233',
+    customerSource: 'Invite link Winter_24',
     campaignLabel: 'Winter_24',
     campaignId: null,
     groupTitle: 'Dev_Ops_Global',
@@ -205,7 +228,32 @@ export class ModerationService {
     private readonly systemLogsService: SystemLogsService,
   ) {}
 
-  async getMembers(campaignId?: string) {
+  private canViewAllMembers(viewer?: ModerationViewer) {
+    if (!viewer) {
+      return true;
+    }
+
+    return viewer.permissions.some(
+      (permission) =>
+        permission === 'moderation.review' || permission === 'settings.manage',
+    );
+  }
+
+  private buildMemberAccessWhere(
+    viewer?: ModerationViewer,
+  ): Prisma.CommunityMemberWhereInput | undefined {
+    if (!viewer || this.canViewAllMembers(viewer)) {
+      return undefined;
+    }
+
+    return {
+      campaign: {
+        assigneeUserId: viewer.userId,
+      },
+    };
+  }
+
+  async getMembers(campaignId?: string, viewer?: ModerationViewer) {
     if (!process.env.DATABASE_URL) {
       return this.composePayload(fallbackMembers);
     }
@@ -213,8 +261,12 @@ export class ModerationService {
     const members = await this.prisma.communityMember.findMany({
       include: {
         campaign: true,
+        telegramUser: true,
       },
-      where: campaignId ? { campaignId } : undefined,
+      where: {
+        ...(campaignId ? { campaignId } : {}),
+        ...(this.buildMemberAccessWhere(viewer) || {}),
+      },
       orderBy: { joinedAt: 'desc' },
     });
 
@@ -227,6 +279,8 @@ export class ModerationService {
           avatarInitials: member.avatarInitials,
           externalId: member.externalId,
           username: member.username,
+          phoneNumber: member.telegramUser?.phoneNumber || null,
+          customerSource: member.telegramUser?.customerSource || null,
           campaignLabel: member.campaign?.name || member.campaignLabel,
           campaignId: member.campaignId,
           groupTitle: member.groupTitle,
@@ -250,8 +304,8 @@ export class ModerationService {
     );
   }
 
-  async getMember360Summary() {
-    const payload = await this.getMembers();
+  async getMember360Summary(viewer?: ModerationViewer) {
+    const payload = await this.getMembers(undefined, viewer);
     const grouped = new Map<string, Member360SummaryItem>();
 
     for (const member of payload.members) {
@@ -261,6 +315,9 @@ export class ModerationService {
         existing.joinCount += 1;
         existing.leftCount += member.leftAt ? 1 : 0;
         existing.warningTotal += member.warningCount;
+        existing.phoneNumber = existing.phoneNumber || member.phoneNumber;
+        existing.customerSource =
+          existing.customerSource || member.customerSource;
         existing.lastActivityAt =
           !existing.lastActivityAt ||
           new Date(member.joinedAt).getTime() >
@@ -285,6 +342,8 @@ export class ModerationService {
         displayName: member.displayName,
         avatarInitials: member.avatarInitials,
         username: member.username,
+        phoneNumber: member.phoneNumber,
+        customerSource: member.customerSource,
         ownerName: member.ownerName,
         note: member.note,
         groupsActiveCount: member.membershipStatus === 'active' ? 1 : 0,
@@ -322,8 +381,9 @@ export class ModerationService {
 
   async getMember360Profile(
     externalId: string,
+    viewer?: ModerationViewer,
   ): Promise<Member360ProfileResponse> {
-    const payload = await this.getMembers();
+    const payload = await this.getMembers(undefined, viewer);
     const memberships = payload.members.filter(
       (member) => member.externalId === externalId,
     );
@@ -384,12 +444,17 @@ export class ModerationService {
 
     let moderationTimeline: Member360TimelineEvent[] = [];
     let inviteTimeline: Member360TimelineEvent[] = [];
+    let phoneNumber = first.phoneNumber;
+    let customerSource = first.customerSource;
 
     if (process.env.DATABASE_URL) {
       const [spamEvents, inviteEvents, telegramUser] = await Promise.all([
         this.prisma.spamEvent.findMany({
           where: {
             actorExternalId: externalId,
+            groupTitle: {
+              in: memberships.map((member) => member.groupTitle),
+            },
             OR: [
               { decision: { not: SpamDecision.ALLOW } },
               { manualDecision: { not: null } },
@@ -402,6 +467,9 @@ export class ModerationService {
         this.prisma.inviteLinkEvent.findMany({
           where: {
             actorExternalId: externalId,
+            groupTitle: {
+              in: memberships.map((member) => member.groupTitle),
+            },
           },
           include: {
             inviteLink: {
@@ -473,7 +541,16 @@ export class ModerationService {
         campaignLabel: event.inviteLink?.campaign?.name || null,
       }));
 
+      if (telegramUser) {
+        phoneNumber = telegramUser.phoneNumber || phoneNumber;
+        customerSource = telegramUser.customerSource || customerSource;
+      }
+
       if (telegramUser?.membershipSessions.length) {
+        customerSource =
+          telegramUser.membershipSessions.find((session) => session.joinSource)
+            ?.joinSource || customerSource;
+
         const sessionTimeline = telegramUser.membershipSessions.flatMap(
           (session) => [
             {
@@ -518,6 +595,8 @@ export class ModerationService {
         displayName: first.displayName,
         avatarInitials: first.avatarInitials,
         username: first.username,
+        phoneNumber,
+        customerSource,
         ownerName: first.ownerName,
         note: first.note,
         groupsActiveCount: currentGroups.length,
@@ -542,7 +621,7 @@ export class ModerationService {
     };
   }
 
-  async getMemberDetail(memberId: string) {
+  async getMemberDetail(memberId: string, viewer?: ModerationViewer) {
     if (!process.env.DATABASE_URL) {
       const fallbackMember = fallbackMembers.find(
         (member) => member.id === memberId,
@@ -553,10 +632,14 @@ export class ModerationService {
       };
     }
 
-    const member = await this.prisma.communityMember.findUnique({
-      where: { id: memberId },
+    const member = await this.prisma.communityMember.findFirst({
+      where: {
+        id: memberId,
+        ...(this.buildMemberAccessWhere(viewer) || {}),
+      },
       include: {
         campaign: true,
+        telegramUser: true,
       },
     });
 
@@ -569,6 +652,8 @@ export class ModerationService {
             avatarInitials: member.avatarInitials,
             externalId: member.externalId,
             username: member.username,
+            phoneNumber: member.telegramUser?.phoneNumber || null,
+            customerSource: member.telegramUser?.customerSource || null,
             campaignLabel: member.campaign?.name || member.campaignLabel,
             campaignId: member.campaignId,
             groupTitle: member.groupTitle,
@@ -593,7 +678,13 @@ export class ModerationService {
 
   async updateMember(
     memberId: string,
-    input: { ownerName?: string | null; note?: string | null },
+    input: {
+      ownerName?: string | null;
+      note?: string | null;
+      phoneNumber?: string | null;
+      customerSource?: string | null;
+      viewer?: ModerationViewer;
+    },
   ) {
     if (!process.env.DATABASE_URL) {
       const fallbackMember = fallbackMembers.find(
@@ -605,6 +696,8 @@ export class ModerationService {
 
       fallbackMember.ownerName = input.ownerName?.trim() || null;
       fallbackMember.note = input.note?.trim() || null;
+      fallbackMember.phoneNumber = input.phoneNumber?.trim() || null;
+      fallbackMember.customerSource = input.customerSource?.trim() || null;
 
       return {
         found: true,
@@ -612,18 +705,46 @@ export class ModerationService {
       };
     }
 
+    const existingMember = await this.prisma.communityMember.findFirst({
+      where: {
+        id: memberId,
+        ...(this.buildMemberAccessWhere(input.viewer) || {}),
+      },
+      select: {
+        id: true,
+        telegramUserId: true,
+      },
+    });
+
+    if (!existingMember) {
+      return { found: false, member: null };
+    }
+
     const member = await this.prisma.communityMember.update({
-      where: { id: memberId },
+      where: { id: existingMember.id },
       data: {
         ownerName: input.ownerName?.trim() || null,
         note: input.note?.trim() || null,
       },
+      include: {
+        telegramUser: true,
+      },
     });
 
-    return this.getMemberDetail(member.id);
+    if (existingMember.telegramUserId) {
+      await this.prisma.telegramUser.update({
+        where: { id: existingMember.telegramUserId },
+        data: {
+          phoneNumber: input.phoneNumber?.trim() || null,
+          customerSource: input.customerSource?.trim() || null,
+        },
+      });
+    }
+
+    return this.getMemberDetail(member.id, input.viewer);
   }
 
-  async resetMemberWarning(memberId: string) {
+  async resetMemberWarning(memberId: string, viewer?: ModerationViewer) {
     if (!process.env.DATABASE_URL) {
       const fallbackMember = fallbackMembers.find(
         (member) => member.id === memberId,
@@ -640,8 +761,11 @@ export class ModerationService {
       };
     }
 
-    const member = await this.prisma.communityMember.findUnique({
-      where: { id: memberId },
+    const member = await this.prisma.communityMember.findFirst({
+      where: {
+        id: memberId,
+        ...(this.buildMemberAccessWhere(viewer) || {}),
+      },
     });
 
     if (!member) {
@@ -656,7 +780,87 @@ export class ModerationService {
       },
     });
 
-    return this.getMemberDetail(member.id);
+    return this.getMemberDetail(member.id, viewer);
+  }
+
+  async importMember360Customers(rows: Record<string, unknown>[]) {
+    const normalizedRows = rows
+      .map((row) => this.normalizeMember360ImportRow(row))
+      .filter((row): row is Member360ImportRow => Boolean(row?.externalId));
+
+    if (!process.env.DATABASE_URL) {
+      return {
+        imported: 0,
+        skipped: normalizedRows.length,
+        total: normalizedRows.length,
+        message:
+          'Import Excel chỉ hoạt động khi backend đang kết nối PostgreSQL.',
+      };
+    }
+
+    let imported = 0;
+
+    for (const row of normalizedRows) {
+      const linkedMembers = await this.prisma.communityMember.findMany({
+        where: { externalId: row.externalId },
+        orderBy: { joinedAt: 'desc' },
+      });
+
+      if (!linkedMembers.length) {
+        continue;
+      }
+
+      let telegramUser = await this.prisma.telegramUser.findUnique({
+        where: { externalId: row.externalId },
+      });
+
+      if (!telegramUser) {
+        const seed = linkedMembers[0];
+        telegramUser = await this.prisma.telegramUser.create({
+          data: {
+            externalId: row.externalId,
+            username: seed.username,
+            displayName: seed.displayName,
+            avatarInitials: seed.avatarInitials,
+            phoneNumber: row.phoneNumber,
+            customerSource: row.customerSource,
+          },
+        });
+
+        await this.prisma.communityMember.updateMany({
+          where: {
+            externalId: row.externalId,
+            OR: [{ telegramUserId: null }, { telegramUserId: telegramUser.id }],
+          },
+          data: { telegramUserId: telegramUser.id },
+        });
+      } else {
+        await this.prisma.telegramUser.update({
+          where: { id: telegramUser.id },
+          data: {
+            phoneNumber: row.phoneNumber || null,
+            customerSource: row.customerSource || null,
+          },
+        });
+
+        await this.prisma.communityMember.updateMany({
+          where: {
+            externalId: row.externalId,
+            telegramUserId: null,
+          },
+          data: { telegramUserId: telegramUser.id },
+        });
+      }
+
+      imported += 1;
+    }
+
+    return {
+      imported,
+      skipped: rows.length - imported,
+      total: rows.length,
+      message: `Đã cập nhật ${imported} khách hàng theo ID số.`,
+    };
   }
 
   async getConfig() {
@@ -1464,6 +1668,71 @@ export class ModerationService {
         left: leftMembers,
       },
     };
+  }
+
+  private normalizeMember360ImportRow(
+    row: Record<string, unknown>,
+  ): Member360ImportRow | null {
+    const externalId = this.readImportCell(row, [
+      'ID số',
+      'ID',
+      'id',
+      'externalId',
+      'External ID',
+    ]);
+    const phoneNumber = this.readImportCell(row, [
+      'SĐT',
+      'SDT',
+      'Sdt',
+      'phone',
+      'phoneNumber',
+      'Phone Number',
+    ]);
+    const customerSource = this.readImportCell(row, [
+      'Nguồn khách',
+      'Nguon khach',
+      'source',
+      'customerSource',
+      'Customer Source',
+    ]);
+
+    if (!externalId) {
+      return null;
+    }
+
+    return {
+      externalId,
+      phoneNumber: phoneNumber || null,
+      customerSource: customerSource || null,
+    };
+  }
+
+  private readImportCell(
+    row: Record<string, unknown>,
+    aliases: string[],
+  ): string {
+    for (const alias of aliases) {
+      const value = row[alias];
+      if (value === undefined || value === null) {
+        continue;
+      }
+
+      if (
+        typeof value !== 'string' &&
+        typeof value !== 'number' &&
+        typeof value !== 'boolean' &&
+        typeof value !== 'bigint'
+      ) {
+        continue;
+      }
+
+      const normalized = String(value).trim();
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    return '';
   }
 
   private async ensureGlobalPolicy() {

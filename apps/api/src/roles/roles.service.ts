@@ -8,6 +8,10 @@ import { PrismaService } from '../prisma/prisma.service';
 
 const fallbackPermissionCatalog = [
   {
+    code: 'campaign.view',
+    description: 'View assigned campaigns and member progress',
+  },
+  {
     code: 'campaign.manage',
     description: 'Manage campaigns and invite links',
   },
@@ -37,7 +41,9 @@ export class RolesService {
             ? 'fallback-role-admin'
             : role.title === 'Moderator'
               ? 'fallback-role-moderator'
-              : 'fallback-role-operator',
+              : role.title === 'Viewer'
+                ? 'fallback-role-viewer'
+                : 'fallback-role-operator',
         name: role.title,
         description: role.detail,
         permissions:
@@ -49,6 +55,8 @@ export class RolesService {
               ]
             : role.title === 'Moderator'
               ? ['moderation.review']
+              : role.title === 'Viewer'
+                ? ['campaign.view']
               : ['campaign.manage', 'autopost.execute'],
       }));
     }

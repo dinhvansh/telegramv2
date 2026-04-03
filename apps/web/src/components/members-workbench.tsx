@@ -79,7 +79,15 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value));
 }
 
-export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
+export function MembersWorkbench({
+  embedded = false,
+  isAssignedCampaignView = false,
+  canEditMembers = true,
+}: {
+  embedded?: boolean;
+  isAssignedCampaignView?: boolean;
+  canEditMembers?: boolean;
+}) {
   const searchParams = useSearchParams();
   const campaignId = searchParams.get("campaignId");
   const pageSize = 20;
@@ -99,6 +107,7 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isResettingWarning, setIsResettingWarning] = useState(false);
+  const [canAssignOwner, setCanAssignOwner] = useState(false);
 
   useEffect(() => {
     setToken(window.localStorage.getItem(authStorageKey));
@@ -109,22 +118,29 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
 
     async function load() {
       try {
-        const [membersResponse, usersResponse] = await Promise.all([
-          fetchJson<MembersResponse>(
-            `${apiBaseUrl}/moderation/members${campaignId ? `?campaignId=${campaignId}` : ""}`,
-            {
-              headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-            },
-          ),
-          fetchJson<UserItem[]>(`${apiBaseUrl}/users`, {
+        const membersResponse = await fetchJson<MembersResponse>(
+          `${apiBaseUrl}/moderation/members${campaignId ? `?campaignId=${campaignId}` : ""}`,
+          {
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          }),
-        ]);
+          },
+        );
+        let usersResponse: UserItem[] = [];
+        let hasOwnerAccess = false;
+        try {
+          usersResponse = await fetchJson<UserItem[]>(`${apiBaseUrl}/users`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          });
+          hasOwnerAccess = true;
+        } catch {
+          usersResponse = [];
+          hasOwnerAccess = false;
+        }
 
         if (!active) {
           return;
         }
 
+        setCanAssignOwner(hasOwnerAccess);
         setMembers(membersResponse.members);
         setUsers(usersResponse);
         const firstMember = membersResponse.members[0] ?? null;
@@ -454,6 +470,11 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
               <h3 className="mt-2 text-2xl font-black tracking-tight">
                 Danh sách user đã vào nhóm từ các campaign
               </h3>
+              {isAssignedCampaignView ? (
+                <div className="mt-3 inline-flex rounded-full bg-[color:var(--primary-soft)] px-4 py-2 text-sm font-semibold text-[color:var(--primary)]">
+                  Khách thuộc campaign được giao
+                </div>
+              ) : null}
             </div>
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
               <select
@@ -660,18 +681,24 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
                 <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
                   Owner phụ trách
                 </span>
-                <select
-                  value={ownerName}
-                  onChange={(event) => setOwnerName(event.target.value)}
-                  className="w-full rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
-                >
-                  <option value="">Chưa gán owner</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.name}>
-                      {user.name}
-                    </option>
-                  ))}
-                </select>
+                {canAssignOwner ? (
+                  <select
+                    value={ownerName}
+                    onChange={(event) => setOwnerName(event.target.value)}
+                    className="w-full rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
+                  >
+                    <option value="">Chưa gán owner</option>
+                    {users.map((user) => (
+                      <option key={user.id} value={user.name}>
+                        {user.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm text-[color:var(--on-surface-variant)]">
+                    {selectedMember.ownerName ?? "Không có quyền gán owner"}
+                  </div>
+                )}
               </label>
 
               <label className="block">
@@ -681,11 +708,13 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
                 <textarea
                   value={note}
                   onChange={(event) => setNote(event.target.value)}
+                  readOnly={!canEditMembers}
                   className="min-h-[180px] w-full rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
                   placeholder="Ghi chú owner, lịch sử chăm sóc hoặc lý do cần follow."
                 />
               </label>
 
+              {canEditMembers ? (
               <div className="flex flex-wrap gap-3">
                 <button
                   type="button"
@@ -704,6 +733,11 @@ export function MembersWorkbench({ embedded = false }: { embedded?: boolean }) {
                   {isResettingWarning ? "Đang reset..." : "Reset cảnh báo"}
                 </button>
               </div>
+              ) : (
+                <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm text-[color:var(--on-surface-variant)]">
+                  Quyá»n hiá»‡n táº¡i chá»‰ cho xem. KhÃ´ng thá»ƒ sá»­a owner, ghi chÃº hoáº·c reset cáº£nh bÃ¡o.
+                </div>
+              )}
             </div>
           ) : (
             <div className="mt-5 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm leading-6 text-[color:var(--on-surface-variant)]">
