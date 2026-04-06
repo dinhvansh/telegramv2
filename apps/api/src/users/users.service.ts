@@ -21,6 +21,19 @@ type FallbackUserRecord = {
 
 const fallbackRoleCatalog = [
   {
+    id: 'fallback-role-superadmin',
+    name: 'SuperAdmin',
+    permissions: [
+      'organization.manage',
+      'workspace.manage',
+      'campaign.view',
+      'campaign.manage',
+      'moderation.review',
+      'settings.manage',
+      'autopost.execute',
+    ],
+  },
+  {
     id: 'fallback-role-viewer',
     name: 'Viewer',
     permissions: ['campaign.view'],
@@ -29,6 +42,7 @@ const fallbackRoleCatalog = [
     id: 'fallback-role-admin',
     name: 'Admin',
     permissions: [
+      'workspace.manage',
       'campaign.manage',
       'moderation.review',
       'settings.manage',
@@ -73,6 +87,22 @@ function getStatusTone(status: string) {
 export class UsersService {
   private fallbackUsers: FallbackUserRecord[] = [
     {
+      id: 'fallback-user-superadmin',
+      email: 'superadmin@nexus.local',
+      username: 'system_superadmin',
+      name: 'System Super Admin',
+      department: 'Nền tảng',
+      status: 'ACTIVE',
+      passwordHash: bcrypt.hashSync('superadmin123', 10),
+      roles: [
+        {
+          id: fallbackRoleCatalog[0].id,
+          name: fallbackRoleCatalog[0].name,
+          permissions: [...fallbackRoleCatalog[0].permissions],
+        },
+      ],
+    },
+    {
       id: 'fallback-user-admin',
       email: 'admin@nexus.local',
       username: 'nexus_admin',
@@ -82,9 +112,9 @@ export class UsersService {
       passwordHash: bcrypt.hashSync('admin123', 10),
       roles: [
         {
-          id: fallbackRoleCatalog[1].id,
-          name: fallbackRoleCatalog[1].name,
-          permissions: [...fallbackRoleCatalog[1].permissions],
+          id: fallbackRoleCatalog[2].id,
+          name: fallbackRoleCatalog[2].name,
+          permissions: [...fallbackRoleCatalog[2].permissions],
         },
       ],
     },
@@ -98,9 +128,9 @@ export class UsersService {
       passwordHash: bcrypt.hashSync('operator123', 10),
       roles: [
         {
-          id: fallbackRoleCatalog[3].id,
-          name: fallbackRoleCatalog[3].name,
-          permissions: [...fallbackRoleCatalog[3].permissions],
+          id: fallbackRoleCatalog[4].id,
+          name: fallbackRoleCatalog[4].name,
+          permissions: [...fallbackRoleCatalog[4].permissions],
         },
       ],
     },
@@ -114,9 +144,9 @@ export class UsersService {
       passwordHash: bcrypt.hashSync('viewer123', 10),
       roles: [
         {
-          id: fallbackRoleCatalog[0].id,
-          name: fallbackRoleCatalog[0].name,
-          permissions: [...fallbackRoleCatalog[0].permissions],
+          id: fallbackRoleCatalog[1].id,
+          name: fallbackRoleCatalog[1].name,
+          permissions: [...fallbackRoleCatalog[1].permissions],
         },
       ],
     },
@@ -130,9 +160,9 @@ export class UsersService {
       passwordHash: bcrypt.hashSync('moderator123', 10),
       roles: [
         {
-          id: fallbackRoleCatalog[2].id,
-          name: fallbackRoleCatalog[2].name,
-          permissions: [...fallbackRoleCatalog[2].permissions],
+          id: fallbackRoleCatalog[3].id,
+          name: fallbackRoleCatalog[3].name,
+          permissions: [...fallbackRoleCatalog[3].permissions],
         },
       ],
     },

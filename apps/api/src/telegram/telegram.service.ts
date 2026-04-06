@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { EventTone, SpamDecision } from '@prisma/client';
 import { fallbackSnapshot } from '../platform/fallback-snapshot';
 import { PrismaService } from '../prisma/prisma.service';
+import { WorkspaceBootstrapService } from '../prisma/workspace-bootstrap.service';
 import {
   decryptSecretValue,
   encryptSecretValue,
@@ -324,6 +325,7 @@ type ParsedTelegramCommand = {
 export class TelegramService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly workspaceBootstrapService: WorkspaceBootstrapService,
     private readonly moderationEngineService: ModerationEngineService,
     private readonly moderationService: ModerationService,
     private readonly telegramActionsService: TelegramActionsService,
@@ -948,6 +950,16 @@ export class TelegramService {
       },
     });
 
+    await this.workspaceBootstrapService.syncDefaultTelegramBot({
+      username: nextConfig.botUsername || null,
+      publicBaseUrl: nextConfig.publicBaseUrl || null,
+      webhookUrl: this.buildWebhookUrl(nextConfig.publicBaseUrl),
+      webhookRegistered: false,
+      isVerified: botConfig.isVerified,
+      lastVerifiedAt: botConfig.lastVerifiedAt,
+      lastDiscoveredAt: botConfig.lastDiscoveredAt,
+    });
+
     await this.systemLogsService.log({
       scope: 'telegram.config',
       action: 'update_config',
@@ -1021,6 +1033,17 @@ export class TelegramService {
         isVerified: Boolean(response.ok),
         lastVerifiedAt: response.ok ? new Date() : null,
       },
+    });
+
+    await this.workspaceBootstrapService.syncDefaultTelegramBot({
+      externalId: botConfig.botExternalId,
+      username: botConfig.botUsername,
+      displayName: botConfig.botDisplayName,
+      isVerified: botConfig.isVerified,
+      webhookRegistered: botConfig.webhookRegistered,
+      webhookUrl: botConfig.webhookUrl,
+      lastVerifiedAt: botConfig.lastVerifiedAt,
+      lastDiscoveredAt: botConfig.lastDiscoveredAt,
     });
 
     if (botChanged) {
@@ -1120,7 +1143,7 @@ export class TelegramService {
     });
 
     if (process.env.DATABASE_URL) {
-      await this.prisma.telegramBotConfig.upsert({
+      const botConfig = await this.prisma.telegramBotConfig.upsert({
         where: { singletonKey: 'default' },
         update: {
           webhookRegistered: Boolean(body.ok),
@@ -1131,6 +1154,17 @@ export class TelegramService {
           webhookRegistered: Boolean(body.ok),
           webhookUrl,
         },
+      });
+
+      await this.workspaceBootstrapService.syncDefaultTelegramBot({
+        externalId: botConfig.botExternalId,
+        username: botConfig.botUsername,
+        displayName: botConfig.botDisplayName,
+        webhookUrl: botConfig.webhookUrl,
+        webhookRegistered: botConfig.webhookRegistered,
+        isVerified: botConfig.isVerified,
+        lastVerifiedAt: botConfig.lastVerifiedAt,
+        lastDiscoveredAt: botConfig.lastDiscoveredAt,
       });
     }
 
@@ -1272,7 +1306,7 @@ export class TelegramService {
         });
       }
 
-      await this.prisma.telegramBotConfig.upsert({
+      const botConfig = await this.prisma.telegramBotConfig.upsert({
         where: { singletonKey: 'default' },
         update: {
           botExternalId: botProfile.result?.id
@@ -1295,6 +1329,23 @@ export class TelegramService {
           isVerified: Boolean(botProfile.ok),
           lastDiscoveredAt: new Date(),
         },
+      });
+
+      const publicBaseUrlSetting = await this.prisma.systemSetting.findUnique({
+        where: { key: 'telegram.public_base_url' },
+      });
+
+      await this.workspaceBootstrapService.syncDefaultTelegramBot({
+        externalId: botConfig.botExternalId,
+        username: botConfig.botUsername,
+        displayName: botConfig.botDisplayName,
+        webhookUrl: botConfig.webhookUrl,
+        webhookRegistered: botConfig.webhookRegistered,
+        isVerified: botConfig.isVerified,
+        lastVerifiedAt: botConfig.lastVerifiedAt,
+        lastDiscoveredAt: botConfig.lastDiscoveredAt,
+        publicBaseUrl:
+          publicBaseUrlSetting?.value?.trim().replace(/\/$/, '') || null,
       });
     }
 
@@ -3121,6 +3172,8 @@ export class TelegramService {
       return null;
     }
 
+    const defaultBot =
+      await this.workspaceBootstrapService.syncDefaultTelegramBot();
     const slugBase =
       this.slugify(input.title) || `telegram-${input.externalId}`;
     const group = await this.prisma.telegramGroup.upsert({
@@ -3128,6 +3181,9 @@ export class TelegramService {
         externalId: input.externalId,
       },
       update: {
+        organizationId: defaultBot.organizationId,
+        workspaceId: defaultBot.workspaceId,
+        telegramBotId: defaultBot.id,
         title: input.title,
         username: input.username?.replace(/^@/, '') || null,
         type: String(input.type || 'supergroup').toLowerCase(),
@@ -3142,6 +3198,9 @@ export class TelegramService {
         slug: `${slugBase}-${String(input.externalId).replace(/[^0-9a-zA-Z_-]/g, '')}`,
       },
       create: {
+        organizationId: defaultBot.organizationId,
+        workspaceId: defaultBot.workspaceId,
+        telegramBotId: defaultBot.id,
         title: input.title,
         externalId: input.externalId,
         username: input.username?.replace(/^@/, '') || null,

@@ -8,6 +8,14 @@ import { PrismaService } from '../prisma/prisma.service';
 
 const fallbackPermissionCatalog = [
   {
+    code: 'organization.manage',
+    description: 'Manage organizations and tenant-level configuration',
+  },
+  {
+    code: 'workspace.manage',
+    description: 'Manage workspaces, memberships and bot assignments',
+  },
+  {
     code: 'campaign.view',
     description: 'View assigned campaigns and member progress',
   },
@@ -37,27 +45,35 @@ export class RolesService {
     if (!process.env.DATABASE_URL) {
       return fallbackSnapshot.roles.map((role) => ({
         id:
-          role.title === 'Admin'
-            ? 'fallback-role-admin'
-            : role.title === 'Moderator'
-              ? 'fallback-role-moderator'
-              : role.title === 'Viewer'
-                ? 'fallback-role-viewer'
-                : 'fallback-role-operator',
+          role.title === 'SuperAdmin'
+            ? 'fallback-role-superadmin'
+            : role.title === 'Admin'
+              ? 'fallback-role-admin'
+              : role.title === 'Moderator'
+                ? 'fallback-role-moderator'
+                : role.title === 'Viewer'
+                  ? 'fallback-role-viewer'
+                  : 'fallback-role-operator',
         name: role.title,
         description: role.detail,
         permissions:
-          role.title === 'Admin'
+          role.title === 'SuperAdmin'
             ? [
                 ...fallbackPermissionCatalog.map(
                   (permission) => permission.code,
                 ),
               ]
-            : role.title === 'Moderator'
-              ? ['moderation.review']
-              : role.title === 'Viewer'
-                ? ['campaign.view']
-              : ['campaign.manage', 'autopost.execute'],
+            : role.title === 'Admin'
+              ? [
+                  ...fallbackPermissionCatalog
+                    .map((permission) => permission.code)
+                    .filter((code) => code !== 'organization.manage'),
+                ]
+              : role.title === 'Moderator'
+                ? ['moderation.review']
+                : role.title === 'Viewer'
+                  ? ['campaign.view']
+                  : ['campaign.manage', 'autopost.execute'],
       }));
     }
 

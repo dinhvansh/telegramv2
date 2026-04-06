@@ -13,6 +13,7 @@ import { SystemLogsModule } from './system-logs/system-logs.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { TelegramActionsModule } from './telegram-actions/telegram-actions.module';
 import { UsersModule } from './users/users.module';
+import { WorkspacesModule } from './workspaces/workspaces.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { UsersModule } from './users/users.module';
     SystemLogsModule,
     TelegramActionsModule,
     TelegramModule,
+    WorkspacesModule,
   ],
 })
 export class AppModule {}

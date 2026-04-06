@@ -87,6 +87,7 @@ model User {
   passwordHash String
   createdAt    DateTime   @default(now())
   userRoles    UserRole[]
+  workspaceMemberships WorkspaceMembership[]
   campaigns    Campaign[] @relation("CampaignAssignee")
 }
 
@@ -97,6 +98,7 @@ model Role {
   createdAt       DateTime         @default(now())
   userRoles       UserRole[]
   rolePermissions RolePermission[]
+  workspaceMemberships WorkspaceMembership[]
 }
 
 model Permission {
@@ -127,8 +129,84 @@ model RolePermission {
   @@id([roleId, permissionId])
 }
 
+model Organization {
+  id            String             @id @default(cuid())
+  name          String
+  slug          String             @unique
+  isActive      Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  workspaces    Workspace[]
+  telegramBots  TelegramBot[]
+  telegramGroups TelegramGroup[]
+  campaigns     Campaign[]
+}
+
+model Workspace {
+  id             String               @id @default(cuid())
+  organizationId String
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  slug           String
+  description    String?
+  isActive       Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  memberships    WorkspaceMembership[]
+  telegramBots   TelegramBot[]
+  telegramGroups TelegramGroup[]
+  campaigns      Campaign[]
+
+  @@unique([organizationId, slug])
+}
+
+model WorkspaceMembership {
+  id          String    @id @default(cuid())
+  userId      String
+  workspaceId String
+  roleId      String
+  isActive    Boolean   @default(true)
+  assignedAt  DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  role        Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId, roleId])
+  @@index([workspaceId, isActive])
+}
+
+model TelegramBot {
+  id                 String         @id @default(cuid())
+  organizationId     String
+  workspaceId        String
+  legacyConfigKey    String?        @unique
+  externalId         String?        @unique
+  username           String?        @unique
+  displayName        String?
+  label              String
+  publicBaseUrl      String?
+  webhookUrl         String?
+  isActive           Boolean        @default(true)
+  isVerified         Boolean        @default(false)
+  webhookRegistered  Boolean        @default(false)
+  lastVerifiedAt     DateTime?
+  lastDiscoveredAt   DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  organization       Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace          Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  telegramGroups     TelegramGroup[]
+  campaigns          Campaign[]
+
+  @@index([workspaceId, isActive])
+}
+
 model TelegramGroup {
   id                          String                          @id @default(cuid())
+  organizationId              String?
+  workspaceId                 String?
+  telegramBotId               String?
   title                       String
   slug                        String                          @unique
   externalId                  String                          @unique
@@ -142,11 +220,17 @@ model TelegramGroup {
   botCanRestrictMembers       Boolean                         @default(false)
   botCanInviteUsers           Boolean                         @default(false)
   botCanManageTopics          Boolean                         @default(false)
+  organization                Organization?                   @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  workspace                   Workspace?                      @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  telegramBot                 TelegramBot?                    @relation(fields: [telegramBotId], references: [id], onDelete: SetNull)
   campaigns                   Campaign[]
   inviteLinks                 CampaignInviteLink[]
   moderationPolicies          ModerationPolicy[]
   moderationSettings          TelegramGroupModerationSettings?
   createdAt                   DateTime                        @default(now())
+
+  @@index([workspaceId, isActive])
+  @@index([telegramBotId, isActive])
 }
 
 model TelegramBotConfig {
@@ -217,6 +301,9 @@ model TelegramGroupModerationSettings {
 
 model Campaign {
   id                 String                  @id @default(cuid())
+  organizationId     String?
+  workspaceId        String?
+  telegramBotId      String?
   name               String
   channel            String
   joinRate           String
@@ -226,6 +313,9 @@ model Campaign {
   createdAt          DateTime                @default(now())
   telegramGroup      TelegramGroup?          @relation(fields: [telegramGroupId], references: [id])
   telegramGroupId    String?
+  organization       Organization?           @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  workspace          Workspace?              @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  telegramBot        TelegramBot?            @relation(fields: [telegramBotId], references: [id], onDelete: SetNull)
   assigneeUserId     String?
   assigneeUser       User?                   @relation("CampaignAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
   inviteLinks        CampaignInviteLink[]
@@ -233,6 +323,7 @@ model Campaign {
   membershipSessions GroupMembershipSession[]
 
   @@index([assigneeUserId])
+  @@index([workspaceId, status])
 }
 
 model TelegramUser {

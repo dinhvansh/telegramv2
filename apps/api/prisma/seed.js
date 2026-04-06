@@ -20,6 +20,7 @@ async function main() {
 
   await prisma.rolePermission.deleteMany();
   await prisma.userRole.deleteMany();
+  await prisma.workspaceMembership.deleteMany();
   await prisma.permission.deleteMany();
   await prisma.role.deleteMany();
   await prisma.user.deleteMany();
@@ -31,7 +32,9 @@ async function main() {
   await prisma.telegramGroupModerationSettings.deleteMany();
   await prisma.telegramBotConfig.deleteMany();
   await prisma.eventFeedItem.deleteMany();
+  await prisma.groupMembershipSession.deleteMany();
   await prisma.communityMember.deleteMany();
+  await prisma.telegramUser.deleteMany();
   await prisma.metricCard.deleteMany();
   await prisma.moderationDomain.deleteMany();
   await prisma.moderationKeyword.deleteMany();
@@ -44,12 +47,35 @@ async function main() {
   await prisma.autopostCapability.deleteMany();
   await prisma.campaign.deleteMany();
   await prisma.telegramGroup.deleteMany();
+  await prisma.telegramBot.deleteMany();
+  await prisma.workspace.deleteMany();
+  await prisma.organization.deleteMany();
   await prisma.systemLog.deleteMany();
   await prisma.systemSetting.deleteMany();
+
+  const defaultOrganization = await prisma.organization.create({
+    data: {
+      name: 'Default Organization',
+      slug: 'default-organization',
+      isActive: true,
+    },
+  });
+
+  const defaultWorkspace = await prisma.workspace.create({
+    data: {
+      organizationId: defaultOrganization.id,
+      name: 'Default Workspace',
+      slug: 'default-workspace',
+      description: 'Backfilled workspace for current single-bot setup',
+      isActive: true,
+    },
+  });
 
   const [globalGroup, partnerGroup, vipGroup, alphaGroup] = await Promise.all([
     prisma.telegramGroup.create({
       data: {
+        organizationId: defaultOrganization.id,
+        workspaceId: defaultWorkspace.id,
         title: 'Nexus Global',
         slug: 'nexus-global',
         externalId: '-100221001',
@@ -66,6 +92,8 @@ async function main() {
     }),
     prisma.telegramGroup.create({
       data: {
+        organizationId: defaultOrganization.id,
+        workspaceId: defaultWorkspace.id,
         title: 'Partner Circle',
         slug: 'partner-circle',
         externalId: '-100221002',
@@ -82,6 +110,8 @@ async function main() {
     }),
     prisma.telegramGroup.create({
       data: {
+        organizationId: defaultOrganization.id,
+        workspaceId: defaultWorkspace.id,
         title: 'Inner Room',
         slug: 'inner-room',
         externalId: '-100221003',
@@ -98,6 +128,8 @@ async function main() {
     }),
     prisma.telegramGroup.create({
       data: {
+        organizationId: defaultOrganization.id,
+        workspaceId: defaultWorkspace.id,
         title: 'Alpha Testers',
         slug: 'alpha-testers',
         externalId: '-100221004',
@@ -124,6 +156,34 @@ async function main() {
       webhookUrl: null,
       lastVerifiedAt: new Date(),
       lastDiscoveredAt: new Date(),
+    },
+  });
+
+  const defaultTelegramBot = await prisma.telegramBot.create({
+    data: {
+      organizationId: defaultOrganization.id,
+      workspaceId: defaultWorkspace.id,
+      legacyConfigKey: 'default',
+      externalId: '100000001',
+      username: 'nexus_guard_bot',
+      displayName: 'Nexus Guard',
+      label: 'Nexus Guard',
+      isActive: true,
+      isVerified: true,
+      webhookRegistered: false,
+      lastVerifiedAt: new Date(),
+      lastDiscoveredAt: new Date(),
+    },
+  });
+
+  await prisma.telegramGroup.updateMany({
+    where: {
+      id: {
+        in: [globalGroup.id, partnerGroup.id, vipGroup.id, alphaGroup.id],
+      },
+    },
+    data: {
+      telegramBotId: defaultTelegramBot.id,
     },
   });
 
@@ -256,6 +316,9 @@ async function main() {
   await prisma.campaign.createMany({
     data: [
       {
+        organizationId: defaultOrganization.id,
+        workspaceId: defaultWorkspace.id,
+        telegramBotId: defaultTelegramBot.id,
         name: 'Summer Growth 2026',
         channel: 'Nexus Global',
         inviteCode: 't.me/+AbX92Nexus',
@@ -265,6 +328,9 @@ async function main() {
         telegramGroupId: globalGroup.id,
       },
       {
+        organizationId: defaultOrganization.id,
+        workspaceId: defaultWorkspace.id,
+        telegramBotId: defaultTelegramBot.id,
         name: 'Partner Referral East',
         channel: 'Partner Circle',
         inviteCode: 't.me/+KqP11Orbit',
@@ -274,6 +340,9 @@ async function main() {
         telegramGroupId: partnerGroup.id,
       },
       {
+        organizationId: defaultOrganization.id,
+        workspaceId: defaultWorkspace.id,
+        telegramBotId: defaultTelegramBot.id,
         name: 'VIP Re-engagement',
         channel: 'Inner Room',
         inviteCode: 't.me/+R9s11Pulse',
@@ -283,6 +352,9 @@ async function main() {
         telegramGroupId: vipGroup.id,
       },
       {
+        organizationId: defaultOrganization.id,
+        workspaceId: defaultWorkspace.id,
+        telegramBotId: defaultTelegramBot.id,
         name: 'Flash Promo Hold',
         channel: 'Alpha Testers',
         inviteCode: 't.me/+M2c44Queue',
@@ -709,6 +781,12 @@ async function main() {
     ],
   });
 
+  const superAdminRole = await prisma.role.create({
+    data: {
+      name: 'SuperAdmin',
+      description: 'Toàn quyền tenant, workspace, bot và cấu hình toàn hệ thống.',
+    },
+  });
   const adminRole = await prisma.role.create({
     data: {
       name: 'Admin',
@@ -736,6 +814,12 @@ async function main() {
 
   const permissions = await Promise.all([
     prisma.permission.create({
+      data: { code: 'organization.manage', description: 'Manage organizations and tenant-level configuration' },
+    }),
+    prisma.permission.create({
+      data: { code: 'workspace.manage', description: 'Manage workspaces, memberships and bot assignments' },
+    }),
+    prisma.permission.create({
       data: { code: 'campaign.view', description: 'View assigned campaigns and member progress' },
     }),
     prisma.permission.create({
@@ -755,33 +839,50 @@ async function main() {
   await prisma.rolePermission.createMany({
     data: [
       ...permissions.map((permission) => ({
+        roleId: superAdminRole.id,
+        permissionId: permission.id,
+      })),
+      ...permissions
+        .filter((permission) => permission.code !== 'organization.manage')
+        .map((permission) => ({
         roleId: adminRole.id,
         permissionId: permission.id,
       })),
       {
         roleId: moderatorRole.id,
-        permissionId: permissions[2].id,
+        permissionId: permissions[4].id,
       },
       {
         roleId: viewerRole.id,
-        permissionId: permissions[0].id,
+        permissionId: permissions[2].id,
       },
       {
         roleId: operatorRole.id,
-        permissionId: permissions[1].id,
+        permissionId: permissions[3].id,
       },
       {
         roleId: operatorRole.id,
-        permissionId: permissions[4].id,
+        permissionId: permissions[6].id,
       },
     ],
   });
 
+  const superAdminPasswordHash = await bcrypt.hash('superadmin123', 10);
   const adminPasswordHash = await bcrypt.hash('admin123', 10);
   const operatorPasswordHash = await bcrypt.hash('operator123', 10);
   const viewerPasswordHash = await bcrypt.hash('viewer123', 10);
 
-  const [adminUser, operatorUser, viewerUser] = await Promise.all([
+  const [superAdminUser, adminUser, operatorUser, viewerUser] = await Promise.all([
+    prisma.user.create({
+      data: {
+        email: 'superadmin@nexus.local',
+        username: 'system_superadmin',
+        name: 'System Super Admin',
+        department: 'Nen tang',
+        status: UserStatus.ACTIVE,
+        passwordHash: superAdminPasswordHash,
+      },
+    }),
     prisma.user.create({
       data: {
         email: 'admin@nexus.local',
@@ -843,6 +944,10 @@ async function main() {
   await prisma.userRole.createMany({
     data: [
       {
+        userId: superAdminUser.id,
+        roleId: superAdminRole.id,
+      },
+      {
         userId: adminUser.id,
         roleId: adminRole.id,
       },
@@ -861,6 +966,41 @@ async function main() {
       {
         userId: analystUser.id,
         roleId: operatorRole.id,
+      },
+    ],
+  });
+
+  await prisma.workspaceMembership.createMany({
+    data: [
+      {
+        userId: superAdminUser.id,
+        roleId: superAdminRole.id,
+        workspaceId: defaultWorkspace.id,
+      },
+      {
+        userId: adminUser.id,
+        roleId: adminRole.id,
+        workspaceId: defaultWorkspace.id,
+      },
+      {
+        userId: operatorUser.id,
+        roleId: operatorRole.id,
+        workspaceId: defaultWorkspace.id,
+      },
+      {
+        userId: viewerUser.id,
+        roleId: viewerRole.id,
+        workspaceId: defaultWorkspace.id,
+      },
+      {
+        userId: moderatorUser.id,
+        roleId: moderatorRole.id,
+        workspaceId: defaultWorkspace.id,
+      },
+      {
+        userId: analystUser.id,
+        roleId: operatorRole.id,
+        workspaceId: defaultWorkspace.id,
       },
     ],
   });

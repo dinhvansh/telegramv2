@@ -185,7 +185,9 @@ export class PlatformService {
         0,
       );
       const progressValue =
-        targetTotal > 0 ? `${Math.round((joinedTotal / targetTotal) * 100)}%` : '0%';
+        targetTotal > 0
+          ? `${Math.round((joinedTotal / targetTotal) * 100)}%`
+          : '0%';
 
       const scopedMetrics = this.canViewAllCampaigns(viewer)
         ? metrics.map((metric) => ({
@@ -220,7 +222,10 @@ export class PlatformService {
           ? new Set(telegramGroups.map((group) => group.title))
           : new Set(
               campaigns
-                .map((campaign) => campaign.telegramGroup?.title ?? campaign.channel)
+                .map(
+                  (campaign) =>
+                    campaign.telegramGroup?.title ?? campaign.channel,
+                )
                 .filter(Boolean),
             );
 
@@ -291,8 +296,7 @@ export class PlatformService {
           const activeUsers = activeUsersByGroup.get(group.title)?.size ?? 0;
           const growthRate =
             previousMonthlyJoins > 0
-              ? ((monthlyJoins - previousMonthlyJoins) /
-                  previousMonthlyJoins) *
+              ? ((monthlyJoins - previousMonthlyJoins) / previousMonthlyJoins) *
                 100
               : monthlyJoins > 0
                 ? 100
@@ -314,7 +318,9 @@ export class PlatformService {
 
       const botSummary = {
         botName:
-          botConfig?.botDisplayName ?? botConfig?.botUsername ?? 'Chưa xác định',
+          botConfig?.botDisplayName ??
+          botConfig?.botUsername ??
+          'Chưa xác định',
         botExternalId: botConfig?.botExternalId ?? null,
         activeGroupCount: groupsForDashboard.filter((group) => group.isActive)
           .length,

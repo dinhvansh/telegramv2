@@ -12,6 +12,22 @@ type LoginInput = {
 
 const fallbackUsers = [
   {
+    id: 'fallback-superadmin',
+    email: 'superadmin@nexus.local',
+    password: 'superadmin123',
+    name: 'System Super Admin',
+    roles: ['SuperAdmin'],
+    permissions: [
+      'campaign.view',
+      'campaign.manage',
+      'moderation.review',
+      'settings.manage',
+      'autopost.execute',
+      'workspace.manage',
+      'organization.manage',
+    ],
+  },
+  {
     id: 'fallback-viewer',
     email: 'viewer@nexus.local',
     password: 'viewer123',
@@ -26,6 +42,7 @@ const fallbackUsers = [
     name: 'Nexus Admin',
     roles: ['Admin'],
     permissions: [
+      'workspace.manage',
       'campaign.manage',
       'moderation.review',
       'settings.manage',
@@ -65,6 +82,8 @@ export class AuthService {
         email: fallbackUser.email,
         roles: fallbackUser.roles,
         permissions: fallbackUser.permissions,
+        workspaceIds: ['fallback-default-workspace'],
+        organizationIds: ['fallback-default-organization'],
       });
 
       return {
@@ -75,6 +94,18 @@ export class AuthService {
           name: fallbackUser.name,
           roles: [...fallbackUser.roles],
           permissions: [...fallbackUser.permissions],
+          defaultWorkspaceId: 'fallback-default-workspace',
+          defaultOrganizationId: 'fallback-default-organization',
+          workspaces: [
+            {
+              id: 'fallback-default-workspace',
+              name: 'Default Workspace',
+              slug: 'default-workspace',
+              organizationId: 'fallback-default-organization',
+              organizationName: 'Default Organization',
+              roles: [...fallbackUser.roles],
+            },
+          ],
         },
       };
     }
@@ -98,6 +129,22 @@ export class AuthService {
                 },
               },
             },
+          },
+        },
+        workspaceMemberships: {
+          where: {
+            isActive: true,
+          },
+          include: {
+            workspace: {
+              include: {
+                organization: true,
+              },
+            },
+            role: true,
+          },
+          orderBy: {
+            assignedAt: 'asc',
           },
         },
       },
@@ -126,12 +173,34 @@ export class AuthService {
         (permissionItem) => permissionItem.permission.code,
       ),
     );
+    const workspaceIds = [
+      ...new Set(
+        user.workspaceMemberships.map((membership) => membership.workspaceId),
+      ),
+    ];
+    const organizationIds = [
+      ...new Set(
+        user.workspaceMemberships.map(
+          (membership) => membership.workspace.organizationId,
+        ),
+      ),
+    ];
+    const workspaces = user.workspaceMemberships.map((membership) => ({
+      id: membership.workspace.id,
+      name: membership.workspace.name,
+      slug: membership.workspace.slug,
+      organizationId: membership.workspace.organizationId,
+      organizationName: membership.workspace.organization.name,
+      roles: [membership.role.name],
+    }));
 
     const token = await this.jwtService.signAsync({
       sub: user.id,
       email: user.email,
       roles,
       permissions,
+      workspaceIds,
+      organizationIds,
     });
 
     return {
@@ -142,6 +211,9 @@ export class AuthService {
         name: user.name,
         roles,
         permissions: [...new Set(permissions)],
+        defaultWorkspaceId: workspaceIds[0] ?? null,
+        defaultOrganizationId: organizationIds[0] ?? null,
+        workspaces,
       },
     };
   }
@@ -157,6 +229,18 @@ export class AuthService {
         name: fallbackUser.name,
         roles: [...fallbackUser.roles],
         permissions: [...fallbackUser.permissions],
+        defaultWorkspaceId: 'fallback-default-workspace',
+        defaultOrganizationId: 'fallback-default-organization',
+        workspaces: [
+          {
+            id: 'fallback-default-workspace',
+            name: 'Default Workspace',
+            slug: 'default-workspace',
+            organizationId: 'fallback-default-organization',
+            organizationName: 'Default Organization',
+            roles: [...fallbackUser.roles],
+          },
+        ],
         settings: fallbackSnapshot.settings,
       };
     }
@@ -181,6 +265,22 @@ export class AuthService {
             },
           },
         },
+        workspaceMemberships: {
+          where: {
+            isActive: true,
+          },
+          include: {
+            workspace: {
+              include: {
+                organization: true,
+              },
+            },
+            role: true,
+          },
+          orderBy: {
+            assignedAt: 'asc',
+          },
+        },
       },
     });
 
@@ -198,6 +298,26 @@ export class AuthService {
         (permissionItem) => permissionItem.permission.code,
       ),
     );
+    const workspaceIds = [
+      ...new Set(
+        user.workspaceMemberships.map((membership) => membership.workspaceId),
+      ),
+    ];
+    const organizationIds = [
+      ...new Set(
+        user.workspaceMemberships.map(
+          (membership) => membership.workspace.organizationId,
+        ),
+      ),
+    ];
+    const workspaces = user.workspaceMemberships.map((membership) => ({
+      id: membership.workspace.id,
+      name: membership.workspace.name,
+      slug: membership.workspace.slug,
+      organizationId: membership.workspace.organizationId,
+      organizationName: membership.workspace.organization.name,
+      roles: [membership.role.name],
+    }));
 
     return {
       id: user.id,
@@ -205,6 +325,9 @@ export class AuthService {
       name: user.name,
       roles,
       permissions: [...new Set(permissions)],
+      defaultWorkspaceId: workspaceIds[0] ?? null,
+      defaultOrganizationId: organizationIds[0] ?? null,
+      workspaces,
     };
   }
 }

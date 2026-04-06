@@ -6,6 +6,7 @@ import {
 import { CampaignStatus, Prisma } from '@prisma/client';
 import { fallbackSnapshot } from '../platform/fallback-snapshot';
 import { PrismaService } from '../prisma/prisma.service';
+import { WorkspaceBootstrapService } from '../prisma/workspace-bootstrap.service';
 import { TelegramService } from '../telegram/telegram.service';
 
 type CreateCampaignInput = {
@@ -90,6 +91,7 @@ function mapMember(member: {
 export class CampaignsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly workspaceBootstrapService: WorkspaceBootstrapService,
     private readonly telegramService: TelegramService,
   ) {}
 
@@ -418,8 +420,18 @@ export class CampaignsService {
       }
     }
 
+    const defaultBot =
+      await this.workspaceBootstrapService.syncDefaultTelegramBot();
+    const organizationId =
+      telegramGroup.organizationId ?? defaultBot.organizationId;
+    const workspaceId = telegramGroup.workspaceId ?? defaultBot.workspaceId;
+    const telegramBotId = telegramGroup.telegramBotId ?? defaultBot.id;
+
     const campaign = await this.prisma.campaign.create({
       data: {
+        organizationId,
+        workspaceId,
+        telegramBotId,
         name: input.name,
         channel: telegramGroup.title,
         joinRate: input.joinRate ?? '0% conversion',
