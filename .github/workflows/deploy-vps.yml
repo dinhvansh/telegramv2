@@ -110,7 +110,9 @@ jobs:
             fi
             cd /opt/telegramv2/app
             git fetch --depth 1 origin main
-            git checkout -B main origin/main
+            git reset --hard
+            git clean -fd
+            git checkout -f main || git checkout -B main origin/main
             git reset --hard origin/main
             git clean -fd
             APP_ROOT=/opt/telegramv2 APP_DIR=/opt/telegramv2/app SHARED_DIR=/opt/telegramv2/shared ./infra/deploy/deploy-vps.sh
