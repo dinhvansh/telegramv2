@@ -68,6 +68,15 @@ type AutopostSnapshot = {
     sentCount: number;
     scheduledCount: number;
   };
+  workspaces?: Array<{ id: string; name: string; slug: string; organizationId: string }>;
+};
+
+type MatchSchedulerResult = {
+  total: number;
+  created: number;
+  skipped: number;
+  errors: string[];
+  aiUsed: boolean;
 };
 
 type GroupedAutopostSchedule = {
@@ -250,6 +259,14 @@ export function AutopostWorkbench({
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [expandedScheduleGroupIds, setExpandedScheduleGroupIds] = useState<string[]>([]);
   const [isGroupPickerOpen, setIsGroupPickerOpen] = useState(false);
+  const [showMatchScheduler, setShowMatchScheduler] = useState(false);
+  const [matchWorkspaceId, setMatchWorkspaceId] = useState("");
+  const [matchFromDate, setMatchFromDate] = useState("");
+  const [matchToDate, setMatchToDate] = useState("");
+  const [matchUseAi, setMatchUseAi] = useState(false);
+  const [isTriggeringWebhook, setIsTriggeringWebhook] = useState(false);
+  const [matchResult, setMatchResult] = useState<MatchSchedulerResult | null>(null);
+  const [matchError, setMatchError] = useState<string | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
     title: "Bản tin tự động",
     message: "Nội dung autopost được tạo từ CRM.",
@@ -408,6 +425,47 @@ export function AutopostWorkbench({
       headers: buildHeaders(token),
     });
     setSnapshot(data);
+  }
+
+  async function handleMatchWebhook() {
+    if (!token || !matchWorkspaceId) return;
+    setIsTriggeringWebhook(true);
+    setMatchError(null);
+    setMatchResult(null);
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        "x-workspace-id": matchWorkspaceId,
+      };
+      if (matchUseAi) headers["x-use-ai"] = "true";
+
+      const response = await fetch(`${apiBaseUrl}/webhook/matches`, {
+        method: "POST",
+        cache: "no-store",
+        headers,
+        body: JSON.stringify({
+          success: true,
+          from_date: matchFromDate || undefined,
+          to_date: matchToDate || undefined,
+          count: 0,
+          data: [],
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `HTTP ${response.status}`);
+      }
+
+      const data = (await response.json()) as MatchSchedulerResult;
+      setMatchResult(data);
+      void refreshSnapshot();
+    } catch (err) {
+      setMatchError(err instanceof Error ? err.message : "Gọi webhook thất bại");
+    } finally {
+      setIsTriggeringWebhook(false);
+    }
   }
 
   function toggleTelegramGroup(groupId: string, checked: boolean) {
@@ -735,6 +793,144 @@ export function AutopostWorkbench({
           </article>
         ))}
       </div>
+
+      {/* Match Scheduler Toggle */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => setShowMatchScheduler(!showMatchScheduler)}
+          className={`rounded-[18px] px-5 py-3 text-sm font-bold transition-all ${
+            showMatchScheduler
+              ? "bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] text-white"
+              : "bg-[color:var(--surface-card)] text-[color:var(--on-surface)]"
+          }`}
+        >
+          ⚽ Lịch match bóng đá
+        </button>
+      </div>
+
+      {/* Match Scheduler Panel */}
+      {showMatchScheduler && (
+        <section className="rounded-[24px] bg-[color:var(--surface-card)] p-6 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
+          <div className="mb-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
+              N8n Automation
+            </p>
+            <h3 className="mt-1 text-xl font-black tracking-tight">Lịch match bóng đá</h3>
+          </div>
+          <p className="mt-2 text-sm text-[color:var(--on-surface-variant)]">
+            Kích hoạt webhook nhận lịch thi đấu từ n8n. Mỗi trận đấu sẽ được tạo thành một
+            autopost schedule gửi <strong>30 phút trước</strong> giờ thi đấu tới tất cả group đang hoạt động.
+          </p>
+
+          <div className="mt-6 space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-[color:var(--on-surface-variant)]">
+                  Workspace
+                </label>
+                <select
+                  value={matchWorkspaceId}
+                  onChange={(e) => setMatchWorkspaceId(e.target.value)}
+                  className="w-full rounded-[14px] bg-[color:var(--surface-low)] px-4 py-3 text-sm outline-none"
+                >
+                  <option value="">-- Chọn workspace --</option>
+                  {snapshot?.workspaces?.map((w) => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <label className="mb-1 block text-xs font-semibold text-[color:var(--on-surface-variant)]">
+                    Từ ngày
+                  </label>
+                  <input
+                    type="date"
+                    value={matchFromDate}
+                    onChange={(e) => setMatchFromDate(e.target.value)}
+                    className="w-full rounded-[14px] bg-[color:var(--surface-low)] px-4 py-3 text-sm outline-none"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="mb-1 block text-xs font-semibold text-[color:var(--on-surface-variant)]">
+                    Đến ngày
+                  </label>
+                  <input
+                    type="date"
+                    value={matchToDate}
+                    onChange={(e) => setMatchToDate(e.target.value)}
+                    className="w-full rounded-[14px] bg-[color:var(--surface-low)] px-4 py-3 text-sm outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between rounded-[14px] bg-[color:var(--surface-low)] px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-[color:var(--on-surface)]">Dùng AI viết caption</p>
+                <p className="text-xs text-[color:var(--on-surface-variant)]">
+                  Bật để AI viết caption tiếng Việt hấp dẫn cho mỗi trận đấu.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMatchUseAi(!matchUseAi)}
+                className={`shrink-0 rounded-[12px] px-4 py-2 text-sm font-bold transition-all ${
+                  matchUseAi
+                    ? "bg-[color:var(--primary)] text-white"
+                    : "bg-[color:var(--surface-card)] text-[color:var(--on-surface-variant)]"
+                }`}
+              >
+                {matchUseAi ? "Bật" : "Tắt"}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void handleMatchWebhook()}
+              disabled={isTriggeringWebhook || !matchWorkspaceId}
+              className="rounded-[14px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-6 py-3 text-sm font-bold text-white disabled:opacity-50"
+            >
+              {isTriggeringWebhook ? "Đang gọi..." : "Kích hoạt webhook"}
+            </button>
+          </div>
+
+          {matchError && (
+            <div className="mt-4 rounded-[16px] bg-[color:var(--danger-soft)] px-4 py-3 text-sm font-semibold text-[color:var(--danger)]">
+              Lỗi: {matchError}
+            </div>
+          )}
+
+          {matchResult && (
+            <div className="mt-4 space-y-3">
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-[16px] bg-[color:var(--success-soft)] p-4 text-center">
+                  <p className="text-3xl font-black text-[color:var(--success)]">{matchResult.created}</p>
+                  <p className="mt-1 text-xs font-semibold text-[color:var(--success)]">Đã tạo</p>
+                </div>
+                <div className="rounded-[16px] bg-[color:var(--surface-low)] p-4 text-center">
+                  <p className="text-3xl font-black text-[color:var(--on-surface)]">{matchResult.skipped}</p>
+                  <p className="mt-1 text-xs font-semibold text-[color:var(--on-surface-variant)]">Bỏ qua (trùng)</p>
+                </div>
+                <div className="rounded-[16px] bg-[color:var(--primary-soft)] p-4 text-center">
+                  <p className={`text-3xl font-black ${matchResult.aiUsed ? "text-[color:var(--primary)]" : "text-[color:var(--on-surface)]"}`}>
+                    {matchResult.aiUsed ? "AI" : "Normal"}
+                  </p>
+                  <p className="mt-1 text-xs font-semibold text-[color:var(--on-surface-variant)]">Chế độ</p>
+                </div>
+              </div>
+              {matchResult.errors.length > 0 && (
+                <div className="rounded-[14px] bg-[color:var(--danger-soft)] px-4 py-3 text-sm text-[color:var(--danger)]">
+                  <p className="font-semibold">Lỗi:</p>
+                  <ul className="mt-1 list-inside list-disc space-y-1">
+                    {matchResult.errors.map((e, i) => <li key={i}>{e}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       {error ? (
         <div className="rounded-[18px] bg-[color:var(--danger-soft)] px-4 py-3 text-sm text-[color:var(--danger)]">

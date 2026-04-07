@@ -47,9 +47,9 @@ export class MatchAiService {
       ? `${normalizedBaseUrl}/chat/completions`
       : `${normalizedBaseUrl}/v1/chat/completions`;
 
-    const prompt = `Ban la mot chuyen gia social media, viet bai post Tottenham cho Telegram channel.
+    const prompt = `Ban la chuyen gia social media cho kenh Telegram ve bong da.
 
-Viet mot bai post TIENG VIET, hấp dẫn, ngắn gọn (duoi 280 ky tu) ve tran dau:
+Viet mot bai post TIENG VIET, hap dan, ngan gon (toi da 280 ky tu, da bao gom ky tu va emoji) ve tran dau:
 
 ${input.home_team} vs ${input.away_team}
 🏆 ${input.league_name}
@@ -57,11 +57,10 @@ ${input.home_team} vs ${input.away_team}
 ${input.commentator_name ? `🎙️ BLV: ${input.commentator_name}` : ''}
 
 Yeu cau:
-- Su dung emoji phu hop (⚽🏆📅🎙️🔥⭐)
-- Dong duoi phai la link: https://ngoaihang.live/xem-truc-tiep/${input.home_team.toLowerCase().replace(/\s+/g, '-')}-vs-${input.away_team.toLowerCase().replace(/\s+/g, '-')}
+- Su dung emoji phu hop: ⚽ 🏆 📅 🎙️ 🔥 ⭐
+- Dong cuoi la link: https://ngoaihang.live/xem-truc-tiep/${input.home_team.toLowerCase().replace(/\s+/g, '-')}-vs-${input.away_team.toLowerCase().replace(/\s+/g, '-')}
 - Khong dung markdown bold/italic, chi emoji thuong
-- Vi du: "⚽ TRAN DAU HOT!\n\n🔥 [Team A] vs [Team B]\n🏆 Premier League\n📅 Ngay X luc Y\n\n👉 Xem ngay: link"
-- Hoan thanh bai post, tra ve CHI noi dung bai post, khong giai thich, khong markdown, khong code block`;
+- Tra ve CHI noi dung bai post, khong giai thich, khong markdown, khong code block`;
 
     try {
       const response = await fetch(endpoint, {
