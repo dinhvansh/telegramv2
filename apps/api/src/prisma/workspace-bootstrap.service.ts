@@ -1,4 +1,6 @@
 import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
+import { UserStatus } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from './prisma.service';
 import {
   decryptSecretValue,
@@ -8,6 +10,8 @@ import {
 export const DEFAULT_ORGANIZATION_SLUG = 'default-organization';
 export const DEFAULT_WORKSPACE_SLUG = 'default-workspace';
 export const DEFAULT_TELEGRAM_BOT_LEGACY_KEY = 'default';
+const SUPERADMIN_EMAIL = 'superadmin@nexus.local';
+const SUPERADMIN_PASSWORD = 'superadmin123';
 
 type SyncDefaultTelegramBotInput = {
   externalId?: string | null;
@@ -51,6 +55,8 @@ export class WorkspaceBootstrapService implements OnApplicationBootstrap {
         skipDuplicates: true,
       });
     }
+
+    await this.ensureSuperAdminFoundation();
   }
 
   async ensureDefaultScope() {
@@ -189,5 +195,140 @@ export class WorkspaceBootstrapService implements OnApplicationBootstrap {
             : (botConfig?.lastDiscoveredAt ?? null),
       },
     });
+  }
+
+  private async ensureSuperAdminFoundation() {
+    const permissions = await Promise.all([
+      this.prisma.permission.upsert({
+        where: { code: 'organization.manage' },
+        update: {
+          description: 'Manage organizations and tenant-level configuration',
+        },
+        create: {
+          code: 'organization.manage',
+          description: 'Manage organizations and tenant-level configuration',
+        },
+      }),
+      this.prisma.permission.upsert({
+        where: { code: 'workspace.manage' },
+        update: {
+          description: 'Manage workspaces, memberships and bot assignments',
+        },
+        create: {
+          code: 'workspace.manage',
+          description: 'Manage workspaces, memberships and bot assignments',
+        },
+      }),
+      this.prisma.permission.upsert({
+        where: { code: 'campaign.view' },
+        update: { description: 'View assigned campaigns and member progress' },
+        create: {
+          code: 'campaign.view',
+          description: 'View assigned campaigns and member progress',
+        },
+      }),
+      this.prisma.permission.upsert({
+        where: { code: 'campaign.manage' },
+        update: { description: 'Manage campaigns and invite links' },
+        create: {
+          code: 'campaign.manage',
+          description: 'Manage campaigns and invite links',
+        },
+      }),
+      this.prisma.permission.upsert({
+        where: { code: 'moderation.review' },
+        update: { description: 'Review spam and moderation alerts' },
+        create: {
+          code: 'moderation.review',
+          description: 'Review spam and moderation alerts',
+        },
+      }),
+      this.prisma.permission.upsert({
+        where: { code: 'settings.manage' },
+        update: { description: 'Manage bot settings and security config' },
+        create: {
+          code: 'settings.manage',
+          description: 'Manage bot settings and security config',
+        },
+      }),
+      this.prisma.permission.upsert({
+        where: { code: 'autopost.execute' },
+        update: { description: 'Manage autopost schedules and logs' },
+        create: {
+          code: 'autopost.execute',
+          description: 'Manage autopost schedules and logs',
+        },
+      }),
+    ]);
+
+    const superAdminRole = await this.prisma.role.upsert({
+      where: { name: 'SuperAdmin' },
+      update: {
+        description:
+          'Toàn quyền tenant, workspace, bot và cấu hình toàn hệ thống.',
+      },
+      create: {
+        name: 'SuperAdmin',
+        description:
+          'Toàn quyền tenant, workspace, bot và cấu hình toàn hệ thống.',
+      },
+    });
+
+    await this.prisma.rolePermission.createMany({
+      data: permissions.map((permission) => ({
+        roleId: superAdminRole.id,
+        permissionId: permission.id,
+      })),
+      skipDuplicates: true,
+    });
+
+    const passwordHash = await bcrypt.hash(SUPERADMIN_PASSWORD, 10);
+    const superAdminUser = await this.prisma.user.upsert({
+      where: { email: SUPERADMIN_EMAIL },
+      update: {
+        name: 'System Super Admin',
+        username: 'system_superadmin',
+        department: 'Nền tảng',
+        status: UserStatus.ACTIVE,
+        passwordHash,
+      },
+      create: {
+        email: SUPERADMIN_EMAIL,
+        username: 'system_superadmin',
+        name: 'System Super Admin',
+        department: 'Nền tảng',
+        status: UserStatus.ACTIVE,
+        passwordHash,
+      },
+    });
+
+    await this.prisma.userRole.upsert({
+      where: {
+        userId_roleId: {
+          userId: superAdminUser.id,
+          roleId: superAdminRole.id,
+        },
+      },
+      update: {},
+      create: {
+        userId: superAdminUser.id,
+        roleId: superAdminRole.id,
+      },
+    });
+
+    const workspaces = await this.prisma.workspace.findMany({
+      select: { id: true },
+    });
+
+    if (workspaces.length > 0) {
+      await this.prisma.workspaceMembership.createMany({
+        data: workspaces.map((workspace) => ({
+          userId: superAdminUser.id,
+          workspaceId: workspace.id,
+          roleId: superAdminRole.id,
+        })),
+        skipDuplicates: true,
+      });
+    }
   }
 }
