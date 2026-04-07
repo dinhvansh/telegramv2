@@ -101,7 +101,10 @@ export class MatchWebhookService {
       try {
         const dateStr = match.start_date;
         const timeStr = match.start_time;
-        const scheduledFor = new Date(`${dateStr}T${timeStr}:00.000Z`);
+        const scheduledFor = new Date(`${dateStr}T${timeStr}Z`);
+        if (isNaN(scheduledFor.getTime())) {
+          throw new Error(`Invalid date: ${dateStr}T${timeStr}Z`);
+        }
         scheduledFor.setMinutes(scheduledFor.getMinutes() - 30);
 
         const existing = await this.prisma.autopostSchedule.findFirst({
