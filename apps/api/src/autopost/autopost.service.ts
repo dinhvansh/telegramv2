@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return */
 import { Injectable } from '@nestjs/common';
 import {
   AutopostDeliveryStatus,
@@ -60,8 +60,8 @@ export class AutopostService {
       orderBy: [{ title: 'asc' }],
     })) as any[];
 
-    const allowedTelegramExternalIds = new Set(
-      groups.map((group) => group.externalId),
+    const allowedTelegramExternalIds = new Set<string>(
+      groups.map((group) => group.externalId as string),
     );
 
     const targets = (await this.prisma.autopostTarget.findMany({
@@ -79,7 +79,9 @@ export class AutopostService {
       orderBy: [{ platform: 'asc' }, { displayName: 'asc' }],
     })) as any[];
 
-    const allowedTargetIds = new Set(targets.map((target) => target.id));
+    const allowedTargetIds = new Set<string>(
+      targets.map((target) => target.id),
+    );
 
     const schedules = (await this.prisma.autopostSchedule.findMany({
       where: workspaceId

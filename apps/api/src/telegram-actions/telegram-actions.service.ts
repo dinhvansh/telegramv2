@@ -441,7 +441,9 @@ export class TelegramActionsService {
     }> = [];
 
     for (const job of jobs) {
-      const config = await this.getResolvedConfig(job.chatId || undefined);
+      const config = await this.getResolvedConfig(
+        (job.chatId as string | undefined) || undefined,
+      );
       if (!config.botToken) {
         results.push({
           id: String(job.id),
