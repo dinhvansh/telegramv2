@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { canAccessPage, type DashboardPage } from "@/lib/page-access";
 import { fallbackPlatformSnapshot, PlatformSnapshot } from "@/lib/platform-data";
 
 const apiBaseUrl = "/api";
@@ -59,32 +60,8 @@ type CampaignNoticeState = {
 };
 
 type PlatformDashboardProps = {
-  page?:
-    | "dashboard"
-    | "campaigns"
-    | "members"
-    | "member360"
-    | "moderation"
-    | "autopost"
-    | "roles"
-    | "telegram"
-    | "settings";
+  page?: DashboardPage;
   entryMode?: boolean;
-};
-
-const pagePermissionMap: Record<
-  NonNullable<PlatformDashboardProps["page"]>,
-  string[]
-> = {
-  dashboard: [],
-  campaigns: ["campaign.manage", "campaign.view"],
-  members: ["campaign.manage", "campaign.view", "moderation.review"],
-  member360: ["campaign.manage", "campaign.view", "moderation.review"],
-  moderation: ["moderation.review"],
-  autopost: ["autopost.execute"],
-  roles: ["settings.manage"],
-  telegram: ["settings.manage"],
-  settings: ["settings.manage"],
 };
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -192,12 +169,7 @@ export function PlatformDashboard({
       return;
     }
 
-    const requiredPermissions = pagePermissionMap[page] ?? [];
-    const hasPageAccess =
-      requiredPermissions.length === 0 ||
-      requiredPermissions.some((permission) =>
-        user.permissions.includes(permission),
-      );
+    const hasPageAccess = canAccessPage(user.permissions, page);
 
     if (!hasPageAccess) {
       router.replace("/dashboard");

@@ -11,6 +11,7 @@ import { RolesWorkbench } from "@/components/roles-workbench";
 import { SettingsWorkbench } from "@/components/settings-workbench";
 import { TelegramControlCenter } from "@/components/telegram-control-center";
 import { WorkspacesWorkbench } from "@/components/workspaces-workbench";
+import { canAccessPage, type DashboardPage } from "@/lib/page-access";
 import type { PlatformSnapshot } from "@/lib/platform-data";
 
 function MenuIcon({
@@ -49,18 +50,6 @@ const toneStrokeMap = {
   warning: "rgb(184, 124, 0)",
   danger: "rgb(198, 62, 29)",
 };
-
-type DashboardPage =
-  | "dashboard"
-  | "campaigns"
-  | "members"
-  | "member360"
-  | "moderation"
-  | "autopost"
-  | "roles"
-  | "telegram"
-  | "settings"
-  | "workspaces";
 
 type DashboardShellProps = {
   snapshot: PlatformSnapshot;
@@ -172,15 +161,10 @@ export function DashboardShell({
     !userPermissions.includes("moderation.review") &&
     !userPermissions.includes("settings.manage");
 
-  const hasAnyPermission = (requiredPermissions: readonly string[]) =>
-    requiredPermissions.length === 0 ||
-    requiredPermissions.some((permission) => userPermissions.includes(permission));
-
   const navigation = [
     {
       key: "dashboard",
       href: "/dashboard",
-      requiredPermissions: [],
       label: "Tổng quan",
       description: "Số liệu nhanh và trạng thái hệ thống.",
       icon: (
@@ -195,7 +179,6 @@ export function DashboardShell({
     {
       key: "campaigns",
       href: "/campaigns",
-      requiredPermissions: ["campaign.manage", "campaign.view"],
       label: "Campaign",
       description: "Chiến dịch đang chạy, vào nhóm và rời nhóm.",
       icon: (
@@ -210,7 +193,6 @@ export function DashboardShell({
     {
       key: "members",
       href: "/members",
-      requiredPermissions: ["campaign.manage", "campaign.view", "moderation.review"],
       label: "Thành viên",
       description: "Danh sách user, owner và ghi chú chăm sóc.",
       icon: (
@@ -225,7 +207,6 @@ export function DashboardShell({
     {
       key: "member360",
       href: "/member360",
-      requiredPermissions: ["campaign.manage", "campaign.view", "moderation.review"],
       label: "Member 360",
       description: "Hồ sơ user, group hiện tại và lịch sử ra/vào.",
       icon: (
@@ -240,7 +221,6 @@ export function DashboardShell({
     {
       key: "moderation",
       href: "/moderation",
-      requiredPermissions: ["moderation.review", "settings.manage"],
       label: "Bot & Moderation",
       description: "Bot đang dùng, group đang sync và moderation.",
       icon: (
@@ -254,7 +234,6 @@ export function DashboardShell({
     {
       key: "autopost",
       href: "/autopost",
-      requiredPermissions: ["autopost.execute"],
       label: "Autopost",
       description: "Lịch gửi bài và log điều phối.",
       icon: (
@@ -269,7 +248,6 @@ export function DashboardShell({
     {
       key: "roles",
       href: "/roles",
-      requiredPermissions: ["settings.manage"],
       label: "Phân quyền",
       description: "Vai trò và quyền truy cập.",
       icon: (
@@ -282,7 +260,6 @@ export function DashboardShell({
     {
       key: "workspaces",
       href: "/workspaces",
-      requiredPermissions: ["organization.manage"],
       label: "Workspaces",
       description: "Quản lý org, workspace, bot và memberships.",
       icon: (
@@ -297,7 +274,6 @@ export function DashboardShell({
     {
       key: "settings",
       href: "/settings",
-      requiredPermissions: ["settings.manage"],
       label: "Cài đặt",
       description: "Cấu hình hệ thống và tích hợp AI.",
       icon: (
@@ -317,7 +293,7 @@ export function DashboardShell({
   ] as const;
 
   const visibleNavigation = navigation.filter((item) =>
-    hasAnyPermission(item.requiredPermissions),
+    canAccessPage(userPermissions, item.key),
   );
 
   const groupMemberValues = snapshot.groupInsights.slice(0, 6).map((group) => group.memberCount);
