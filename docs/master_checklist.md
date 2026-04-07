@@ -1,71 +1,70 @@
-﻿# Telegram Operations Platform Master Checklist
+# Telegram Operations Platform Master Checklist
 
 ## How To Use
 
-- ÄÃ¡nh dáº¥u `[x]` khi hoÃ n thÃ nh vÃ  Ä‘Ã£ verify.
-- DÃ¹ng `[-]` cho pháº§n Ä‘ang lÃ m.
-- DÃ¹ng `[ ]` cho pháº§n chÆ°a báº¯t Ä‘áº§u.
-- Má»—i láº§n xong má»™t háº¡ng má»¥c lá»›n thÃ¬ cáº­p nháº­t thÃªm ngÃ y hoáº·c ghi chÃº ngáº¯n ngay bÃªn dÆ°á»›i.
+- Đánh dấu `[x]` khi hoàn thành và đã verify.
+- Dùng `[-]` cho phần đang làm.
+- Dùng `[ ]` cho phần chưa bắt đầu.
+- Mỗi lần xong một hạng mục lớn thì cập nhật thêm ngày hoặc ghi chú ngắn ngay bên dưới.
 
 ## 1. Foundation
 
-- [x] Táº¡o `apps/web`
-- [x] Táº¡o `apps/api`
-- [x] Táº¡o `docs/`
-- [x] Táº¡o local Docker stack vá»›i `web`, `api`, `postgres`, `redis`
-- [x] Dá»±ng admin shell baseline
-- [x] Táº¡o master execution plan
-- [x] Táº¡o task tracker chi tiáº¿t
-- [ ] Chuáº©n hÃ³a toÃ n bá»™ tÃ i liá»‡u tiáº¿ng Viá»‡t sang UTF-8
+- [x] Tạo `apps/web`
+- [x] Tạo `apps/api`
+- [x] Tạo `docs/`
+- [x] Tạo local Docker stack với `web`, `api`, `postgres`, `redis`
+- [x] Dựng admin shell baseline
+- [x] Tạo master execution plan
+- [x] Tạo task tracker chi tiết
+- [x] Chuẩn hóa toàn bộ tài liệu tiếng Việt sang UTF-8
 
 ## 2. Frontend Admin
 
-- [x] Dá»±ng layout command-center
-- [x] Dá»±ng overview dashboard
-- [x] Dá»±ng section campaigns
-- [x] Dá»±ng section moderation
-- [x] Dá»±ng section autopost
-- [x] Dá»±ng section roles
-- [x] Dá»±ng section settings
-- [x] Ná»‘i frontend vá»›i API snapshot
-- [x] TÃ¡ch thÃ nh routed pages riÃªng cho tá»«ng module
-- [x] DÃ¹ng UI source tá»« `stitch/` cho cÃ¡c route chÃ­nh
-- [ ] ThÃªm form táº¡o campaign tá»« UI
-- [x] ThÃªm form táº¡o campaign tá»« UI
+- [x] Dựng layout command-center
+- [x] Dựng overview dashboard
+- [x] Dựng section campaigns
+- [x] Dựng section moderation
+- [x] Dựng section autopost
+- [x] Dựng section roles
+- [x] Dựng section settings
+- [x] Nối frontend với API snapshot
+- [x] Tách thành routed pages riêng cho từng module
+- [x] Dùng UI source từ `stitch/` cho các route chính
+- [x] Thêm form tạo campaign từ UI
 - [x] Nối live data và action vào các page `stitch/` chính
 - [x] Thêm form tạo user từ UI phân quyền
 - [x] Thêm block cấu hình AI vào settings
-- [-] ThÃªm CRUD tháº­t trÃªn UI
-- [ ] ThÃªm loading, empty state, error state hoÃ n chá»‰nh
-- [x] ThÃªm auth UI
+- [x] Thêm CRUD thật trên UI
+- [x] Thêm loading, empty state, error state hoàn chỉnh
+- [x] Thêm auth UI
 
 ## 3. Backend API
 
-- [x] Táº¡o NestJS app
-- [x] ThÃªm health endpoint
-- [x] ThÃªm platform snapshot endpoint
-- [x] ThÃªm campaigns endpoint
-- [x] ThÃªm roles endpoint
-- [x] ThÃªm settings endpoint
-- [x] ThÃªm users endpoint
-- [x] ThÃªm auth endpoint
-- [ ] ThÃªm autopost schedules endpoint
-- [ ] ThÃªm moderation actions endpoint
-- [ ] ThÃªm audit logs endpoint
-- [x] ThÃªm AI model loading endpoint
+- [x] Tạo NestJS app
+- [x] Thêm health endpoint
+- [x] Thêm platform snapshot endpoint
+- [x] Thêm campaigns endpoint
+- [x] Thêm roles endpoint
+- [x] Thêm settings endpoint
+- [x] Thêm users endpoint
+- [x] Thêm auth endpoint
+- [x] Thêm autopost schedules endpoint
+- [x] Thêm moderation actions endpoint
+- [x] Thêm audit logs endpoint
+- [x] Thêm AI model loading endpoint
 
 ## 4. Database
 
-- [x] Táº¡o Prisma schema
-- [x] Seed dá»¯ liá»‡u ná»n
-- [x] Push schema lÃªn PostgreSQL local
-- [ ] Bá»• sung migrations chuáº©n thay cho chá»‰ `db push`
-- [ ] Bá»• sung báº£ng users chi tiáº¿t hÆ¡n
-- [ ] Bá»• sung báº£ng invite_link_events
-- [ ] Bá»• sung báº£ng autopost_schedules
-- [ ] Bá»• sung báº£ng autopost_jobs
-- [ ] Bá»• sung báº£ng spam_events
-- [ ] Bá»• sung báº£ng audit_logs
+- [x] Tạo Prisma schema
+- [x] Seed dữ liệu nền
+- [x] Push schema lên PostgreSQL local
+- [ ] Bổ sung migrations chuẩn thay cho chỉ `db push`
+- [ ] Bổ sung bảng users chi tiết hơn
+- [ ] Bổ sung bảng invite_link_events
+- [ ] Bổ sung bảng autopost_schedules
+- [ ] Bổ sung bảng autopost_jobs
+- [ ] Bổ sung bảng spam_events
+- [ ] Bổ sung bảng audit_logs
 
 ## 5. Auth And RBAC
 
@@ -74,55 +73,50 @@
 - [ ] Refresh token
 - [ ] Role guard
 - [x] Permission guard
-- [x] Route protection á»Ÿ frontend
-- [x] Menu theo quyá»n
-- [x] Action theo quyá»n
+- [x] Route protection ở frontend
+- [x] Menu theo quyền
+- [x] Action theo quyền
 
 ## 6. Telegram Integration
 
-- [x] LÆ°u bot token an toÃ n
+- [x] Lưu bot token an toàn
 - [x] Telegram service wrapper
 - [ ] Bind Telegram group/channel
 - [x] Webhook receiver
-- [-] Invite link generation tháº­t
+- [x] Invite link generation thật
 - [x] Join event ingestion
 
 ## 7. Campaign And Tracking
 
-- [x] CÃ³ model campaign cÆ¡ báº£n
-- [x] CÃ³ API list/create campaign cÆ¡ báº£n
-- [-] CRUD campaign Ä‘áº§y Ä‘á»§
-- [x] Generate invite link tháº­t
-- [-] Map user join vÃ o campaign
+- [x] Có model campaign cơ bản
+- [x] Có API list/create campaign cơ bản
+- [x] CRUD campaign đầy đủ
+- [x] Generate invite link thật
+- [x] Map user join vào campaign
 - [x] Ghi invite_link_events
-- [ ] Cáº­p nháº­t campaign metrics tháº­t
+- [ ] Cập nhật campaign metrics thật
 
 ## 8. Autopost
 
-- [x] CÃ³ capability model cÆ¡ báº£n
-- [ ] Táº¡o message template model
-- [x] Táº¡o schedule model
-- [x] Táº¡o job dispatch flow
-- [x] Táº¡o send log
-- [x] UI quáº£n lÃ½ schedule
-- [-] Retry / fail / success state
+- [x] Có capability model cơ bản
+- [ ] Tạo message template model
+- [x] Tạo schedule model
+- [x] Tạo job dispatch flow
+- [x] Tạo send log
+- [x] UI quản lý schedule
+- [x] Retry / fail / success state
 
 ## 9. Moderation And Anti-Spam
 
-- [x] CÃ³ moderation rules seed
-- [x] Moderation dashboard hiá»ƒn thá»‹ member state `active/left`
-- [x] Táº£i CSV danh sÃ¡ch member tá»« UI moderation
-- [ ] Rule engine cÆ¡ báº£n
-- [x] Rule engine cÆ¡ báº£n
-- [ ] Keyword blacklist
+- [x] Có moderation rules seed
+- [x] Moderation dashboard hiển thị member state `active/left`
+- [x] Tải CSV danh sách member từ UI moderation
+- [x] Rule engine cơ bản
 - [x] Keyword blacklist
-- [ ] Domain blacklist
 - [x] Domain blacklist
-- [ ] Risk scoring
 - [x] Risk scoring
-- [ ] Ban / mute / warning actions
 - [x] Ban / mute / warning actions
-- [x] Moderation dashboard tháº­t
+- [x] Moderation dashboard thật
 - [x] Manual review flow
 - [x] Manual `Allow / Restrict / Ban` action from `/spam`
 - [x] Action log history per spam event
@@ -142,22 +136,18 @@
 - [x] UI cấu hình `AI base URL`, token, model và prompt
 - [x] API load model có fallback `mock://catalog`
 - [x] AI URL mặc định từ env và token lưu DB dạng mã hóa
-- [ ] AI moderation service contract
 - [x] AI moderation service contract
-- [ ] Message classification
 - [x] Message classification
-- [ ] Link analysis
 - [x] Link analysis
-- [ ] Hybrid score manual + AI
 - [x] Hybrid score manual + AI
-- [ ] Feedback loop tá»« admin
+- [ ] Feedback loop từ admin
 
 ## 12. Security
 
 - [x] Encrypt bot token
-- [ ] 2FA tháº­t
+- [ ] 2FA thật
 - [ ] IP whitelist
-- [ ] Audit log Ä‘áº§y Ä‘á»§
+- [ ] Audit log đầy đủ
 - [ ] Rate limiting
 - [x] Sensitive data masking
 
@@ -206,6 +196,6 @@
 ## Current Focus
 
 - [x] Auth + RBAC
-- [-] Telegram integration
-- [-] Campaign CRUD Ä‘áº§y Ä‘á»§
-- [-] UI actions thay cho dashboard chá»‰ Ä‘á»c
+- [x] Telegram integration
+- [x] Campaign CRUD đầy đủ
+- [x] UI actions thay cho dashboard chỉ đọc

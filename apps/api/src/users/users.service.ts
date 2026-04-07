@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -17,6 +18,12 @@ type FallbackUserRecord = {
   status: 'ACTIVE' | 'AWAY' | 'DISABLED';
   passwordHash: string;
   roles: Array<{ id: string; name: string; permissions: string[] }>;
+};
+
+type UserViewer = {
+  userId: string;
+  permissions: string[];
+  workspaceIds?: string[];
 };
 
 const fallbackRoleCatalog = [
@@ -170,12 +177,33 @@ export class UsersService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll() {
+  private isOrganizationManager(viewer?: UserViewer) {
+    return Boolean(viewer?.permissions.includes('organization.manage'));
+  }
+
+  async findAll(viewer?: UserViewer) {
     if (!process.env.DATABASE_URL) {
-      return this.fallbackUsers.map((user) => this.serializeFallbackUser(user));
+      return this.fallbackUsers
+        .filter(
+          (user) =>
+            this.isOrganizationManager(viewer) ||
+            !user.roles.some((role) => role.name === 'SuperAdmin'),
+        )
+        .map((user) => this.serializeFallbackUser(user));
     }
 
     const users = await this.prisma.user.findMany({
+      where: this.isOrganizationManager(viewer)
+        ? undefined
+        : {
+            userRoles: {
+              none: {
+                role: {
+                  name: 'SuperAdmin',
+                },
+              },
+            },
+          },
       orderBy: { createdAt: 'asc' },
       include: {
         userRoles: {
@@ -197,19 +225,24 @@ export class UsersService {
     return users.map((user) => this.serializeDatabaseUser(user));
   }
 
-  async create(input: {
-    name: string;
-    email: string;
-    password: string;
-    roleId: string;
-    department?: string;
-    username?: string;
-    status?: string;
-  }) {
+  async create(
+    input: {
+      name: string;
+      email: string;
+      password: string;
+      roleId: string;
+      workspaceId?: string;
+      department?: string;
+      username?: string;
+      status?: string;
+    },
+    viewer?: UserViewer,
+  ) {
     const name = input.name?.trim();
     const email = input.email?.trim().toLowerCase();
     const password = input.password ?? '';
     const roleId = input.roleId?.trim();
+    const workspaceId = input.workspaceId?.trim();
     const department = input.department?.trim() || 'Chưa gán';
     const username = input.username?.trim() || email?.split('@')[0] || null;
     const status = (input.status?.trim().toUpperCase() ||
@@ -225,6 +258,12 @@ export class UsersService {
       );
       if (!fallbackRole) {
         throw new UnauthorizedException('Role not found');
+      }
+      if (
+        fallbackRole.name === 'SuperAdmin' &&
+        !this.isOrganizationManager(viewer)
+      ) {
+        throw new ForbiddenException('Only superadmin can assign SuperAdmin');
       }
 
       const created: FallbackUserRecord = {
@@ -253,6 +292,12 @@ export class UsersService {
     if (!existingRole) {
       throw new UnauthorizedException('Role not found');
     }
+    if (
+      existingRole.name === 'SuperAdmin' &&
+      !this.isOrganizationManager(viewer)
+    ) {
+      throw new ForbiddenException('Only superadmin can assign SuperAdmin');
+    }
 
     const created = await this.prisma.user.create({
       data: {
@@ -267,6 +312,17 @@ export class UsersService {
             roleId: existingRole.id,
           },
         },
+        ...(workspaceId
+          ? {
+              workspaceMemberships: {
+                create: {
+                  workspaceId,
+                  roleId: existingRole.id,
+                  isActive: true,
+                },
+              },
+            }
+          : {}),
       },
       include: {
         userRoles: {
@@ -297,6 +353,7 @@ export class UsersService {
       roleId?: string;
       status?: string;
     },
+    viewer?: UserViewer,
   ) {
     const normalizedRoleId = input.roleId?.trim();
     const normalizedStatus = input.status?.trim().toUpperCase() as
@@ -333,6 +390,12 @@ export class UsersService {
         if (!fallbackRole) {
           throw new UnauthorizedException('Role not found');
         }
+        if (
+          fallbackRole.name === 'SuperAdmin' &&
+          !this.isOrganizationManager(viewer)
+        ) {
+          throw new ForbiddenException('Only superadmin can assign SuperAdmin');
+        }
         target.roles = [
           {
             id: fallbackRole.id,
@@ -351,6 +414,12 @@ export class UsersService {
       });
       if (!existingRole) {
         throw new UnauthorizedException('Role not found');
+      }
+      if (
+        existingRole.name === 'SuperAdmin' &&
+        !this.isOrganizationManager(viewer)
+      ) {
+        throw new ForbiddenException('Only superadmin can assign SuperAdmin');
       }
     }
 

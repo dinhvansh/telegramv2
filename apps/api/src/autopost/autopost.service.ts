@@ -36,7 +36,7 @@ export class AutopostService {
     private readonly systemLogsService: SystemLogsService,
   ) {}
 
-  async getSnapshot() {
+  async getSnapshot(workspaceId?: string) {
     if (!process.env.DATABASE_URL) {
       return {
         targets: [],
@@ -52,36 +52,73 @@ export class AutopostService {
       };
     }
 
-    const [targets, groups, schedules, logs] = (await Promise.all([
-      this.prisma.autopostTarget.findMany({
-        orderBy: [{ platform: 'asc' }, { displayName: 'asc' }],
-      }),
-      this.prisma.telegramGroup.findMany({
-        where: { isActive: true },
-        orderBy: [{ title: 'asc' }],
-      }),
-      this.prisma.autopostSchedule.findMany({
-        include: {
-          target: true,
-          logs: {
-            orderBy: { createdAt: 'desc' },
-            take: 1,
-          },
-        },
-        orderBy: [{ createdAt: 'desc' }],
-      }),
-      this.prisma.autopostLog.findMany({
-        include: {
-          schedule: {
-            include: {
-              target: true,
+    const groups = (await this.prisma.telegramGroup.findMany({
+      where: {
+        isActive: true,
+        ...(workspaceId ? { workspaceId } : {}),
+      },
+      orderBy: [{ title: 'asc' }],
+    })) as any[];
+
+    const allowedTelegramExternalIds = new Set(
+      groups.map((group) => group.externalId),
+    );
+
+    const targets = (await this.prisma.autopostTarget.findMany({
+      where: workspaceId
+        ? {
+            OR: [
+              { platform: { not: AutopostTargetPlatform.TELEGRAM } },
+              {
+                platform: AutopostTargetPlatform.TELEGRAM,
+                externalId: { in: [...allowedTelegramExternalIds] },
+              },
+            ],
+          }
+        : undefined,
+      orderBy: [{ platform: 'asc' }, { displayName: 'asc' }],
+    })) as any[];
+
+    const allowedTargetIds = new Set(targets.map((target) => target.id));
+
+    const schedules = (await this.prisma.autopostSchedule.findMany({
+      where: workspaceId
+        ? {
+            targetId: {
+              in: [...allowedTargetIds],
             },
+          }
+        : undefined,
+      include: {
+        target: true,
+        logs: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: [{ createdAt: 'desc' }],
+    })) as any[];
+
+    const logs = (await this.prisma.autopostLog.findMany({
+      where: workspaceId
+        ? {
+            schedule: {
+              targetId: {
+                in: [...allowedTargetIds],
+              },
+            },
+          }
+        : undefined,
+      include: {
+        schedule: {
+          include: {
+            target: true,
           },
         },
-        orderBy: { createdAt: 'desc' },
-        take: 20,
-      }),
-    ])) as [any[], any[], any[], any[]];
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    })) as any[];
 
     return {
       targets: targets.map((target: any) => ({
@@ -197,12 +234,12 @@ export class AutopostService {
     return this.getSnapshot();
   }
 
-  async createSchedules(input: CreateScheduleInput) {
+  async createSchedules(input: CreateScheduleInput, workspaceId?: string) {
     if (!process.env.DATABASE_URL) {
       return {
         created: 0,
         items: [],
-        snapshot: await this.getSnapshot(),
+        snapshot: await this.getSnapshot(workspaceId),
       };
     }
 
@@ -217,18 +254,21 @@ export class AutopostService {
       : [];
 
     const resolvedTargetIds = process.env.DATABASE_URL
-      ? await this.resolveTelegramTargetIds({
-          targetIds,
-          telegramGroupIds,
-          selectAllTelegramGroups: Boolean(input.selectAllTelegramGroups),
-        })
+      ? await this.resolveTelegramTargetIds(
+          {
+            targetIds,
+            telegramGroupIds,
+            selectAllTelegramGroups: Boolean(input.selectAllTelegramGroups),
+          },
+          workspaceId,
+        )
       : targetIds;
 
     if ((!title && !message) || !resolvedTargetIds.length) {
       return {
         created: 0,
         items: [],
-        snapshot: await this.getSnapshot(),
+        snapshot: await this.getSnapshot(workspaceId),
       };
     }
 
@@ -284,16 +324,16 @@ export class AutopostService {
         targetName: item.target.displayName,
         status: item.status,
       })),
-      snapshot: await this.getSnapshot(),
+      snapshot: await this.getSnapshot(workspaceId),
     };
   }
 
-  async sendNow(input: CreateScheduleInput) {
+  async sendNow(input: CreateScheduleInput, workspaceId?: string) {
     if (!process.env.DATABASE_URL) {
       return {
         dispatched: 0,
         items: [],
-        snapshot: await this.getSnapshot(),
+        snapshot: await this.getSnapshot(workspaceId),
       };
     }
 
@@ -307,17 +347,20 @@ export class AutopostService {
       ? input.telegramGroupIds.filter(Boolean)
       : [];
 
-    const resolvedTargetIds = await this.resolveTelegramTargetIds({
-      targetIds,
-      telegramGroupIds,
-      selectAllTelegramGroups: Boolean(input.selectAllTelegramGroups),
-    });
+    const resolvedTargetIds = await this.resolveTelegramTargetIds(
+      {
+        targetIds,
+        telegramGroupIds,
+        selectAllTelegramGroups: Boolean(input.selectAllTelegramGroups),
+      },
+      workspaceId,
+    );
 
     if ((!title && !message) || !resolvedTargetIds.length) {
       return {
         dispatched: 0,
         items: [],
-        snapshot: await this.getSnapshot(),
+        snapshot: await this.getSnapshot(workspaceId),
       };
     }
 
@@ -328,7 +371,6 @@ export class AutopostService {
       orderBy: { displayName: 'asc' },
     });
 
-    const botToken = await this.getTelegramBotToken();
     const items = [];
 
     for (const target of targets) {
@@ -337,6 +379,10 @@ export class AutopostService {
       let externalPostId: string | null = `instant-${Date.now()}`;
 
       if (target.platform === AutopostTargetPlatform.TELEGRAM) {
+        const botToken = await this.getTelegramBotToken({
+          workspaceId,
+          chatExternalId: target.externalId,
+        });
         if (!botToken) {
           status = AutopostDeliveryStatus.FAILED;
           detail = 'Missing Telegram bot token.';
@@ -404,15 +450,19 @@ export class AutopostService {
     return {
       dispatched: items.length,
       items,
-      snapshot: await this.getSnapshot(),
+      snapshot: await this.getSnapshot(workspaceId),
     };
   }
 
-  async updateSchedule(scheduleId: string, input: CreateScheduleInput) {
+  async updateSchedule(
+    scheduleId: string,
+    input: CreateScheduleInput,
+    workspaceId?: string,
+  ) {
     if (!process.env.DATABASE_URL) {
       return {
         updated: false,
-        snapshot: await this.getSnapshot(),
+        snapshot: await this.getSnapshot(workspaceId),
       };
     }
 
@@ -422,22 +472,25 @@ export class AutopostService {
     if (!existing) {
       return {
         updated: false,
-        snapshot: await this.getSnapshot(),
+        snapshot: await this.getSnapshot(workspaceId),
       };
     }
 
     const title = String(input.title || '').trim();
     const message = String(input.message || '').trim();
     const mediaUrl = String(input.mediaUrl || '').trim() || null;
-    const targetIds = await this.resolveTelegramTargetIds({
-      targetIds: Array.isArray(input.targetIds)
-        ? input.targetIds.filter(Boolean)
-        : [],
-      telegramGroupIds: Array.isArray(input.telegramGroupIds)
-        ? input.telegramGroupIds.filter(Boolean)
-        : [],
-      selectAllTelegramGroups: Boolean(input.selectAllTelegramGroups),
-    });
+    const targetIds = await this.resolveTelegramTargetIds(
+      {
+        targetIds: Array.isArray(input.targetIds)
+          ? input.targetIds.filter(Boolean)
+          : [],
+        telegramGroupIds: Array.isArray(input.telegramGroupIds)
+          ? input.telegramGroupIds.filter(Boolean)
+          : [],
+        selectAllTelegramGroups: Boolean(input.selectAllTelegramGroups),
+      },
+      workspaceId,
+    );
     const primaryTargetId = targetIds[0] || existing.targetId;
     const scheduledFor =
       this.resolveScheduleDates(input)[0] ||
@@ -475,15 +528,15 @@ export class AutopostService {
 
     return {
       updated: true,
-      snapshot: await this.getSnapshot(),
+      snapshot: await this.getSnapshot(workspaceId),
     };
   }
 
-  async toggleSchedule(scheduleId: string) {
+  async toggleSchedule(scheduleId: string, workspaceId?: string) {
     if (!process.env.DATABASE_URL) {
       return {
         toggled: false,
-        snapshot: await this.getSnapshot(),
+        snapshot: await this.getSnapshot(workspaceId),
       };
     }
 
@@ -493,7 +546,7 @@ export class AutopostService {
     if (!existing) {
       return {
         toggled: false,
-        snapshot: await this.getSnapshot(),
+        snapshot: await this.getSnapshot(workspaceId),
       };
     }
 
@@ -522,15 +575,15 @@ export class AutopostService {
     return {
       toggled: true,
       status: nextStatus,
-      snapshot: await this.getSnapshot(),
+      snapshot: await this.getSnapshot(workspaceId),
     };
   }
 
-  async deleteSchedule(scheduleId: string) {
+  async deleteSchedule(scheduleId: string, workspaceId?: string) {
     if (!process.env.DATABASE_URL) {
       return {
         deleted: false,
-        snapshot: await this.getSnapshot(),
+        snapshot: await this.getSnapshot(workspaceId),
       };
     }
 
@@ -540,7 +593,7 @@ export class AutopostService {
     if (!existing) {
       return {
         deleted: false,
-        snapshot: await this.getSnapshot(),
+        snapshot: await this.getSnapshot(workspaceId),
       };
     }
 
@@ -559,16 +612,16 @@ export class AutopostService {
 
     return {
       deleted: true,
-      snapshot: await this.getSnapshot(),
+      snapshot: await this.getSnapshot(workspaceId),
     };
   }
 
-  async dispatch(input?: { scheduleId?: string }) {
+  async dispatch(input?: { scheduleId?: string }, workspaceId?: string) {
     if (!process.env.DATABASE_URL) {
       return {
         dispatched: 0,
         items: [],
-        snapshot: await this.getSnapshot(),
+        snapshot: await this.getSnapshot(workspaceId),
       };
     }
 
@@ -589,7 +642,7 @@ export class AutopostService {
 
     const dispatched = [];
     for (const schedule of schedules) {
-      const result = await this.dispatchOne(schedule);
+      const result = await this.dispatchOne(schedule, workspaceId);
       dispatched.push(result);
     }
 
@@ -606,24 +659,27 @@ export class AutopostService {
     return {
       dispatched: dispatched.length,
       items: dispatched,
-      snapshot: await this.getSnapshot(),
+      snapshot: await this.getSnapshot(workspaceId),
     };
   }
 
-  private async dispatchOne(schedule: {
-    id: string;
-    title: string;
-    message: string;
-    mediaUrl?: string | null;
-    frequency: string;
-    scheduledFor?: Date | null;
-    target: {
+  private async dispatchOne(
+    schedule: {
       id: string;
-      platform: AutopostTargetPlatform;
-      externalId: string;
-      displayName: string;
-    };
-  }) {
+      title: string;
+      message: string;
+      mediaUrl?: string | null;
+      frequency: string;
+      scheduledFor?: Date | null;
+      target: {
+        id: string;
+        platform: AutopostTargetPlatform;
+        externalId: string;
+        displayName: string;
+      };
+    },
+    workspaceId?: string,
+  ) {
     await this.prisma.autopostSchedule.update({
       where: { id: schedule.id },
       data: { status: AutopostScheduleStatus.RUNNING },
@@ -634,7 +690,10 @@ export class AutopostService {
     let externalPostId: string | null = `local-${Date.now()}`;
 
     if (schedule.target.platform === AutopostTargetPlatform.TELEGRAM) {
-      const botToken = await this.getTelegramBotToken();
+      const botToken = await this.getTelegramBotToken({
+        workspaceId,
+        chatExternalId: schedule.target.externalId,
+      });
       if (!botToken) {
         logStatus = AutopostDeliveryStatus.FAILED;
         detail = 'Missing Telegram bot token.';
@@ -859,10 +918,51 @@ export class AutopostService {
     return next;
   }
 
-  private async getTelegramBotToken() {
+  private async getTelegramBotToken(input?: {
+    workspaceId?: string;
+    chatExternalId?: string;
+  }) {
     const envToken = process.env.TELEGRAM_BOT_TOKEN || '';
     if (!process.env.DATABASE_URL) {
       return envToken;
+    }
+
+    if (input?.chatExternalId) {
+      const group = await this.prisma.telegramGroup.findUnique({
+        where: { externalId: input.chatExternalId },
+        include: {
+          telegramBot: true,
+        },
+      });
+
+      if (group?.telegramBot?.encryptedBotToken) {
+        return decryptSecretValue(group.telegramBot.encryptedBotToken);
+      }
+    }
+
+    if (input?.workspaceId) {
+      const workspaceBot = await this.prisma.telegramBot.findFirst({
+        where: {
+          workspaceId: input.workspaceId,
+          isActive: true,
+        },
+        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+      });
+
+      if (workspaceBot?.encryptedBotToken) {
+        return decryptSecretValue(workspaceBot.encryptedBotToken);
+      }
+    }
+
+    const primaryBot = await this.prisma.telegramBot.findFirst({
+      where: {
+        isActive: true,
+      },
+      orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+    });
+
+    if (primaryBot?.encryptedBotToken) {
+      return decryptSecretValue(primaryBot.encryptedBotToken);
     }
 
     const setting = await this.prisma.systemSetting.findUnique({
@@ -914,18 +1014,25 @@ export class AutopostService {
     });
   }
 
-  private async resolveTelegramTargetIds(input: {
-    targetIds: string[];
-    telegramGroupIds: string[];
-    selectAllTelegramGroups: boolean;
-  }) {
+  private async resolveTelegramTargetIds(
+    input: {
+      targetIds: string[];
+      telegramGroupIds: string[];
+      selectAllTelegramGroups: boolean;
+    },
+    workspaceId?: string,
+  ) {
     const directTargetIds = input.targetIds.filter(Boolean);
     const groups = await this.prisma.telegramGroup.findMany({
       where: input.selectAllTelegramGroups
-        ? { isActive: true }
+        ? {
+            isActive: true,
+            ...(workspaceId ? { workspaceId } : {}),
+          }
         : {
             id: { in: input.telegramGroupIds.filter(Boolean) },
             isActive: true,
+            ...(workspaceId ? { workspaceId } : {}),
           },
       orderBy: { title: 'asc' },
     });

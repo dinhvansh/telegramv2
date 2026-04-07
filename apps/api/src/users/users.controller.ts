@@ -5,8 +5,10 @@ import {
   Param,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -17,6 +19,7 @@ type CreateUserBody = {
   email: string;
   password: string;
   roleId: string;
+  workspaceId?: string;
   department?: string;
   username?: string;
   status?: string;
@@ -34,6 +37,16 @@ type ResetPasswordBody = {
   password?: string;
 };
 
+type AuthenticatedRequest = Request & {
+  user: {
+    sub: string;
+    email: string;
+    roles: string[];
+    permissions: string[];
+    workspaceIds?: string[];
+  };
+};
+
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -41,22 +54,41 @@ export class UsersController {
   @Get()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
-  getUsers() {
-    return this.usersService.findAll();
+  getUsers(@Req() request: AuthenticatedRequest) {
+    return this.usersService.findAll({
+      userId: request.user.sub,
+      permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+    });
   }
 
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
-  createUser(@Body() body: CreateUserBody) {
-    return this.usersService.create(body);
+  createUser(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: CreateUserBody,
+  ) {
+    return this.usersService.create(body, {
+      userId: request.user.sub,
+      permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+    });
   }
 
   @Patch(':userId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
-  updateUser(@Param('userId') userId: string, @Body() body: UpdateUserBody) {
-    return this.usersService.update(userId, body);
+  updateUser(
+    @Req() request: AuthenticatedRequest,
+    @Param('userId') userId: string,
+    @Body() body: UpdateUserBody,
+  ) {
+    return this.usersService.update(userId, body, {
+      userId: request.user.sub,
+      permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+    });
   }
 
   @Post(':userId/reset-password')

@@ -1,0 +1,90 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { WorkspacesWorkbench } from "@/components/workspaces-workbench";
+
+const workspaceStorageKey = "telegram-ops-workspace-id";
+const authStorageKey = "telegram-ops-access-token";
+
+type SessionUser = {
+  id: string;
+  email: string;
+  name: string;
+  roles: string[];
+  permissions: string[];
+  defaultWorkspaceId: string | null;
+  defaultOrganizationId: string | null;
+  workspaces: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    organizationId: string;
+    organizationName: string;
+    roles: string[];
+  }>;
+};
+
+async function fetchJson<T>(url: string, token: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, {
+    ...init,
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...(init?.headers ?? {}),
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+export default function WorkspacesPage() {
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const token = window.localStorage.getItem(authStorageKey);
+    if (!token) return;
+
+    fetchJson<SessionUser>("/api/auth/me", token).then((data) => {
+      setUser(data);
+      // Restore selected workspace from localStorage
+      const stored = window.localStorage.getItem(workspaceStorageKey);
+      if (stored) setSelectedWorkspaceId(stored);
+      else if (data.defaultWorkspaceId) setSelectedWorkspaceId(data.defaultWorkspaceId);
+      setIsLoading(false);
+    }).catch(() => {
+      setIsLoading(false);
+    });
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[color:var(--surface)]">
+        <div className="size-8 animate-spin rounded-full border-2 border-[color:var(--primary)] border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!user?.permissions?.includes("organization.manage")) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[color:var(--surface)]">
+        <div className="rounded-[24px] bg-[color:var(--surface-card)] px-8 py-8 text-center shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
+          <p className="text-lg font-bold text-[color:var(--on-surface)]">Không có quyền truy cập</p>
+          <p className="mt-2 text-sm text-[color:var(--on-surface-variant)]">
+            Bạn cần quyền <code>organization.manage</code> để truy cập trang này.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[color:var(--surface)] px-5 py-8 lg:px-10 lg:py-10">
+      <WorkspacesWorkbench />
+    </div>
+  );
+}

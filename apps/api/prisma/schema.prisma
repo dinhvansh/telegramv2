@@ -185,8 +185,11 @@ model TelegramBot {
   username           String?        @unique
   displayName        String?
   label              String
+  encryptedBotToken  String?
+  encryptedWebhookSecret String?
   publicBaseUrl      String?
   webhookUrl         String?
+  isPrimary          Boolean        @default(false)
   isActive           Boolean        @default(true)
   isVerified         Boolean        @default(false)
   webhookRegistered  Boolean        @default(false)
@@ -204,9 +207,9 @@ model TelegramBot {
 
 model TelegramGroup {
   id                          String                          @id @default(cuid())
-  organizationId              String?
-  workspaceId                 String?
-  telegramBotId               String?
+  organizationId              String
+  workspaceId                 String
+  telegramBotId               String
   title                       String
   slug                        String                          @unique
   externalId                  String                          @unique
@@ -220,9 +223,9 @@ model TelegramGroup {
   botCanRestrictMembers       Boolean                         @default(false)
   botCanInviteUsers           Boolean                         @default(false)
   botCanManageTopics          Boolean                         @default(false)
-  organization                Organization?                   @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  workspace                   Workspace?                      @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  telegramBot                 TelegramBot?                    @relation(fields: [telegramBotId], references: [id], onDelete: SetNull)
+  organization                Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace                   Workspace                      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  telegramBot                 TelegramBot                     @relation(fields: [telegramBotId], references: [id], onDelete: Cascade)
   campaigns                   Campaign[]
   inviteLinks                 CampaignInviteLink[]
   moderationPolicies          ModerationPolicy[]
@@ -301,9 +304,9 @@ model TelegramGroupModerationSettings {
 
 model Campaign {
   id                 String                  @id @default(cuid())
-  organizationId     String?
-  workspaceId        String?
-  telegramBotId      String?
+  organizationId     String
+  workspaceId        String
+  telegramBotId      String
   name               String
   channel            String
   joinRate           String
@@ -313,9 +316,9 @@ model Campaign {
   createdAt          DateTime                @default(now())
   telegramGroup      TelegramGroup?          @relation(fields: [telegramGroupId], references: [id])
   telegramGroupId    String?
-  organization       Organization?           @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  workspace          Workspace?              @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  telegramBot        TelegramBot?            @relation(fields: [telegramBotId], references: [id], onDelete: SetNull)
+  organization       Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace          Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  telegramBot        TelegramBot             @relation(fields: [telegramBotId], references: [id], onDelete: Cascade)
   assigneeUserId     String?
   assigneeUser       User?                   @relation("CampaignAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
   inviteLinks        CampaignInviteLink[]

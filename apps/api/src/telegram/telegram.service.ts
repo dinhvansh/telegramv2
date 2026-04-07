@@ -243,6 +243,11 @@ type ResolvedTelegramConfig = {
   botUsername: string;
   webhookSecret: string;
   publicBaseUrl: string;
+  botId?: string | null;
+  telegramBotId?: string | null;
+  botDisplayName?: string | null;
+  organizationId?: string | null;
+  workspaceId?: string | null;
 };
 
 type TelegramGroupModerationInput = {
@@ -332,30 +337,33 @@ export class TelegramService {
     private readonly systemLogsService: SystemLogsService,
   ) {}
 
-  async getStatus() {
-    const config = await this.getResolvedConfig();
-    const botConfig = await this.getBotConfigState();
+  async getStatus(workspaceId?: string) {
+    const config = await this.getResolvedConfig({ workspaceId });
+    const botConfig = await this.getBotConfigState(workspaceId);
     const webhookUrl =
       botConfig?.webhookUrl || this.buildWebhookUrl(config.publicBaseUrl);
     const groupStats = process.env.DATABASE_URL
       ? await this.prisma.telegramGroup.aggregate({
           _count: { id: true },
-          where: {},
+          where: workspaceId ? { workspaceId } : {},
         })
       : null;
     const activeGroupStats = process.env.DATABASE_URL
       ? await this.prisma.telegramGroup.aggregate({
           _count: { id: true },
-          where: { isActive: true },
+          where: workspaceId
+            ? { isActive: true, workspaceId }
+            : { isActive: true },
         })
       : null;
 
     return {
       mode: config.botToken ? 'token-configured' : 'mock-only',
       botConfigured: Boolean(config.botToken),
-      botId: botConfig?.botExternalId || null,
+      botId: botConfig?.botExternalId || config.botId || null,
       botVerified: botConfig?.isVerified ?? false,
-      botDisplayName: botConfig?.botDisplayName || null,
+      botDisplayName:
+        botConfig?.botDisplayName || config.botDisplayName || null,
       botUsername: botConfig?.botUsername || config.botUsername || null,
       publicBaseUrlConfigured: Boolean(config.publicBaseUrl),
       webhookSecretConfigured: Boolean(config.webhookSecret),
@@ -369,7 +377,7 @@ export class TelegramService {
     };
   }
 
-  async getGroups() {
+  async getGroups(workspaceId?: string) {
     if (!process.env.DATABASE_URL) {
       return {
         items: [],
@@ -377,6 +385,7 @@ export class TelegramService {
     }
 
     const groups = await this.prisma.telegramGroup.findMany({
+      where: workspaceId ? { workspaceId } : undefined,
       include: {
         moderationSettings: true,
       },
@@ -410,8 +419,21 @@ export class TelegramService {
     };
   }
 
-  async refreshBotRights(groupId?: string) {
-    const config = await this.getResolvedConfig();
+  async refreshBotRights(groupId?: string, workspaceId?: string) {
+    const groupForLookup =
+      groupId && process.env.DATABASE_URL
+        ? await this.prisma.telegramGroup.findFirst({
+            where: {
+              id: groupId,
+              ...(workspaceId ? { workspaceId } : {}),
+            },
+            select: { externalId: true },
+          })
+        : null;
+    const config = await this.getResolvedConfig({
+      workspaceId,
+      groupExternalId: groupForLookup?.externalId || undefined,
+    });
     if (!config.botToken) {
       return {
         ok: false,
@@ -453,9 +475,13 @@ export class TelegramService {
 
     const groups = await this.prisma.telegramGroup.findMany({
       where: groupId
-        ? { id: groupId }
+        ? {
+            id: groupId,
+            ...(workspaceId ? { workspaceId } : {}),
+          }
         : {
             isActive: true,
+            ...(workspaceId ? { workspaceId } : {}),
           },
       orderBy: [{ title: 'asc' }],
     });
@@ -558,13 +584,16 @@ export class TelegramService {
     };
   }
 
-  async getGroupModerationSettings(groupId: string) {
+  async getGroupModerationSettings(groupId: string, workspaceId?: string) {
     if (!process.env.DATABASE_URL) {
       return this.buildDefaultModerationSettingsPayload(groupId);
     }
 
-    const group = await this.prisma.telegramGroup.findUnique({
-      where: { id: groupId },
+    const group = await this.prisma.telegramGroup.findFirst({
+      where: {
+        id: groupId,
+        ...(workspaceId ? { workspaceId } : {}),
+      },
       include: { moderationSettings: true },
     });
 
@@ -588,13 +617,17 @@ export class TelegramService {
   async updateGroupModerationSettings(
     groupId: string,
     input: TelegramGroupModerationInput,
+    workspaceId?: string,
   ) {
     if (!process.env.DATABASE_URL) {
       return this.buildDefaultModerationSettingsPayload(groupId, input);
     }
 
-    const group = await this.prisma.telegramGroup.findUnique({
-      where: { id: groupId },
+    const group = await this.prisma.telegramGroup.findFirst({
+      where: {
+        id: groupId,
+        ...(workspaceId ? { workspaceId } : {}),
+      },
     });
 
     if (!group) {
@@ -818,7 +851,7 @@ export class TelegramService {
     };
   }
 
-  async deleteGroup(groupId: string) {
+  async deleteGroup(groupId: string, workspaceId?: string) {
     if (!process.env.DATABASE_URL) {
       return {
         deleted: false,
@@ -828,8 +861,11 @@ export class TelegramService {
       };
     }
 
-    const group = await this.prisma.telegramGroup.findUnique({
-      where: { id: groupId },
+    const group = await this.prisma.telegramGroup.findFirst({
+      where: {
+        id: groupId,
+        ...(workspaceId ? { workspaceId } : {}),
+      },
       include: {
         campaigns: {
           select: { id: true },
@@ -887,8 +923,8 @@ export class TelegramService {
     };
   }
 
-  async updateConfig(input: TelegramConfigInput) {
-    const currentConfig = await this.getResolvedConfig();
+  async updateConfig(input: TelegramConfigInput, workspaceId?: string) {
+    const currentConfig = await this.getResolvedConfig({ workspaceId });
     const nextConfig = {
       botToken:
         input.botToken !== undefined
@@ -915,50 +951,111 @@ export class TelegramService {
       };
     }
 
-    const entries = Object.entries({
-      'telegram.bot_token': nextConfig.botToken
-        ? encryptSecretValue(nextConfig.botToken)
-        : '',
-      'telegram.bot_username': nextConfig.botUsername ?? '',
-      'telegram.webhook_secret': nextConfig.webhookSecret
-        ? encryptSecretValue(nextConfig.webhookSecret)
-        : '',
-      'telegram.public_base_url': nextConfig.publicBaseUrl ?? '',
-    });
+    let botConfig: {
+      botExternalId?: string | null;
+      botUsername?: string | null;
+      botDisplayName?: string | null;
+      isVerified?: boolean;
+      webhookRegistered?: boolean;
+      lastVerifiedAt?: Date | null;
+      lastDiscoveredAt?: Date | null;
+      webhookUrl?: string | null;
+    } | null = null;
 
-    await Promise.all(
-      entries.map(([key, value]) =>
-        this.prisma.systemSetting.upsert({
-          where: { key },
-          update: { value },
-          create: { key, value },
-        }),
-      ),
-    );
+    if (workspaceId) {
+      const workspaceBot = await this.ensureWorkspaceBotRecord(workspaceId);
+      if (workspaceBot) {
+        const updatedBot = await this.prisma.telegramBot.update({
+          where: { id: workspaceBot.id },
+          data: {
+            username: nextConfig.botUsername || null,
+            encryptedBotToken: nextConfig.botToken
+              ? encryptSecretValue(nextConfig.botToken)
+              : null,
+            encryptedWebhookSecret: nextConfig.webhookSecret
+              ? encryptSecretValue(nextConfig.webhookSecret)
+              : null,
+            publicBaseUrl: nextConfig.publicBaseUrl || null,
+            webhookUrl: this.buildWebhookUrl(nextConfig.publicBaseUrl),
+            webhookRegistered: false,
+          },
+        });
 
-    const botConfig = await this.prisma.telegramBotConfig.upsert({
-      where: { singletonKey: 'default' },
-      update: {
-        botUsername: nextConfig.botUsername || null,
-        webhookUrl: this.buildWebhookUrl(nextConfig.publicBaseUrl),
-        webhookRegistered: false,
-      },
-      create: {
-        singletonKey: 'default',
-        botUsername: nextConfig.botUsername || null,
-        webhookUrl: this.buildWebhookUrl(nextConfig.publicBaseUrl),
-      },
-    });
+        botConfig = {
+          botExternalId: updatedBot.externalId,
+          botUsername: updatedBot.username,
+          botDisplayName: updatedBot.displayName,
+          isVerified: updatedBot.isVerified,
+          webhookRegistered: updatedBot.webhookRegistered,
+          webhookUrl:
+            updatedBot.webhookUrl ||
+            this.buildWebhookUrl(updatedBot.publicBaseUrl ?? undefined),
+          lastVerifiedAt: updatedBot.lastVerifiedAt,
+          lastDiscoveredAt: updatedBot.lastDiscoveredAt,
+        };
+      }
+    } else {
+      const entries = Object.entries({
+        'telegram.bot_token': nextConfig.botToken
+          ? encryptSecretValue(nextConfig.botToken)
+          : '',
+        'telegram.bot_username': nextConfig.botUsername ?? '',
+        'telegram.webhook_secret': nextConfig.webhookSecret
+          ? encryptSecretValue(nextConfig.webhookSecret)
+          : '',
+        'telegram.public_base_url': nextConfig.publicBaseUrl ?? '',
+      });
 
-    await this.workspaceBootstrapService.syncDefaultTelegramBot({
-      username: nextConfig.botUsername || null,
-      publicBaseUrl: nextConfig.publicBaseUrl || null,
-      webhookUrl: this.buildWebhookUrl(nextConfig.publicBaseUrl),
-      webhookRegistered: false,
-      isVerified: botConfig.isVerified,
-      lastVerifiedAt: botConfig.lastVerifiedAt,
-      lastDiscoveredAt: botConfig.lastDiscoveredAt,
-    });
+      await Promise.all(
+        entries.map(([key, value]) =>
+          this.prisma.systemSetting.upsert({
+            where: { key },
+            update: { value },
+            create: { key, value },
+          }),
+        ),
+      );
+
+      const singletonConfig = await this.prisma.telegramBotConfig.upsert({
+        where: { singletonKey: 'default' },
+        update: {
+          botUsername: nextConfig.botUsername || null,
+          webhookUrl: this.buildWebhookUrl(nextConfig.publicBaseUrl),
+          webhookRegistered: false,
+        },
+        create: {
+          singletonKey: 'default',
+          botUsername: nextConfig.botUsername || null,
+          webhookUrl: this.buildWebhookUrl(nextConfig.publicBaseUrl),
+        },
+      });
+
+      const defaultBot =
+        await this.workspaceBootstrapService.syncDefaultTelegramBot({
+          username: nextConfig.botUsername || null,
+          publicBaseUrl: nextConfig.publicBaseUrl || null,
+          webhookUrl: this.buildWebhookUrl(nextConfig.publicBaseUrl),
+          webhookRegistered: false,
+          isVerified: singletonConfig.isVerified,
+          lastVerifiedAt: singletonConfig.lastVerifiedAt,
+          lastDiscoveredAt: singletonConfig.lastDiscoveredAt,
+          botToken: nextConfig.botToken || null,
+          webhookSecret: nextConfig.webhookSecret || null,
+        });
+
+      botConfig = {
+        botExternalId: defaultBot.externalId,
+        botUsername: defaultBot.username,
+        botDisplayName: defaultBot.displayName,
+        isVerified: defaultBot.isVerified,
+        webhookRegistered: defaultBot.webhookRegistered,
+        webhookUrl:
+          defaultBot.webhookUrl ||
+          this.buildWebhookUrl(defaultBot.publicBaseUrl ?? undefined),
+        lastVerifiedAt: defaultBot.lastVerifiedAt,
+        lastDiscoveredAt: defaultBot.lastDiscoveredAt,
+      };
+    }
 
     await this.systemLogsService.log({
       scope: 'telegram.config',
@@ -977,8 +1074,8 @@ export class TelegramService {
     };
   }
 
-  async verifyBot() {
-    const config = await this.getResolvedConfig();
+  async verifyBot(workspaceId?: string) {
+    const config = await this.getResolvedConfig({ workspaceId });
     if (!config.botToken) {
       return {
         ok: false,
@@ -1004,9 +1101,24 @@ export class TelegramService {
       };
     }
 
-    const previousBotConfig = await this.prisma.telegramBotConfig.findUnique({
-      where: { singletonKey: 'default' },
-    });
+    const workspaceBot = workspaceId
+      ? await this.ensureWorkspaceBotRecord(workspaceId)
+      : null;
+    const defaultBot = workspaceId
+      ? workspaceBot
+      : await this.getWorkspaceBotRecord();
+    const previousBotConfig = defaultBot
+      ? {
+          botExternalId: defaultBot.externalId,
+          botUsername: defaultBot.username,
+          botDisplayName: defaultBot.displayName,
+          isVerified: defaultBot.isVerified,
+          webhookRegistered: defaultBot.webhookRegistered,
+          webhookUrl: defaultBot.webhookUrl,
+          lastVerifiedAt: defaultBot.lastVerifiedAt,
+          lastDiscoveredAt: defaultBot.lastDiscoveredAt,
+        }
+      : null;
     const nextBotExternalId = response.result?.id
       ? String(response.result.id)
       : null;
@@ -1016,39 +1128,92 @@ export class TelegramService {
       previousBotConfig.botExternalId !== nextBotExternalId,
     );
 
-    const botConfig = await this.prisma.telegramBotConfig.upsert({
-      where: { singletonKey: 'default' },
-      update: {
-        botExternalId: nextBotExternalId,
-        botUsername: response.result?.username || config.botUsername || null,
-        botDisplayName: response.result?.first_name || null,
-        isVerified: Boolean(response.ok),
-        lastVerifiedAt: response.ok ? new Date() : null,
-      },
-      create: {
-        singletonKey: 'default',
-        botExternalId: nextBotExternalId,
-        botUsername: response.result?.username || config.botUsername || null,
-        botDisplayName: response.result?.first_name || null,
-        isVerified: Boolean(response.ok),
-        lastVerifiedAt: response.ok ? new Date() : null,
-      },
-    });
+    let botConfig: {
+      botExternalId?: string | null;
+      botUsername?: string | null;
+      botDisplayName?: string | null;
+      isVerified?: boolean;
+      webhookRegistered?: boolean;
+      lastVerifiedAt?: Date | null;
+      lastDiscoveredAt?: Date | null;
+      webhookUrl?: string | null;
+    } | null = null;
 
-    await this.workspaceBootstrapService.syncDefaultTelegramBot({
-      externalId: botConfig.botExternalId,
-      username: botConfig.botUsername,
-      displayName: botConfig.botDisplayName,
-      isVerified: botConfig.isVerified,
-      webhookRegistered: botConfig.webhookRegistered,
-      webhookUrl: botConfig.webhookUrl,
-      lastVerifiedAt: botConfig.lastVerifiedAt,
-      lastDiscoveredAt: botConfig.lastDiscoveredAt,
-    });
+    if (workspaceBot) {
+      const updatedBot = await this.prisma.telegramBot.update({
+        where: { id: workspaceBot.id },
+        data: {
+          externalId: nextBotExternalId,
+          username: response.result?.username || config.botUsername || null,
+          displayName: response.result?.first_name || null,
+          isVerified: Boolean(response.ok),
+          lastVerifiedAt: response.ok ? new Date() : null,
+        },
+      });
+      botConfig = {
+        botExternalId: updatedBot.externalId,
+        botUsername: updatedBot.username,
+        botDisplayName: updatedBot.displayName,
+        isVerified: updatedBot.isVerified,
+        webhookRegistered: updatedBot.webhookRegistered,
+        webhookUrl: updatedBot.webhookUrl,
+        lastVerifiedAt: updatedBot.lastVerifiedAt,
+        lastDiscoveredAt: updatedBot.lastDiscoveredAt,
+      };
+    } else {
+      const singletonConfig = await this.prisma.telegramBotConfig.upsert({
+        where: { singletonKey: 'default' },
+        update: {
+          botExternalId: nextBotExternalId,
+          botUsername: response.result?.username || config.botUsername || null,
+          botDisplayName: response.result?.first_name || null,
+          isVerified: Boolean(response.ok),
+          lastVerifiedAt: response.ok ? new Date() : null,
+        },
+        create: {
+          singletonKey: 'default',
+          botExternalId: nextBotExternalId,
+          botUsername: response.result?.username || config.botUsername || null,
+          botDisplayName: response.result?.first_name || null,
+          isVerified: Boolean(response.ok),
+          lastVerifiedAt: response.ok ? new Date() : null,
+        },
+      });
+
+      const defaultBot =
+        await this.workspaceBootstrapService.syncDefaultTelegramBot({
+          externalId: singletonConfig.botExternalId,
+          username: singletonConfig.botUsername,
+          displayName: singletonConfig.botDisplayName,
+          isVerified: singletonConfig.isVerified,
+          webhookRegistered: singletonConfig.webhookRegistered,
+          webhookUrl: singletonConfig.webhookUrl,
+          lastVerifiedAt: singletonConfig.lastVerifiedAt,
+          lastDiscoveredAt: singletonConfig.lastDiscoveredAt,
+          botToken: config.botToken || null,
+          webhookSecret: config.webhookSecret || null,
+          publicBaseUrl: config.publicBaseUrl || null,
+        });
+
+      botConfig = {
+        botExternalId: defaultBot.externalId,
+        botUsername: defaultBot.username,
+        botDisplayName: defaultBot.displayName,
+        isVerified: defaultBot.isVerified,
+        webhookRegistered: defaultBot.webhookRegistered,
+        webhookUrl:
+          defaultBot.webhookUrl ||
+          this.buildWebhookUrl(defaultBot.publicBaseUrl ?? undefined),
+        lastVerifiedAt: defaultBot.lastVerifiedAt,
+        lastDiscoveredAt: defaultBot.lastDiscoveredAt,
+      };
+    }
 
     if (botChanged) {
       await this.prisma.telegramGroup.updateMany({
-        where: { isActive: true },
+        where: workspaceId
+          ? { isActive: true, workspaceId }
+          : { isActive: true },
         data: {
           isActive: false,
           discoveredFrom: 'bot_switched',
@@ -1088,8 +1253,8 @@ export class TelegramService {
     };
   }
 
-  async registerWebhook() {
-    const config = await this.getResolvedConfig();
+  async registerWebhook(workspaceId?: string) {
+    const config = await this.getResolvedConfig({ workspaceId });
     const webhookUrl = this.buildWebhookUrl(config.publicBaseUrl);
 
     if (!config.botToken || !webhookUrl) {
@@ -1143,29 +1308,45 @@ export class TelegramService {
     });
 
     if (process.env.DATABASE_URL) {
-      const botConfig = await this.prisma.telegramBotConfig.upsert({
-        where: { singletonKey: 'default' },
-        update: {
-          webhookRegistered: Boolean(body.ok),
-          webhookUrl,
-        },
-        create: {
-          singletonKey: 'default',
-          webhookRegistered: Boolean(body.ok),
-          webhookUrl,
-        },
-      });
+      if (workspaceId) {
+        const workspaceBot = await this.ensureWorkspaceBotRecord(workspaceId);
+        if (workspaceBot) {
+          await this.prisma.telegramBot.update({
+            where: { id: workspaceBot.id },
+            data: {
+              webhookRegistered: Boolean(body.ok),
+              webhookUrl,
+            },
+          });
+        }
+      } else {
+        const botConfig = await this.prisma.telegramBotConfig.upsert({
+          where: { singletonKey: 'default' },
+          update: {
+            webhookRegistered: Boolean(body.ok),
+            webhookUrl,
+          },
+          create: {
+            singletonKey: 'default',
+            webhookRegistered: Boolean(body.ok),
+            webhookUrl,
+          },
+        });
 
-      await this.workspaceBootstrapService.syncDefaultTelegramBot({
-        externalId: botConfig.botExternalId,
-        username: botConfig.botUsername,
-        displayName: botConfig.botDisplayName,
-        webhookUrl: botConfig.webhookUrl,
-        webhookRegistered: botConfig.webhookRegistered,
-        isVerified: botConfig.isVerified,
-        lastVerifiedAt: botConfig.lastVerifiedAt,
-        lastDiscoveredAt: botConfig.lastDiscoveredAt,
-      });
+        await this.workspaceBootstrapService.syncDefaultTelegramBot({
+          externalId: botConfig.botExternalId,
+          username: botConfig.botUsername,
+          displayName: botConfig.botDisplayName,
+          webhookUrl: botConfig.webhookUrl,
+          webhookRegistered: botConfig.webhookRegistered,
+          isVerified: botConfig.isVerified,
+          lastVerifiedAt: botConfig.lastVerifiedAt,
+          lastDiscoveredAt: botConfig.lastDiscoveredAt,
+          botToken: config.botToken || null,
+          webhookSecret: config.webhookSecret || null,
+          publicBaseUrl: config.publicBaseUrl || null,
+        });
+      }
     }
 
     return {
@@ -1177,8 +1358,8 @@ export class TelegramService {
     };
   }
 
-  async discoverGroups() {
-    const config = await this.getResolvedConfig();
+  async discoverGroups(workspaceId?: string) {
+    const config = await this.getResolvedConfig({ workspaceId });
     if (!config.botToken) {
       return {
         ok: false,
@@ -1260,6 +1441,7 @@ export class TelegramService {
 
     if (process.env.DATABASE_URL) {
       existingItems = await this.prisma.telegramGroup.findMany({
+        where: workspaceId ? { workspaceId } : undefined,
         orderBy: [{ title: 'asc' }],
         select: {
           id: true,
@@ -1303,50 +1485,77 @@ export class TelegramService {
           type: item.type,
           discoveredFrom: 'manual_discovery',
           isActive: true,
+          organizationId: config.organizationId || undefined,
+          workspaceId: config.workspaceId || workspaceId || undefined,
+          telegramBotId: config.telegramBotId || undefined,
         });
       }
 
-      const botConfig = await this.prisma.telegramBotConfig.upsert({
-        where: { singletonKey: 'default' },
-        update: {
-          botExternalId: botProfile.result?.id
-            ? String(botProfile.result.id)
-            : null,
-          botUsername:
-            botProfile.result?.username || config.botUsername || null,
-          botDisplayName: botProfile.result?.first_name || null,
-          isVerified: Boolean(botProfile.ok),
-          lastDiscoveredAt: new Date(),
-        },
-        create: {
-          singletonKey: 'default',
-          botExternalId: botProfile.result?.id
-            ? String(botProfile.result.id)
-            : null,
-          botUsername:
-            botProfile.result?.username || config.botUsername || null,
-          botDisplayName: botProfile.result?.first_name || null,
-          isVerified: Boolean(botProfile.ok),
-          lastDiscoveredAt: new Date(),
-        },
-      });
+      if (workspaceId) {
+        const workspaceBot = await this.ensureWorkspaceBotRecord(workspaceId);
+        if (workspaceBot) {
+          await this.prisma.telegramBot.update({
+            where: { id: workspaceBot.id },
+            data: {
+              externalId: botProfile.result?.id
+                ? String(botProfile.result.id)
+                : workspaceBot.externalId,
+              username:
+                botProfile.result?.username || config.botUsername || null,
+              displayName:
+                botProfile.result?.first_name || workspaceBot.displayName,
+              isVerified: Boolean(botProfile.ok),
+              lastDiscoveredAt: new Date(),
+            },
+          });
+        }
+      } else {
+        const botConfig = await this.prisma.telegramBotConfig.upsert({
+          where: { singletonKey: 'default' },
+          update: {
+            botExternalId: botProfile.result?.id
+              ? String(botProfile.result.id)
+              : null,
+            botUsername:
+              botProfile.result?.username || config.botUsername || null,
+            botDisplayName: botProfile.result?.first_name || null,
+            isVerified: Boolean(botProfile.ok),
+            lastDiscoveredAt: new Date(),
+          },
+          create: {
+            singletonKey: 'default',
+            botExternalId: botProfile.result?.id
+              ? String(botProfile.result.id)
+              : null,
+            botUsername:
+              botProfile.result?.username || config.botUsername || null,
+            botDisplayName: botProfile.result?.first_name || null,
+            isVerified: Boolean(botProfile.ok),
+            lastDiscoveredAt: new Date(),
+          },
+        });
 
-      const publicBaseUrlSetting = await this.prisma.systemSetting.findUnique({
-        where: { key: 'telegram.public_base_url' },
-      });
+        const publicBaseUrlSetting = await this.prisma.systemSetting.findUnique(
+          {
+            where: { key: 'telegram.public_base_url' },
+          },
+        );
 
-      await this.workspaceBootstrapService.syncDefaultTelegramBot({
-        externalId: botConfig.botExternalId,
-        username: botConfig.botUsername,
-        displayName: botConfig.botDisplayName,
-        webhookUrl: botConfig.webhookUrl,
-        webhookRegistered: botConfig.webhookRegistered,
-        isVerified: botConfig.isVerified,
-        lastVerifiedAt: botConfig.lastVerifiedAt,
-        lastDiscoveredAt: botConfig.lastDiscoveredAt,
-        publicBaseUrl:
-          publicBaseUrlSetting?.value?.trim().replace(/\/$/, '') || null,
-      });
+        await this.workspaceBootstrapService.syncDefaultTelegramBot({
+          externalId: botConfig.botExternalId,
+          username: botConfig.botUsername,
+          displayName: botConfig.botDisplayName,
+          webhookUrl: botConfig.webhookUrl,
+          webhookRegistered: botConfig.webhookRegistered,
+          isVerified: botConfig.isVerified,
+          lastVerifiedAt: botConfig.lastVerifiedAt,
+          lastDiscoveredAt: botConfig.lastDiscoveredAt,
+          botToken: config.botToken || null,
+          webhookSecret: config.webhookSecret || null,
+          publicBaseUrl:
+            publicBaseUrlSetting?.value?.trim().replace(/\/$/, '') || null,
+        });
+      }
     }
 
     await this.systemLogsService.log({
@@ -1387,8 +1596,8 @@ export class TelegramService {
     };
   }
 
-  async createInviteLink(input: TelegramInviteLinkInput) {
-    const config = await this.getResolvedConfig();
+  async createInviteLink(input: TelegramInviteLinkInput, workspaceId?: string) {
+    const config = await this.getResolvedConfig({ workspaceId });
 
     if (!config.botToken) {
       return {
@@ -1399,7 +1608,7 @@ export class TelegramService {
       };
     }
 
-    const targetGroup = await this.resolveTelegramGroup(input);
+    const targetGroup = await this.resolveTelegramGroup(input, workspaceId);
     if (!targetGroup) {
       return {
         ok: false,
@@ -1540,13 +1749,16 @@ export class TelegramService {
   }
 
   async handleWebhook(payload: WebhookPayload, secretToken?: string) {
-    const config = await this.getResolvedConfig();
+    const config = await this.getResolvedConfig({ webhookSecret: secretToken });
 
     if (config.webhookSecret && secretToken !== config.webhookSecret) {
       throw new UnauthorizedException('Invalid Telegram webhook secret');
     }
 
-    const lifecycleSync = await this.syncGroupLifecycleFromWebhook(payload);
+    const lifecycleSync = await this.syncGroupLifecycleFromWebhook(
+      payload,
+      config,
+    );
     if (lifecycleSync) {
       return {
         acknowledged: true,
@@ -1557,7 +1769,7 @@ export class TelegramService {
       };
     }
 
-    await this.syncGroupPresenceFromWebhook(payload);
+    await this.syncGroupPresenceFromWebhook(payload, config);
 
     const processed = this.extractWebhookEvent(payload);
     if (processed.eventType === 'message_received') {
@@ -2831,7 +3043,11 @@ export class TelegramService {
     return nextModeration;
   }
 
-  private async getResolvedConfig(): Promise<ResolvedTelegramConfig> {
+  private async getResolvedConfig(input?: {
+    workspaceId?: string;
+    groupExternalId?: string;
+    webhookSecret?: string;
+  }): Promise<ResolvedTelegramConfig> {
     const envConfig = {
       botToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
       botUsername: process.env.TELEGRAM_BOT_USERNAME ?? '',
@@ -2861,7 +3077,7 @@ export class TelegramService {
       return acc;
     }, {});
 
-    return {
+    const fallbackConfig = {
       botToken: map['telegram.bot_token']
         ? decryptSecretValue(map['telegram.bot_token'])
         : envConfig.botToken,
@@ -2870,6 +3086,32 @@ export class TelegramService {
         ? decryptSecretValue(map['telegram.webhook_secret'])
         : envConfig.webhookSecret,
       publicBaseUrl: map['telegram.public_base_url'] || envConfig.publicBaseUrl,
+      botId: null,
+      telegramBotId: null,
+      botDisplayName: null,
+      organizationId: null,
+      workspaceId: input?.workspaceId || null,
+    } satisfies ResolvedTelegramConfig;
+
+    const workspaceBot = await this.getWorkspaceBotRecord(input);
+    if (!workspaceBot) {
+      return fallbackConfig;
+    }
+
+    return {
+      botToken: workspaceBot.encryptedBotToken
+        ? decryptSecretValue(workspaceBot.encryptedBotToken)
+        : fallbackConfig.botToken,
+      botUsername: workspaceBot.username || fallbackConfig.botUsername,
+      webhookSecret: workspaceBot.encryptedWebhookSecret
+        ? decryptSecretValue(workspaceBot.encryptedWebhookSecret)
+        : fallbackConfig.webhookSecret,
+      publicBaseUrl: workspaceBot.publicBaseUrl || fallbackConfig.publicBaseUrl,
+      botId: workspaceBot.externalId || null,
+      telegramBotId: workspaceBot.id,
+      botDisplayName: workspaceBot.displayName || null,
+      organizationId: workspaceBot.organizationId,
+      workspaceId: workspaceBot.workspaceId,
     };
   }
 
@@ -2945,14 +3187,123 @@ export class TelegramService {
     return (await response.json()) as TelegramApiResponse<T>;
   }
 
-  private async getBotConfigState() {
+  private async getWorkspaceBotRecord(input?: {
+    workspaceId?: string;
+    groupExternalId?: string;
+    webhookSecret?: string;
+  }) {
     if (!process.env.DATABASE_URL) {
       return null;
     }
 
-    return this.prisma.telegramBotConfig.findUnique({
-      where: { singletonKey: 'default' },
+    if (input?.groupExternalId) {
+      const group = await this.prisma.telegramGroup.findUnique({
+        where: { externalId: input.groupExternalId },
+        include: { telegramBot: true },
+      });
+      if (group?.telegramBot?.isActive) {
+        return group.telegramBot;
+      }
+    }
+
+    if (input?.webhookSecret) {
+      const bots = await this.prisma.telegramBot.findMany({
+        where: {
+          isActive: true,
+          encryptedWebhookSecret: { not: null },
+        },
+        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+      });
+
+      for (const bot of bots) {
+        if (
+          bot.encryptedWebhookSecret &&
+          decryptSecretValue(bot.encryptedWebhookSecret) === input.webhookSecret
+        ) {
+          return bot;
+        }
+      }
+    }
+
+    if (input?.workspaceId) {
+      const bot = await this.prisma.telegramBot.findFirst({
+        where: {
+          workspaceId: input.workspaceId,
+          isActive: true,
+        },
+        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+      });
+      if (bot) {
+        return bot;
+      }
+    }
+
+    return this.prisma.telegramBot.findFirst({
+      where: {
+        isActive: true,
+      },
+      orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
     });
+  }
+
+  private async ensureWorkspaceBotRecord(workspaceId: string) {
+    const existing = await this.prisma.telegramBot.findFirst({
+      where: {
+        workspaceId,
+        isActive: true,
+      },
+      orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      include: { organization: true },
+    });
+
+    if (!workspace) {
+      return null;
+    }
+
+    return this.prisma.telegramBot.create({
+      data: {
+        organizationId: workspace.organizationId,
+        workspaceId: workspace.id,
+        label: `${workspace.name} Bot`,
+        displayName: `${workspace.name} Bot`,
+        isPrimary: true,
+        isActive: true,
+      },
+    });
+  }
+
+  private async getBotConfigState(workspaceId?: string) {
+    if (!process.env.DATABASE_URL) {
+      return null;
+    }
+
+    const bot = await this.getWorkspaceBotRecord(
+      workspaceId ? { workspaceId } : undefined,
+    );
+    if (bot) {
+      return {
+        botExternalId: bot.externalId || null,
+        botUsername: bot.username || null,
+        botDisplayName: bot.displayName || null,
+        isVerified: bot.isVerified,
+        webhookRegistered: bot.webhookRegistered,
+        webhookUrl:
+          bot.webhookUrl ||
+          this.buildWebhookUrl(bot.publicBaseUrl ?? undefined),
+        lastVerifiedAt: bot.lastVerifiedAt,
+        lastDiscoveredAt: bot.lastDiscoveredAt,
+      };
+    }
+
+    return null;
   }
 
   private buildDefaultModerationSettingsPayload(
@@ -3160,6 +3511,9 @@ export class TelegramService {
     title: string;
     username?: string | null;
     type?: string | null;
+    organizationId?: string;
+    workspaceId?: string;
+    telegramBotId?: string;
     discoveredFrom: string;
     isActive: boolean;
     botMemberState?: string | null;
@@ -3173,7 +3527,13 @@ export class TelegramService {
     }
 
     const defaultBot =
-      await this.workspaceBootstrapService.syncDefaultTelegramBot();
+      input.workspaceId && input.telegramBotId && input.organizationId
+        ? {
+            id: input.telegramBotId,
+            workspaceId: input.workspaceId,
+            organizationId: input.organizationId,
+          }
+        : await this.workspaceBootstrapService.syncDefaultTelegramBot();
     const slugBase =
       this.slugify(input.title) || `telegram-${input.externalId}`;
     const group = await this.prisma.telegramGroup.upsert({
@@ -3329,7 +3689,10 @@ export class TelegramService {
     });
   }
 
-  private async syncGroupLifecycleFromWebhook(payload: WebhookPayload) {
+  private async syncGroupLifecycleFromWebhook(
+    payload: WebhookPayload,
+    config?: ResolvedTelegramConfig,
+  ) {
     const membershipUpdate =
       payload.my_chat_member || payload.chat_member || null;
     if (!membershipUpdate?.chat?.id) {
@@ -3355,6 +3718,9 @@ export class TelegramService {
       title: groupTitle,
       username: membershipUpdate.chat.username || null,
       type: membershipUpdate.chat.type || 'supergroup',
+      organizationId: config?.organizationId || undefined,
+      workspaceId: config?.workspaceId || undefined,
+      telegramBotId: config?.telegramBotId || undefined,
       discoveredFrom: 'webhook_sync',
       isActive,
       botMemberState: nextStatus,
@@ -3393,7 +3759,10 @@ export class TelegramService {
     };
   }
 
-  private async syncGroupPresenceFromWebhook(payload: WebhookPayload) {
+  private async syncGroupPresenceFromWebhook(
+    payload: WebhookPayload,
+    config?: ResolvedTelegramConfig,
+  ) {
     const chat =
       payload.message?.chat ||
       payload.channel_post?.chat ||
@@ -3419,12 +3788,18 @@ export class TelegramService {
       title: groupTitle,
       username: chat.username || null,
       type: chat.type || 'supergroup',
+      organizationId: config?.organizationId || undefined,
+      workspaceId: config?.workspaceId || undefined,
+      telegramBotId: config?.telegramBotId || undefined,
       discoveredFrom: 'webhook_presence',
       isActive: true,
     });
   }
 
-  private async resolveTelegramGroup(input: TelegramInviteLinkInput) {
+  private async resolveTelegramGroup(
+    input: TelegramInviteLinkInput,
+    workspaceId?: string,
+  ) {
     if (input.groupExternalId && !process.env.DATABASE_URL) {
       return {
         id: 'direct-external-id',
@@ -3444,7 +3819,10 @@ export class TelegramService {
         },
       });
 
-      if (byExternalId) {
+      if (
+        byExternalId &&
+        (!workspaceId || byExternalId.workspaceId === workspaceId)
+      ) {
         return byExternalId;
       }
 
@@ -3459,6 +3837,7 @@ export class TelegramService {
       return this.prisma.telegramGroup.findFirst({
         where: {
           title: input.groupTitle,
+          ...(workspaceId ? { workspaceId } : {}),
         },
       });
     }

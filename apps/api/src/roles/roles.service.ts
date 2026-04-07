@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -37,47 +38,69 @@ const fallbackPermissionCatalog = [
   },
 ] as const;
 
+type RolesViewer = {
+  userId: string;
+  permissions: string[];
+  workspaceIds?: string[];
+};
+
 @Injectable()
 export class RolesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll() {
+  private isOrganizationManager(viewer?: RolesViewer) {
+    return Boolean(viewer?.permissions.includes('organization.manage'));
+  }
+
+  async findAll(viewer?: RolesViewer) {
     if (!process.env.DATABASE_URL) {
-      return fallbackSnapshot.roles.map((role) => ({
-        id:
-          role.title === 'SuperAdmin'
-            ? 'fallback-role-superadmin'
-            : role.title === 'Admin'
-              ? 'fallback-role-admin'
-              : role.title === 'Moderator'
-                ? 'fallback-role-moderator'
-                : role.title === 'Viewer'
-                  ? 'fallback-role-viewer'
-                  : 'fallback-role-operator',
-        name: role.title,
-        description: role.detail,
-        permissions:
-          role.title === 'SuperAdmin'
-            ? [
-                ...fallbackPermissionCatalog.map(
-                  (permission) => permission.code,
-                ),
-              ]
-            : role.title === 'Admin'
+      return fallbackSnapshot.roles
+        .filter(
+          (role) =>
+            this.isOrganizationManager(viewer) || role.title !== 'SuperAdmin',
+        )
+        .map((role) => ({
+          id:
+            role.title === 'SuperAdmin'
+              ? 'fallback-role-superadmin'
+              : role.title === 'Admin'
+                ? 'fallback-role-admin'
+                : role.title === 'Moderator'
+                  ? 'fallback-role-moderator'
+                  : role.title === 'Viewer'
+                    ? 'fallback-role-viewer'
+                    : 'fallback-role-operator',
+          name: role.title,
+          description: role.detail,
+          permissions:
+            role.title === 'SuperAdmin'
               ? [
-                  ...fallbackPermissionCatalog
-                    .map((permission) => permission.code)
-                    .filter((code) => code !== 'organization.manage'),
+                  ...fallbackPermissionCatalog.map(
+                    (permission) => permission.code,
+                  ),
                 ]
-              : role.title === 'Moderator'
-                ? ['moderation.review']
-                : role.title === 'Viewer'
-                  ? ['campaign.view']
-                  : ['campaign.manage', 'autopost.execute'],
-      }));
+              : role.title === 'Admin'
+                ? [
+                    ...fallbackPermissionCatalog
+                      .map((permission) => permission.code)
+                      .filter((code) => code !== 'organization.manage'),
+                  ]
+                : role.title === 'Moderator'
+                  ? ['moderation.review']
+                  : role.title === 'Viewer'
+                    ? ['campaign.view']
+                    : ['campaign.manage', 'autopost.execute'],
+        }));
     }
 
     const roles = await this.prisma.role.findMany({
+      where: this.isOrganizationManager(viewer)
+        ? undefined
+        : {
+            name: {
+              not: 'SuperAdmin',
+            },
+          },
       orderBy: { createdAt: 'asc' },
       include: {
         rolePermissions: {
@@ -96,15 +119,28 @@ export class RolesService {
     }));
   }
 
-  async findPermissionCatalog() {
+  async findPermissionCatalog(viewer?: RolesViewer) {
     if (!process.env.DATABASE_URL) {
-      return fallbackPermissionCatalog.map((permission) => ({
-        code: permission.code,
-        description: permission.description,
-      }));
+      return fallbackPermissionCatalog
+        .filter(
+          (permission) =>
+            this.isOrganizationManager(viewer) ||
+            permission.code !== 'organization.manage',
+        )
+        .map((permission) => ({
+          code: permission.code,
+          description: permission.description,
+        }));
     }
 
     const permissions = await this.prisma.permission.findMany({
+      where: this.isOrganizationManager(viewer)
+        ? undefined
+        : {
+            code: {
+              not: 'organization.manage',
+            },
+          },
       orderBy: { code: 'asc' },
     });
 
@@ -120,6 +156,7 @@ export class RolesService {
       description?: string;
       permissions: string[];
     },
+    viewer?: RolesViewer,
   ) {
     const permissionCodes = [
       ...new Set(input.permissions.map((code) => code.trim()).filter(Boolean)),
@@ -133,11 +170,25 @@ export class RolesService {
 
     const existingRole = await this.prisma.role.findUnique({
       where: { id: roleId },
-      select: { id: true },
+      select: { id: true, name: true },
     });
 
     if (!existingRole) {
       throw new NotFoundException('Role not found');
+    }
+    if (
+      existingRole.name === 'SuperAdmin' &&
+      !this.isOrganizationManager(viewer)
+    ) {
+      throw new ForbiddenException('Only superadmin can edit SuperAdmin role');
+    }
+    if (
+      !this.isOrganizationManager(viewer) &&
+      permissionCodes.includes('organization.manage')
+    ) {
+      throw new ForbiddenException(
+        'Only superadmin can assign organization.manage',
+      );
     }
 
     const permissions = await this.prisma.permission.findMany({

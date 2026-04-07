@@ -29,6 +29,8 @@ type UpdateCampaignInput = {
 type CampaignViewer = {
   userId: string;
   permissions: string[];
+  workspaceIds?: string[];
+  workspaceId?: string;
 };
 
 const statusToDb: Record<
@@ -106,15 +108,35 @@ export class CampaignsService {
     );
   }
 
+  private resolveWorkspaceScope(viewer?: CampaignViewer) {
+    if (!viewer?.workspaceId) {
+      return undefined;
+    }
+
+    if (
+      viewer.permissions.includes('settings.manage') ||
+      viewer.permissions.includes('organization.manage')
+    ) {
+      return viewer.workspaceId;
+    }
+
+    return viewer.workspaceIds?.includes(viewer.workspaceId)
+      ? viewer.workspaceId
+      : undefined;
+  }
+
   private buildCampaignAccessWhere(
     viewer?: CampaignViewer,
   ): Prisma.CampaignWhereInput | undefined {
+    const workspaceId = this.resolveWorkspaceScope(viewer);
+
     if (!viewer || this.canViewAllCampaigns(viewer)) {
-      return undefined;
+      return workspaceId ? { workspaceId } : undefined;
     }
 
     return {
       assigneeUserId: viewer.userId,
+      ...(workspaceId ? { workspaceId } : {}),
     };
   }
 
@@ -643,7 +665,7 @@ export class CampaignsService {
     });
 
     if (!campaign) {
-      throw new NotFoundException('KhÃ´ng tÃ¬m tháº¥y campaign.');
+      throw new NotFoundException('Không tìm thấy campaign.');
     }
 
     const inviteLinks = await this.prisma.campaignInviteLink.findMany({

@@ -91,9 +91,13 @@ function getLeaveRate(campaign: CampaignItem) {
 export function CampaignsWorkbench({
   isAssignedCampaignView = false,
   canManageCampaigns = true,
+  workspaceId = null,
+  telegramBotId = null,
 }: {
   isAssignedCampaignView?: boolean;
   canManageCampaigns?: boolean;
+  workspaceId?: string | null;
+  telegramBotId?: string | null;
 }) {
   const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
   const [assignees, setAssignees] = useState<CampaignAssigneeOption[]>([]);
@@ -111,6 +115,13 @@ export function CampaignsWorkbench({
     setToken(window.localStorage.getItem(authStorageKey));
   }, []);
 
+  const scopedHeaders = token
+    ? {
+        Authorization: `Bearer ${token}`,
+        ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
+      }
+    : undefined;
+
   useEffect(() => {
     let active = true;
 
@@ -121,6 +132,7 @@ export function CampaignsWorkbench({
           {
             headers: {
               Authorization: `Bearer ${currentToken}`,
+              ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
             },
           },
         );
@@ -145,11 +157,11 @@ export function CampaignsWorkbench({
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [token, workspaceId]);
 
   async function reloadCampaigns() {
     const data = await fetchJson<CampaignItem[]>(`${apiBaseUrl}/campaigns`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      headers: scopedHeaders,
     });
     setCampaigns(data);
   }
@@ -168,6 +180,7 @@ export function CampaignsWorkbench({
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
+          ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
         },
         body: JSON.stringify({
           name: editingCampaign.name.trim(),
@@ -206,6 +219,7 @@ export function CampaignsWorkbench({
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
+          ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
         },
         body: JSON.stringify({
           name: campaign.name,
@@ -262,6 +276,7 @@ export function CampaignsWorkbench({
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
+          ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
         },
       });
       await reloadCampaigns();
@@ -282,7 +297,7 @@ export function CampaignsWorkbench({
     async function load() {
       try {
         const data = await fetchJson<CampaignItem[]>(`${apiBaseUrl}/campaigns`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          headers: scopedHeaders,
         });
         if (!active) {
           return;
@@ -312,7 +327,7 @@ export function CampaignsWorkbench({
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [token, workspaceId]);
 
   useEffect(() => {
     function handleRefresh() {
@@ -500,7 +515,7 @@ export function CampaignsWorkbench({
                     </div>
                     ) : (
                       <span className="inline-flex rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-xs font-semibold text-[color:var(--on-surface-variant)]">
-                        Chá»‰ xem
+                        Chỉ xem
                       </span>
                     )}
                   </td>

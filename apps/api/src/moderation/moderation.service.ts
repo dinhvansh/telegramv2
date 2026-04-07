@@ -107,6 +107,14 @@ type Member360ImportRow = {
 type ModerationViewer = {
   userId: string;
   permissions: string[];
+  workspaceIds?: string[];
+  workspaceId?: string;
+};
+
+type WorkspaceGroupScope = {
+  ids: string[];
+  titles: string[];
+  externalIds: string[];
 };
 
 type WarningEscalationPreview = {
@@ -239,6 +247,44 @@ export class ModerationService {
     );
   }
 
+  private resolveWorkspaceScope(viewer?: ModerationViewer) {
+    if (!viewer?.workspaceId) {
+      return undefined;
+    }
+
+    if (
+      viewer.permissions.includes('settings.manage') ||
+      viewer.permissions.includes('organization.manage')
+    ) {
+      return viewer.workspaceId;
+    }
+
+    return viewer.workspaceIds?.includes(viewer.workspaceId)
+      ? viewer.workspaceId
+      : undefined;
+  }
+
+  private async getWorkspaceGroupScope(
+    workspaceId?: string,
+  ): Promise<WorkspaceGroupScope | null> {
+    if (!process.env.DATABASE_URL || !workspaceId) {
+      return null;
+    }
+
+    const groups = await this.prisma.telegramGroup.findMany({
+      where: { workspaceId },
+      select: { id: true, title: true, externalId: true },
+    });
+
+    return {
+      ids: groups.map((group) => group.id),
+      titles: groups.map((group) => group.title),
+      externalIds: groups
+        .map((group) => group.externalId)
+        .filter((value): value is string => Boolean(value)),
+    };
+  }
+
   private buildMemberAccessWhere(
     viewer?: ModerationViewer,
   ): Prisma.CommunityMemberWhereInput | undefined {
@@ -258,6 +304,7 @@ export class ModerationService {
       return this.composePayload(fallbackMembers);
     }
 
+    const workspaceId = this.resolveWorkspaceScope(viewer);
     const members = await this.prisma.communityMember.findMany({
       include: {
         campaign: true,
@@ -266,6 +313,14 @@ export class ModerationService {
       where: {
         ...(campaignId ? { campaignId } : {}),
         ...(this.buildMemberAccessWhere(viewer) || {}),
+        ...(workspaceId
+          ? {
+              campaign: {
+                ...(campaignId ? {} : {}),
+                workspaceId,
+              },
+            }
+          : {}),
       },
       orderBy: { joinedAt: 'desc' },
     });
@@ -863,7 +918,7 @@ export class ModerationService {
     };
   }
 
-  async getConfig() {
+  async getConfig(workspaceId?: string) {
     const fallbackConfig = {
       builtInRules: this.getBuiltInRules(),
       scopes: [
@@ -896,6 +951,7 @@ export class ModerationService {
 
     const [groups, policies] = await Promise.all([
       this.prisma.telegramGroup.findMany({
+        where: workspaceId ? { workspaceId } : undefined,
         orderBy: { title: 'asc' },
       }),
       this.prisma.moderationPolicy.findMany({
@@ -914,10 +970,14 @@ export class ModerationService {
 
     const globalPolicy =
       policies.find((policy) => policy.scopeKey === 'global') || null;
+    const allowedGroupIds = new Set(groups.map((group) => group.id));
     const groupPolicies = new Map(
       policies
         .filter(
-          (policy) => policy.scopeType === 'GROUP' && policy.telegramGroupId,
+          (policy) =>
+            policy.scopeType === 'GROUP' &&
+            policy.telegramGroupId &&
+            allowedGroupIds.has(policy.telegramGroupId),
         )
         .map((policy) => [policy.telegramGroupId as string, policy]),
     );
@@ -1154,9 +1214,11 @@ export class ModerationService {
     };
   }
 
-  async getDebugOverview() {
+  async getDebugOverview(workspaceId?: string) {
+    const workspaceScope = await this.getWorkspaceGroupScope(workspaceId);
     const jobs = (await this.telegramActionsService.listActionJobs(
       30,
+      workspaceId,
     )) as Array<{
       id: string;
       source: string;
@@ -1185,24 +1247,43 @@ export class ModerationService {
       createdAt: string;
     }>;
 
+    const filteredLogs = workspaceScope
+      ? logs.filter((log) => {
+          const payload = log.payload as
+            | { groupTitle?: string; groupExternalId?: string; chatId?: string }
+            | undefined;
+
+          return Boolean(
+            (payload?.groupTitle &&
+              workspaceScope.titles.includes(payload.groupTitle)) ||
+            (payload?.groupExternalId &&
+              workspaceScope.externalIds.includes(payload.groupExternalId)) ||
+            (payload?.chatId &&
+              workspaceScope.externalIds.includes(String(payload.chatId))),
+          );
+        })
+      : logs;
+
     return {
       jobs,
-      logs,
+      logs: filteredLogs,
     };
   }
 
-  async processDueActionJobs() {
-    return this.telegramActionsService.processDueActionJobs(30);
+  async processDueActionJobs(workspaceId?: string) {
+    return this.telegramActionsService.processDueActionJobs(30, workspaceId);
   }
 
   async getWarningEscalationPreview(input: {
     actorExternalId?: string | null;
     groupTitle: string;
     decision: SpamDecision;
+    workspaceId?: string;
   }): Promise<WarningEscalationPreview> {
-    const warnSettings = await this.resolveWarnSettingsForGroup(
-      input.groupTitle,
-    );
+    const warnSettings = await this.resolveWarnSettingsForGroup({
+      groupTitle: input.groupTitle,
+      workspaceId: input.workspaceId,
+    });
     const defaultPreview = {
       memberId: null,
       currentWarningCount: 0,
@@ -1227,6 +1308,7 @@ export class ModerationService {
       ? await this.findCommunityMemberForEvent(
           actorExternalId,
           input.groupTitle,
+          input.workspaceId,
         )
       : fallbackMembers.find(
           (candidate) =>
@@ -1270,6 +1352,7 @@ export class ModerationService {
     actorExternalId?: string | null;
     groupTitle: string;
     incrementWarning: boolean;
+    workspaceId?: string;
   }) {
     const actorExternalId = String(input.actorExternalId || '').trim() || null;
 
@@ -1311,6 +1394,7 @@ export class ModerationService {
     const member = await this.findCommunityMemberForEvent(
       actorExternalId,
       input.groupTitle,
+      input.workspaceId,
     );
 
     if (!member) {
@@ -1321,9 +1405,10 @@ export class ModerationService {
       };
     }
 
-    const warnSettings = await this.resolveWarnSettingsForGroup(
-      input.groupTitle,
-    );
+    const warnSettings = await this.resolveWarnSettingsForGroup({
+      groupTitle: input.groupTitle,
+      workspaceId: input.workspaceId,
+    });
     const currentWarningCount = this.getEffectiveWarningCount(
       member.warningCount,
       member.lastWarnedAt,
@@ -1458,7 +1543,11 @@ export class ModerationService {
     return normalizedRule.replace(/_/g, ' ');
   }
 
-  async getResolvedPolicyForGroup(groupTitle: string) {
+  async getResolvedPolicyForGroup(input: {
+    groupTitle: string;
+    groupExternalId?: string | null;
+    workspaceId?: string;
+  }) {
     if (!process.env.DATABASE_URL) {
       return {
         scopeKey: 'global',
@@ -1475,7 +1564,13 @@ export class ModerationService {
     const globalPolicy = await this.ensureGlobalPolicy();
     const group = await this.prisma.telegramGroup.findFirst({
       where: {
-        title: groupTitle,
+        OR: [
+          input.groupExternalId
+            ? { externalId: input.groupExternalId }
+            : undefined,
+          { title: input.groupTitle },
+        ].filter(Boolean) as Prisma.TelegramGroupWhereInput[],
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
       },
     });
 
@@ -1550,6 +1645,7 @@ export class ModerationService {
   private async findCommunityMemberForEvent(
     actorExternalId: string | null,
     groupTitle: string,
+    workspaceId?: string,
   ) {
     if (!actorExternalId) {
       return null;
@@ -1559,6 +1655,13 @@ export class ModerationService {
       where: {
         externalId: actorExternalId,
         groupTitle,
+        ...(workspaceId
+          ? {
+              campaign: {
+                workspaceId,
+              },
+            }
+          : {}),
       },
       orderBy: {
         joinedAt: 'desc',
@@ -1566,7 +1669,10 @@ export class ModerationService {
     });
   }
 
-  private async resolveWarnSettingsForGroup(groupTitle: string) {
+  private async resolveWarnSettingsForGroup(input: {
+    groupTitle: string;
+    workspaceId?: string;
+  }) {
     if (!process.env.DATABASE_URL) {
       return {
         lockWarns: true,
@@ -1580,7 +1686,8 @@ export class ModerationService {
 
     const group = await this.prisma.telegramGroup.findFirst({
       where: {
-        title: groupTitle,
+        title: input.groupTitle,
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
       },
       include: {
         moderationSettings: true,

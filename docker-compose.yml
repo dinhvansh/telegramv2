@@ -64,7 +64,7 @@ services:
       api:
         condition: service_started
     ports:
-      - "3000:3000"
+      - "${WEB_PORT:-3000}:3000"
 
 volumes:
   postgres_data:

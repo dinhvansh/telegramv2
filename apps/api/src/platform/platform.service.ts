@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+﻿import { Injectable } from '@nestjs/common';
 import { CampaignStatus, EventTone } from '@prisma/client';
 import { fallbackSnapshot } from './fallback-snapshot';
 import { PrismaService } from '../prisma/prisma.service';
@@ -6,6 +6,8 @@ import { PrismaService } from '../prisma/prisma.service';
 type SnapshotViewer = {
   userId: string;
   permissions: string[];
+  workspaceIds?: string[];
+  workspaceId?: string;
 };
 
 const toneMap: Record<EventTone, 'primary' | 'success' | 'warning' | 'danger'> =
@@ -49,6 +51,23 @@ export class PlatformService {
     );
   }
 
+  private resolveWorkspaceScope(viewer?: SnapshotViewer) {
+    if (!viewer?.workspaceId) {
+      return undefined;
+    }
+
+    if (
+      viewer.permissions.includes('settings.manage') ||
+      viewer.permissions.includes('organization.manage')
+    ) {
+      return viewer.workspaceId;
+    }
+
+    return viewer.workspaceIds?.includes(viewer.workspaceId)
+      ? viewer.workspaceId
+      : undefined;
+  }
+
   async getHealth() {
     if (!process.env.DATABASE_URL) {
       return {
@@ -75,10 +94,14 @@ export class PlatformService {
     }
 
     try {
+      const workspaceId = this.resolveWorkspaceScope(viewer);
       const campaignWhere = this.canViewAllCampaigns(viewer)
-        ? undefined
+        ? workspaceId
+          ? { workspaceId }
+          : undefined
         : {
             assigneeUserId: viewer?.userId,
+            ...(workspaceId ? { workspaceId } : {}),
           };
 
       const campaigns = await this.prisma.campaign.findMany({
@@ -98,7 +121,7 @@ export class PlatformService {
         autopostCapabilities,
         roles,
         settings,
-        botConfig,
+        workspaceBot,
         telegramGroups,
         communityMembers,
         activityEvents,
@@ -113,15 +136,30 @@ export class PlatformService {
         this.prisma.autopostCapability.findMany({ orderBy: { title: 'asc' } }),
         this.prisma.role.findMany({ orderBy: { createdAt: 'asc' } }),
         this.prisma.systemSetting.findMany({ orderBy: { key: 'asc' } }),
-        this.prisma.telegramBotConfig.findFirst({
-          orderBy: { updatedAt: 'desc' },
+        this.prisma.telegramBot.findFirst({
+          where: workspaceId
+            ? {
+                workspaceId,
+                isActive: true,
+              }
+            : {
+                isActive: true,
+              },
+          orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
         }),
         this.prisma.telegramGroup.findMany({
+          where: workspaceId ? { workspaceId } : undefined,
           orderBy: [{ isActive: 'desc' }, { title: 'asc' }],
         }),
         this.prisma.communityMember.findMany({
           where: this.canViewAllCampaigns(viewer)
-            ? undefined
+            ? workspaceId
+              ? {
+                  campaign: {
+                    workspaceId,
+                  },
+                }
+              : undefined
             : {
                 campaignId: {
                   in: campaigns.map((campaign) => campaign.id),
@@ -140,6 +178,18 @@ export class PlatformService {
             createdAt: {
               gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
             },
+            ...(workspaceId
+              ? {
+                  groupTitle: {
+                    in: campaigns
+                      .map(
+                        (campaign) =>
+                          campaign.telegramGroup?.title ?? campaign.channel,
+                      )
+                      .filter(Boolean),
+                  },
+                }
+              : {}),
           },
           select: {
             actorExternalId: true,
@@ -316,16 +366,18 @@ export class PlatformService {
         })
         .sort((a, b) => b.memberCount - a.memberCount);
 
+      const botName =
+        workspaceBot?.displayName || workspaceBot?.username || 'Chưa xác định';
+      const botExternalId = workspaceBot?.externalId || null;
+      const webhookRegistered = workspaceBot?.webhookRegistered ?? false;
+
       const botSummary = {
-        botName:
-          botConfig?.botDisplayName ??
-          botConfig?.botUsername ??
-          'Chưa xác định',
-        botExternalId: botConfig?.botExternalId ?? null,
+        botName,
+        botExternalId,
         activeGroupCount: groupsForDashboard.filter((group) => group.isActive)
           .length,
         totalGroupCount: groupsForDashboard.length,
-        webhookRegistered: botConfig?.webhookRegistered ?? false,
+        webhookRegistered,
       };
 
       return {

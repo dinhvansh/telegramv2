@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
@@ -8,6 +8,7 @@ import { fallbackPlatformSnapshot, PlatformSnapshot } from "@/lib/platform-data"
 const apiBaseUrl = "/api";
 
 const authStorageKey = "telegram-ops-access-token";
+const workspaceStorageKey = "telegram-ops-workspace-id";
 
 type SessionUser = {
   id: string;
@@ -15,6 +16,16 @@ type SessionUser = {
   name: string;
   roles: string[];
   permissions: string[];
+  defaultWorkspaceId: string | null;
+  defaultOrganizationId: string | null;
+  workspaces: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    organizationId: string;
+    organizationName: string;
+    roles: string[];
+  }>;
 };
 
 type CreateCampaignInput = {
@@ -116,6 +127,7 @@ export function PlatformDashboard({
   const [status, setStatus] = useState<"connected" | "fallback">("fallback");
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [email, setEmail] = useState("admin@nexus.local");
   const [password, setPassword] = useState("admin123");
   const [authError, setAuthError] = useState<string | null>(null);
@@ -127,6 +139,14 @@ export function PlatformDashboard({
   const [campaignNotice, setCampaignNotice] = useState<CampaignNoticeState | null>(null);
   const [telegramGroups, setTelegramGroups] = useState<TelegramGroupOption[]>([]);
   const [campaignAssignees, setCampaignAssignees] = useState<CampaignAssigneeOption[]>([]);
+  const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
+  const [availableBots, setAvailableBots] = useState<Array<{
+    id: string;
+    name: string;
+    username: string | null;
+    isPrimary: boolean;
+    isActive: boolean;
+  }>>([]);
   const [campaignForm, setCampaignForm] = useState<CreateCampaignInput>({
     name: "Spring Operator Push",
     telegramGroupId: "",
@@ -145,10 +165,16 @@ export function PlatformDashboard({
     user?.permissions.includes("settings.manage") ||
     false;
 
+  const buildScopedHeaders = (currentToken: string) => ({
+    Authorization: `Bearer ${currentToken}`,
+    ...(selectedWorkspaceId ? { "X-Workspace-Id": selectedWorkspaceId } : {}),
+  });
+
   useEffect(() => {
     const savedToken = window.localStorage.getItem(authStorageKey);
     if (savedToken) {
       setToken(savedToken);
+      setSelectedWorkspaceId(window.localStorage.getItem(workspaceStorageKey));
     } else {
       setIsLoading(false);
     }
@@ -182,21 +208,34 @@ export function PlatformDashboard({
 
     async function loadAuthenticatedState(currentToken: string) {
       try {
-        const [profile, data] = await Promise.all([
-          fetchJson<SessionUser>(`${apiBaseUrl}/auth/me`, {
-            headers: {
-              Authorization: `Bearer ${currentToken}`,
-            },
-          }),
-          fetchJson<PlatformSnapshot>(`${apiBaseUrl}/platform`, {
-            headers: {
-              Authorization: `Bearer ${currentToken}`,
-            },
-          }),
-        ]);
+        const profile = await fetchJson<SessionUser>(`${apiBaseUrl}/auth/me`, {
+          headers: {
+            Authorization: `Bearer ${currentToken}`,
+          },
+        });
+        const requestedWorkspaceId =
+          window.localStorage.getItem(workspaceStorageKey) ??
+          profile.defaultWorkspaceId ??
+          profile.workspaces[0]?.id ??
+          null;
+        const effectiveWorkspaceId = profile.workspaces.some(
+          (workspace) => workspace.id === requestedWorkspaceId,
+        )
+          ? requestedWorkspaceId
+          : profile.defaultWorkspaceId ?? profile.workspaces[0]?.id ?? null;
+        const data = await fetchJson<PlatformSnapshot>(`${apiBaseUrl}/platform`, {
+          headers: {
+            Authorization: `Bearer ${currentToken}`,
+            ...(effectiveWorkspaceId ? { "X-Workspace-Id": effectiveWorkspaceId } : {}),
+          },
+        });
 
         if (isMounted) {
           setUser(profile);
+          setSelectedWorkspaceId(effectiveWorkspaceId);
+          if (effectiveWorkspaceId) {
+            window.localStorage.setItem(workspaceStorageKey, effectiveWorkspaceId);
+          }
           setSnapshot(data);
           setStatus("connected");
           setAuthError(null);
@@ -207,8 +246,10 @@ export function PlatformDashboard({
       } catch {
         if (isMounted) {
           window.localStorage.removeItem(authStorageKey);
+    window.localStorage.removeItem(workspaceStorageKey);
           setToken(null);
           setUser(null);
+    setSelectedWorkspaceId(null);
           setStatus("fallback");
           setAuthError("Phiên đăng nhập không hợp lệ hoặc API chưa sẵn sàng.");
         }
@@ -232,6 +273,35 @@ export function PlatformDashboard({
   }, [entryMode, router, token]);
 
   useEffect(() => {
+    let active = true;
+
+    if (!token || !selectedWorkspaceId) {
+      return;
+    }
+
+    void (async () => {
+      try {
+        const data = await fetchJson<PlatformSnapshot>(`${apiBaseUrl}/platform`, {
+          headers: buildScopedHeaders(token),
+        });
+        if (!active) {
+          return;
+        }
+        setSnapshot(data);
+        setStatus("connected");
+      } catch {
+        if (active) {
+          setStatus("fallback");
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [selectedWorkspaceId, token]);
+
+  useEffect(() => {
     let isMounted = true;
 
     async function loadTelegramGroups(currentToken: string) {
@@ -239,9 +309,7 @@ export function PlatformDashboard({
         const response = await fetchJson<{ items: TelegramGroupOption[] }>(
           `${apiBaseUrl}/telegram/groups`,
           {
-            headers: {
-              Authorization: `Bearer ${currentToken}`,
-            },
+            headers: buildScopedHeaders(currentToken),
           },
         );
 
@@ -282,9 +350,7 @@ export function PlatformDashboard({
         const items = await fetchJson<CampaignAssigneeOption[]>(
           `${apiBaseUrl}/campaigns/assignees`,
           {
-            headers: {
-              Authorization: `Bearer ${currentToken}`,
-            },
+            headers: buildScopedHeaders(currentToken),
           },
         );
 
@@ -312,15 +378,60 @@ export function PlatformDashboard({
     };
   }, [canCreateCampaign, token]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadAvailableBots(currentToken: string) {
+      if (!selectedWorkspaceId) {
+        if (isMounted) {
+          setAvailableBots([]);
+          setSelectedBotId(null);
+        }
+        return;
+      }
+      try {
+        const data = await fetchJson<{
+          bots: Array<{
+            id: string;
+            name: string;
+            username: string | null;
+            isPrimary: boolean;
+            isActive: boolean;
+          }>;
+        }>(`${apiBaseUrl}/workspaces/overview`, {
+          headers: buildScopedHeaders(currentToken),
+        });
+        if (!isMounted) return;
+        const bots = data.bots ?? [];
+        setAvailableBots(bots);
+        const primary = bots.find((b) => b.isPrimary) ?? bots[0] ?? null;
+        setSelectedBotId(primary?.id ?? null);
+      } catch {
+        if (isMounted) {
+          setAvailableBots([]);
+          setSelectedBotId(null);
+        }
+      }
+    }
+
+    if (!token) {
+      return;
+    }
+
+    void loadAvailableBots(token);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedWorkspaceId, token]);
+
   async function reloadSnapshot() {
     if (!token) {
       return;
     }
 
     const data = await fetchJson<PlatformSnapshot>(`${apiBaseUrl}/platform`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: buildScopedHeaders(token),
     });
     setSnapshot(data);
     setStatus("connected");
@@ -343,6 +454,13 @@ export function PlatformDashboard({
       window.localStorage.setItem(authStorageKey, response.accessToken);
       setToken(response.accessToken);
       setUser(response.user);
+      const nextWorkspaceId = response.user.defaultWorkspaceId ?? response.user.workspaces[0]?.id ?? null;
+      setSelectedWorkspaceId(nextWorkspaceId);
+      if (nextWorkspaceId) {
+        window.localStorage.setItem(workspaceStorageKey, nextWorkspaceId);
+      } else {
+        window.localStorage.removeItem(workspaceStorageKey);
+      }
     } catch {
       setAuthError("Đăng nhập thất bại. Kiểm tra lại email hoặc mật khẩu.");
     } finally {
@@ -352,6 +470,7 @@ export function PlatformDashboard({
 
   function handleLogout() {
     window.localStorage.removeItem(authStorageKey);
+    window.localStorage.removeItem(workspaceStorageKey);
     setToken(null);
     setUser(null);
     setStatus("fallback");
@@ -552,10 +671,10 @@ export function PlatformDashboard({
                 </span>
               </p>
               <p className="mt-2">
-                Operator local:
+                Super Admin local:
                 <span className="font-semibold text-[color:var(--on-surface)]">
                   {" "}
-                  operator@nexus.local / operator123
+                  superadmin@nexus.local / superadmin123
                 </span>
               </p>
             </div>
@@ -571,6 +690,19 @@ export function PlatformDashboard({
         snapshot={snapshot}
         status={status}
         user={user}
+        selectedWorkspaceId={selectedWorkspaceId}
+        availableWorkspaces={user?.workspaces ?? []}
+        onWorkspaceChange={(workspaceId) => {
+          setSelectedWorkspaceId(workspaceId);
+          if (workspaceId) {
+            window.localStorage.setItem(workspaceStorageKey, workspaceId);
+          } else {
+            window.localStorage.removeItem(workspaceStorageKey);
+          }
+        }}
+        selectedBotId={selectedBotId}
+        availableBots={availableBots}
+        onBotChange={(botId) => setSelectedBotId(botId)}
         page={page}
         onLogout={handleLogout}
         canCreateCampaign={canCreateCampaign}

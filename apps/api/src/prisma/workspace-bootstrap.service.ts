@@ -1,5 +1,9 @@
 import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import {
+  decryptSecretValue,
+  encryptSecretValue,
+} from '../settings/settings-security';
 
 export const DEFAULT_ORGANIZATION_SLUG = 'default-organization';
 export const DEFAULT_WORKSPACE_SLUG = 'default-workspace';
@@ -9,6 +13,8 @@ type SyncDefaultTelegramBotInput = {
   externalId?: string | null;
   username?: string | null;
   displayName?: string | null;
+  botToken?: string | null;
+  webhookSecret?: string | null;
   publicBaseUrl?: string | null;
   webhookUrl?: string | null;
   isVerified?: boolean;
@@ -30,39 +36,10 @@ export class WorkspaceBootstrapService implements OnApplicationBootstrap {
   }
 
   async bootstrapDefaultFoundation() {
-    const { organization, workspace } = await this.ensureDefaultScope();
-    const defaultBot = await this.syncDefaultTelegramBot();
+    const { workspace } = await this.ensureDefaultScope();
+    await this.syncDefaultTelegramBot();
 
-    await this.prisma.telegramGroup.updateMany({
-      where: {
-        OR: [
-          { organizationId: null },
-          { workspaceId: null },
-          { telegramBotId: null },
-        ],
-      },
-      data: {
-        organizationId: organization.id,
-        workspaceId: workspace.id,
-        telegramBotId: defaultBot.id,
-      },
-    });
-
-    await this.prisma.campaign.updateMany({
-      where: {
-        OR: [
-          { organizationId: null },
-          { workspaceId: null },
-          { telegramBotId: null },
-        ],
-      },
-      data: {
-        organizationId: organization.id,
-        workspaceId: workspace.id,
-        telegramBotId: defaultBot.id,
-      },
-    });
-
+    // Migrate existing UserRole records into WorkspaceMembership
     const userRoles = await this.prisma.userRole.findMany();
     if (userRoles.length > 0) {
       await this.prisma.workspaceMembership.createMany({
@@ -117,17 +94,37 @@ export class WorkspaceBootstrapService implements OnApplicationBootstrap {
   async syncDefaultTelegramBot(input?: SyncDefaultTelegramBotInput) {
     const { organization, workspace } = await this.ensureDefaultScope();
 
-    const [botConfig, publicBaseUrlSetting] = await Promise.all([
+    const [
+      botConfig,
+      publicBaseUrlSetting,
+      botTokenSetting,
+      webhookSecretSetting,
+    ] = await Promise.all([
       this.prisma.telegramBotConfig.findUnique({
         where: { singletonKey: DEFAULT_TELEGRAM_BOT_LEGACY_KEY },
       }),
       this.prisma.systemSetting.findUnique({
         where: { key: 'telegram.public_base_url' },
       }),
+      this.prisma.systemSetting.findUnique({
+        where: { key: 'telegram.bot_token' },
+      }),
+      this.prisma.systemSetting.findUnique({
+        where: { key: 'telegram.webhook_secret' },
+      }),
     ]);
-
     const botUsername = input?.username ?? botConfig?.botUsername ?? null;
     const displayName = input?.displayName ?? botConfig?.botDisplayName ?? null;
+    const botToken =
+      input?.botToken ??
+      (botTokenSetting?.value
+        ? decryptSecretValue(botTokenSetting.value)
+        : null);
+    const webhookSecret =
+      input?.webhookSecret ??
+      (webhookSecretSetting?.value
+        ? decryptSecretValue(webhookSecretSetting.value)
+        : null);
     const publicBaseUrl =
       input?.publicBaseUrl ??
       publicBaseUrlSetting?.value?.trim().replace(/\/$/, '') ??
@@ -143,8 +140,13 @@ export class WorkspaceBootstrapService implements OnApplicationBootstrap {
         username: botUsername,
         displayName,
         label: displayName || botUsername || 'Default Telegram Bot',
+        encryptedBotToken: botToken ? encryptSecretValue(botToken) : null,
+        encryptedWebhookSecret: webhookSecret
+          ? encryptSecretValue(webhookSecret)
+          : null,
         publicBaseUrl,
         webhookUrl,
+        isPrimary: true,
         isActive: true,
         isVerified: input?.isVerified ?? botConfig?.isVerified ?? false,
         webhookRegistered:
@@ -166,8 +168,13 @@ export class WorkspaceBootstrapService implements OnApplicationBootstrap {
         username: botUsername,
         displayName,
         label: displayName || botUsername || 'Default Telegram Bot',
+        encryptedBotToken: botToken ? encryptSecretValue(botToken) : null,
+        encryptedWebhookSecret: webhookSecret
+          ? encryptSecretValue(webhookSecret)
+          : null,
         publicBaseUrl,
         webhookUrl,
+        isPrimary: true,
         isActive: true,
         isVerified: input?.isVerified ?? botConfig?.isVerified ?? false,
         webhookRegistered:

@@ -71,6 +71,16 @@ async function main() {
     },
   });
 
+  const affiliateWorkspace = await prisma.workspace.create({
+    data: {
+      organizationId: defaultOrganization.id,
+      name: 'Affiliate Workspace',
+      slug: 'affiliate-workspace',
+      description: 'Workspace sample for local multi-workspace testing',
+      isActive: true,
+    },
+  });
+
   const [globalGroup, partnerGroup, vipGroup, alphaGroup] = await Promise.all([
     prisma.telegramGroup.create({
       data: {
@@ -146,6 +156,25 @@ async function main() {
     }),
   ]);
 
+  const affiliateGroup = await prisma.telegramGroup.create({
+    data: {
+      organizationId: defaultOrganization.id,
+      workspaceId: affiliateWorkspace.id,
+      title: 'Affiliate Hub',
+      slug: 'affiliate-hub',
+      externalId: '-100221099',
+      username: 'affiliate_hub',
+      type: 'supergroup',
+      isActive: true,
+      discoveredFrom: 'seed_import',
+      lastSyncedAt: new Date(),
+      botMemberState: 'administrator',
+      botCanDeleteMessages: true,
+      botCanRestrictMembers: true,
+      botCanInviteUsers: true,
+    },
+  });
+
   await prisma.telegramBotConfig.create({
     data: {
       botExternalId: '100000001',
@@ -176,6 +205,23 @@ async function main() {
     },
   });
 
+  const affiliateTelegramBot = await prisma.telegramBot.create({
+    data: {
+      organizationId: defaultOrganization.id,
+      workspaceId: affiliateWorkspace.id,
+      legacyConfigKey: 'affiliate',
+      externalId: '100000099',
+      username: 'affiliate_guard_bot',
+      displayName: 'Affiliate Guard',
+      label: 'Affiliate Guard',
+      isActive: true,
+      isVerified: true,
+      webhookRegistered: false,
+      lastVerifiedAt: new Date(),
+      lastDiscoveredAt: new Date(),
+    },
+  });
+
   await prisma.telegramGroup.updateMany({
     where: {
       id: {
@@ -184,6 +230,15 @@ async function main() {
     },
     data: {
       telegramBotId: defaultTelegramBot.id,
+    },
+  });
+
+  await prisma.telegramGroup.update({
+    where: {
+      id: affiliateGroup.id,
+    },
+    data: {
+      telegramBotId: affiliateTelegramBot.id,
     },
   });
 
@@ -209,6 +264,13 @@ async function main() {
       {
         telegramGroupId: alphaGroup.id,
         moderationEnabled: false,
+      },
+      {
+        telegramGroupId: affiliateGroup.id,
+        moderationEnabled: true,
+        lockUrl: true,
+        lockInvitelink: true,
+        lockForward: true,
       },
     ],
   });
@@ -363,13 +425,25 @@ async function main() {
         conversionRate: 12,
         telegramGroupId: alphaGroup.id,
       },
+      {
+        organizationId: defaultOrganization.id,
+        workspaceId: affiliateWorkspace.id,
+        telegramBotId: affiliateTelegramBot.id,
+        name: 'Affiliate Burst VN',
+        channel: 'Affiliate Hub',
+        inviteCode: 't.me/+AffBurstVN',
+        joinRate: '73% conversion',
+        status: CampaignStatus.ACTIVE,
+        conversionRate: 73,
+        telegramGroupId: affiliateGroup.id,
+      },
     ],
   });
 
   const campaigns = await prisma.campaign.findMany({
     orderBy: { createdAt: 'asc' },
   });
-  const [summerCampaign, partnerCampaign, vipCampaign] = campaigns;
+  const [summerCampaign, partnerCampaign, vipCampaign, , affiliateCampaign] = campaigns;
 
   const inviteLinks = await Promise.all([
     prisma.campaignInviteLink.create({
@@ -405,6 +479,17 @@ async function main() {
         createsJoinRequest: true,
       },
     }),
+    prisma.campaignInviteLink.create({
+      data: {
+        campaignId: affiliateCampaign.id,
+        telegramGroupId: affiliateGroup.id,
+        externalInviteId: 'affiliate-burst-vn',
+        inviteUrl: 'https://t.me/+AffBurstVN',
+        label: 'Affiliate Burst VN / Direct',
+        memberLimit: 300,
+        createsJoinRequest: false,
+      },
+    }),
   ]);
 
   await prisma.inviteLinkEvent.createMany({
@@ -433,6 +518,15 @@ async function main() {
         groupTitle: partnerGroup.title,
         groupExternalId: partnerGroup.externalId,
         detail: 'Join request captured via Partner Referral East / Review.',
+      },
+      {
+        inviteLinkId: inviteLinks[3].id,
+        eventType: 'USER_JOINED',
+        actorExternalId: '7711004',
+        actorUsername: 'aff_vn_lead',
+        groupTitle: affiliateGroup.title,
+        groupExternalId: affiliateGroup.externalId,
+        detail: 'Joined through Affiliate Burst VN / Direct.',
       },
     ],
   });
@@ -504,6 +598,32 @@ async function main() {
         note: 'Đã rời nhóm, chưa có người phụ trách.',
         joinedAt: new Date(now - 5 * 60 * 60 * 1000),
         leftAt: new Date(now - 90 * 60 * 1000),
+      },
+      {
+        displayName: 'Anh Vu',
+        avatarInitials: 'AV',
+        externalId: '7711004',
+        username: 'aff_vn_lead',
+        campaignLabel: affiliateCampaign.name,
+        campaignId: affiliateCampaign.id,
+        groupTitle: affiliateGroup.title,
+        ownerName: 'Nexus Admin',
+        note: 'Lead local cho workspace Affiliate.',
+        joinedAt: new Date(now - 45 * 60 * 1000),
+        leftAt: null,
+      },
+      {
+        displayName: 'Mai Ho',
+        avatarInitials: 'MH',
+        externalId: '7711005',
+        username: 'aff_growth_mai',
+        campaignLabel: affiliateCampaign.name,
+        campaignId: affiliateCampaign.id,
+        groupTitle: affiliateGroup.title,
+        ownerName: 'Campaign Operator',
+        note: 'Khach Affiliate moi vao nhom trong ngay.',
+        joinedAt: new Date(now - 95 * 60 * 1000),
+        leftAt: null,
       },
     ],
   });
@@ -585,6 +705,24 @@ async function main() {
         manualDecision: 'WARN',
         manualNote: 'Theo dõi thêm trước khi restrict.',
         reviewedAt: new Date(now - 10 * 60 * 1000),
+      },
+      {
+        source: 'telegram.mock',
+        eventType: 'message_received',
+        actorUsername: 'aff_vn_lead',
+        actorExternalId: '7711004',
+        groupTitle: affiliateGroup.title,
+        groupExternalId: affiliateGroup.externalId,
+        campaignLabel: affiliateCampaign.name,
+        messageText: 'Daily affiliate check-in and campaign progress.',
+        messageExternalId: '32001',
+        matchedRules: [],
+        ruleScore: 0,
+        aiScore: 3,
+        finalScore: 1,
+        aiLabel: 'safe',
+        aiReason: 'Normal group discussion message.',
+        decision: 'ALLOW',
       },
     ],
   });
@@ -976,6 +1114,11 @@ async function main() {
         userId: superAdminUser.id,
         roleId: superAdminRole.id,
         workspaceId: defaultWorkspace.id,
+      },
+      {
+        userId: superAdminUser.id,
+        roleId: superAdminRole.id,
+        workspaceId: affiliateWorkspace.id,
       },
       {
         userId: adminUser.id,

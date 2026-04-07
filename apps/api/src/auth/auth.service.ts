@@ -173,19 +173,21 @@ export class AuthService {
         (permissionItem) => permissionItem.permission.code,
       ),
     );
+    const uniquePermissions = [...new Set(permissions)];
+    const scopedMemberships = uniquePermissions.includes('organization.manage')
+      ? user.workspaceMemberships
+      : user.workspaceMemberships.slice(0, 1);
     const workspaceIds = [
-      ...new Set(
-        user.workspaceMemberships.map((membership) => membership.workspaceId),
-      ),
+      ...new Set(scopedMemberships.map((membership) => membership.workspaceId)),
     ];
     const organizationIds = [
       ...new Set(
-        user.workspaceMemberships.map(
+        scopedMemberships.map(
           (membership) => membership.workspace.organizationId,
         ),
       ),
     ];
-    const workspaces = user.workspaceMemberships.map((membership) => ({
+    const workspaces = scopedMemberships.map((membership) => ({
       id: membership.workspace.id,
       name: membership.workspace.name,
       slug: membership.workspace.slug,
@@ -198,7 +200,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       roles,
-      permissions,
+      permissions: uniquePermissions,
       workspaceIds,
       organizationIds,
     });
@@ -210,7 +212,7 @@ export class AuthService {
         email: user.email,
         name: user.name,
         roles,
-        permissions: [...new Set(permissions)],
+        permissions: uniquePermissions,
         defaultWorkspaceId: workspaceIds[0] ?? null,
         defaultOrganizationId: organizationIds[0] ?? null,
         workspaces,
@@ -298,19 +300,21 @@ export class AuthService {
         (permissionItem) => permissionItem.permission.code,
       ),
     );
+    const uniquePermissions = [...new Set(permissions)];
+    const scopedMemberships = uniquePermissions.includes('organization.manage')
+      ? user.workspaceMemberships
+      : user.workspaceMemberships.slice(0, 1);
     const workspaceIds = [
-      ...new Set(
-        user.workspaceMemberships.map((membership) => membership.workspaceId),
-      ),
+      ...new Set(scopedMemberships.map((membership) => membership.workspaceId)),
     ];
     const organizationIds = [
       ...new Set(
-        user.workspaceMemberships.map(
+        scopedMemberships.map(
           (membership) => membership.workspace.organizationId,
         ),
       ),
     ];
-    const workspaces = user.workspaceMemberships.map((membership) => ({
+    const workspaces = scopedMemberships.map((membership) => ({
       id: membership.workspace.id,
       name: membership.workspace.name,
       slug: membership.workspace.slug,
@@ -324,7 +328,7 @@ export class AuthService {
       email: user.email,
       name: user.name,
       roles,
-      permissions: [...new Set(permissions)],
+      permissions: uniquePermissions,
       defaultWorkspaceId: workspaceIds[0] ?? null,
       defaultOrganizationId: organizationIds[0] ?? null,
       workspaces,

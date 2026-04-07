@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   Param,
   Post,
   Put,
@@ -42,8 +43,8 @@ export class AutopostController {
   constructor(private readonly autopostService: AutopostService) {}
 
   @Get()
-  getSnapshot() {
-    return this.autopostService.getSnapshot();
+  getSnapshot(@Headers('x-workspace-id') workspaceId?: string) {
+    return this.autopostService.getSnapshot(workspaceId);
   }
 
   @Post('targets')
@@ -56,82 +57,108 @@ export class AutopostController {
   }
 
   @Post('schedules')
-  createSchedule(@Body() body: CreateScheduleBody) {
-    return this.autopostService.createSchedules({
-      title: body.title || '',
-      message: body.message || '',
-      frequency: body.frequency || 'IMMEDIATE',
-      scheduledFor: body.scheduledFor || null,
-      baseDate: body.baseDate || null,
-      timeSlots: Array.isArray(body.timeSlots) ? body.timeSlots : [],
-      mediaUrl: body.mediaUrl || null,
-      targetIds: Array.isArray(body.targetIds) ? body.targetIds : [],
-      telegramGroupIds: Array.isArray(body.telegramGroupIds)
-        ? body.telegramGroupIds
-        : [],
-      selectAllTelegramGroups: Boolean(body.selectAllTelegramGroups),
-      saveAsDraft: Boolean(body.saveAsDraft),
-    });
+  createSchedule(
+    @Body() body: CreateScheduleBody,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
+    return this.autopostService.createSchedules(
+      {
+        title: body.title || '',
+        message: body.message || '',
+        frequency: body.frequency || 'IMMEDIATE',
+        scheduledFor: body.scheduledFor || null,
+        baseDate: body.baseDate || null,
+        timeSlots: Array.isArray(body.timeSlots) ? body.timeSlots : [],
+        mediaUrl: body.mediaUrl || null,
+        targetIds: Array.isArray(body.targetIds) ? body.targetIds : [],
+        telegramGroupIds: Array.isArray(body.telegramGroupIds)
+          ? body.telegramGroupIds
+          : [],
+        selectAllTelegramGroups: Boolean(body.selectAllTelegramGroups),
+        saveAsDraft: Boolean(body.saveAsDraft),
+      },
+      workspaceId,
+    );
   }
 
   @Post('send-now')
-  sendNow(@Body() body: CreateScheduleBody) {
-    return this.autopostService.sendNow({
-      title: body.title || '',
-      message: body.message || '',
-      frequency: body.frequency || 'IMMEDIATE',
-      scheduledFor: body.scheduledFor || null,
-      baseDate: body.baseDate || null,
-      timeSlots: Array.isArray(body.timeSlots) ? body.timeSlots : [],
-      mediaUrl: body.mediaUrl || null,
-      targetIds: Array.isArray(body.targetIds) ? body.targetIds : [],
-      telegramGroupIds: Array.isArray(body.telegramGroupIds)
-        ? body.telegramGroupIds
-        : [],
-      selectAllTelegramGroups: Boolean(body.selectAllTelegramGroups),
-      saveAsDraft: false,
-    });
+  sendNow(
+    @Body() body: CreateScheduleBody,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
+    return this.autopostService.sendNow(
+      {
+        title: body.title || '',
+        message: body.message || '',
+        frequency: body.frequency || 'IMMEDIATE',
+        scheduledFor: body.scheduledFor || null,
+        baseDate: body.baseDate || null,
+        timeSlots: Array.isArray(body.timeSlots) ? body.timeSlots : [],
+        mediaUrl: body.mediaUrl || null,
+        targetIds: Array.isArray(body.targetIds) ? body.targetIds : [],
+        telegramGroupIds: Array.isArray(body.telegramGroupIds)
+          ? body.telegramGroupIds
+          : [],
+        selectAllTelegramGroups: Boolean(body.selectAllTelegramGroups),
+        saveAsDraft: false,
+      },
+      workspaceId,
+    );
   }
 
   @Put('schedules/:scheduleId')
   updateSchedule(
     @Param('scheduleId') scheduleId: string,
     @Body() body: UpdateScheduleBody,
+    @Headers('x-workspace-id') workspaceId?: string,
   ) {
-    return this.autopostService.updateSchedule(scheduleId, {
-      title: body.title || '',
-      message: body.message || '',
-      frequency: body.frequency || 'IMMEDIATE',
-      scheduledFor: body.scheduledFor || null,
-      baseDate: body.baseDate || null,
-      timeSlots: Array.isArray(body.timeSlots) ? body.timeSlots : [],
-      mediaUrl: body.mediaUrl || null,
-      targetIds: Array.isArray(body.targetIds) ? body.targetIds : [],
-      telegramGroupIds: Array.isArray(body.telegramGroupIds)
-        ? body.telegramGroupIds
-        : [],
-      selectAllTelegramGroups: Boolean(body.selectAllTelegramGroups),
-      saveAsDraft: Boolean(body.saveAsDraft),
-    });
+    return this.autopostService.updateSchedule(
+      scheduleId,
+      {
+        title: body.title || '',
+        message: body.message || '',
+        frequency: body.frequency || 'IMMEDIATE',
+        scheduledFor: body.scheduledFor || null,
+        baseDate: body.baseDate || null,
+        timeSlots: Array.isArray(body.timeSlots) ? body.timeSlots : [],
+        mediaUrl: body.mediaUrl || null,
+        targetIds: Array.isArray(body.targetIds) ? body.targetIds : [],
+        telegramGroupIds: Array.isArray(body.telegramGroupIds)
+          ? body.telegramGroupIds
+          : [],
+        selectAllTelegramGroups: Boolean(body.selectAllTelegramGroups),
+        saveAsDraft: Boolean(body.saveAsDraft),
+      },
+      workspaceId,
+    );
   }
 
   @Post('schedules/:scheduleId/toggle')
-  toggleSchedule(@Param('scheduleId') scheduleId: string) {
-    return this.autopostService.toggleSchedule(scheduleId);
+  toggleSchedule(
+    @Param('scheduleId') scheduleId: string,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
+    return this.autopostService.toggleSchedule(scheduleId, workspaceId);
   }
 
   @Delete('schedules/:scheduleId')
-  deleteSchedule(@Param('scheduleId') scheduleId: string) {
-    return this.autopostService.deleteSchedule(scheduleId);
+  deleteSchedule(
+    @Param('scheduleId') scheduleId: string,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
+    return this.autopostService.deleteSchedule(scheduleId, workspaceId);
   }
 
   @Post('dispatch')
-  dispatchDue() {
-    return this.autopostService.dispatch();
+  dispatchDue(@Headers('x-workspace-id') workspaceId?: string) {
+    return this.autopostService.dispatch(undefined, workspaceId);
   }
 
   @Post('schedules/:scheduleId/dispatch')
-  dispatchOne(@Param('scheduleId') scheduleId: string) {
-    return this.autopostService.dispatch({ scheduleId });
+  dispatchOne(
+    @Param('scheduleId') scheduleId: string,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
+    return this.autopostService.dispatch({ scheduleId }, workspaceId);
   }
 }

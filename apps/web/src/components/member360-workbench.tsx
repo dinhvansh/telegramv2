@@ -158,9 +158,13 @@ function renderGroupSummary(item: SummaryItem) {
 export function Member360Workbench({
   isAssignedCampaignView = false,
   canEditMembers = true,
+  workspaceId = null,
+  telegramBotId = null,
 }: {
   isAssignedCampaignView?: boolean;
   canEditMembers?: boolean;
+  workspaceId?: string | null;
+  telegramBotId?: string | null;
 }) {
   const [token, setToken] = useState<string | null>(null);
   const [items, setItems] = useState<SummaryItem[]>([]);
@@ -187,9 +191,16 @@ export function Member360Workbench({
     setToken(window.localStorage.getItem(authStorageKey));
   }, []);
 
+  const scopedHeaders = token
+    ? {
+        Authorization: `Bearer ${token}`,
+        ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
+      }
+    : undefined;
+
   async function loadSummary(currentToken: string) {
     const response = await fetchJson<{ items: SummaryItem[] }>(`${apiBaseUrl}/moderation/member360`, {
-      headers: { Authorization: `Bearer ${currentToken}` },
+      headers: { Authorization: `Bearer ${currentToken}`, ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}) },
     });
     setItems(response.items);
     setSelectedExternalId((current) => current || response.items[0]?.externalId || null);
@@ -224,7 +235,7 @@ export function Member360Workbench({
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [token, workspaceId]);
 
   useEffect(() => {
     let active = true;
@@ -324,6 +335,7 @@ export function Member360Workbench({
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
+          ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
         },
         body: formData,
       });
@@ -355,7 +367,7 @@ export function Member360Workbench({
       setIsSaving(true);
       await fetchJson(`${apiBaseUrl}/moderation/members/${primaryMember.id}`, {
         method: "PUT",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}) },
         body: JSON.stringify({
           ownerName: ownerDraft.trim() || null,
           note: noteDraft.trim() || null,
@@ -408,7 +420,7 @@ export function Member360Workbench({
       setIsResetting(true);
       await fetchJson(`${apiBaseUrl}/moderation/members/${primaryMember.id}/reset-warning`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}) },
       });
       await Promise.all([loadSummary(token), loadProfile(token, selectedExternalId || primaryMember.externalId)]);
       setNotice("Đã reset cảnh báo của thành viên.");

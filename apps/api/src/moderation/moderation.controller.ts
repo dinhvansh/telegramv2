@@ -5,6 +5,7 @@ import {
   Delete,
   ForbiddenException,
   Get,
+  Headers,
   MaxFileSizeValidator,
   Param,
   Post,
@@ -75,6 +76,7 @@ type AuthenticatedRequest = Request & {
     email: string;
     roles: string[];
     permissions: string[];
+    workspaceIds?: string[];
   };
 };
 
@@ -113,21 +115,29 @@ export class ModerationController {
   getMembers(
     @Req() request: AuthenticatedRequest,
     @Query('campaignId') campaignId?: string,
+    @Headers('x-workspace-id') workspaceId?: string,
   ) {
     this.assertMemberAccess(request);
     return this.moderationService.getMembers(campaignId, {
       userId: request.user.sub,
       permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+      workspaceId: workspaceId || undefined,
     });
   }
 
   @Get('member360')
   @UseGuards(JwtAuthGuard)
-  getMember360Summary(@Req() request: AuthenticatedRequest) {
+  getMember360Summary(
+    @Req() request: AuthenticatedRequest,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
     this.assertMemberAccess(request);
     return this.moderationService.getMember360Summary({
       userId: request.user.sub,
       permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+      workspaceId: workspaceId || undefined,
     });
   }
 
@@ -136,11 +146,14 @@ export class ModerationController {
   getMember360Profile(
     @Req() request: AuthenticatedRequest,
     @Param('externalId') externalId: string,
+    @Headers('x-workspace-id') workspaceId?: string,
   ) {
     this.assertMemberAccess(request);
     return this.moderationService.getMember360Profile(externalId, {
       userId: request.user.sub,
       permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+      workspaceId: workspaceId || undefined,
     });
   }
 
@@ -256,22 +269,22 @@ export class ModerationController {
   @Get('events')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('moderation.review')
-  getEvents() {
-    return this.moderationEngineService.getEvents();
+  getEvents(@Headers('x-workspace-id') workspaceId?: string) {
+    return this.moderationEngineService.getEvents(workspaceId || undefined);
   }
 
   @Get('debug')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('moderation.review')
-  getDebugOverview() {
-    return this.moderationService.getDebugOverview();
+  getDebugOverview(@Headers('x-workspace-id') workspaceId?: string) {
+    return this.moderationService.getDebugOverview(workspaceId || undefined);
   }
 
   @Get('config')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('moderation.review')
-  getConfig() {
-    return this.moderationService.getConfig();
+  getConfig(@Headers('x-workspace-id') workspaceId?: string) {
+    return this.moderationService.getConfig(workspaceId || undefined);
   }
 
   @Put('config')
@@ -338,14 +351,19 @@ export class ModerationController {
   @Post('jobs/process-due')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('moderation.review')
-  processDueJobs() {
-    return this.moderationService.processDueActionJobs();
+  processDueJobs(@Headers('x-workspace-id') workspaceId?: string) {
+    return this.moderationService.processDueActionJobs(
+      workspaceId || undefined,
+    );
   }
 
   @Post('analyze')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('moderation.review')
-  analyze(@Body() body: AnalyzeBody) {
+  analyze(
+    @Body() body: AnalyzeBody,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
     return this.moderationEngineService.evaluate({
       source: body.source || 'manual',
       eventType: body.eventType || 'message_received',
@@ -354,6 +372,7 @@ export class ModerationController {
       groupTitle: body.groupTitle || 'Telegram Group',
       campaignLabel: body.campaignLabel || null,
       messageText: body.messageText || null,
+      workspaceId: workspaceId || undefined,
     });
   }
 }

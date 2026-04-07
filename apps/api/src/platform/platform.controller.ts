@@ -1,4 +1,4 @@
-import { Controller, Get, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Headers, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PlatformService } from './platform.service';
@@ -9,6 +9,7 @@ type AuthenticatedRequest = Request & {
     email: string;
     roles: string[];
     permissions: string[];
+    workspaceIds?: string[];
   };
 };
 
@@ -23,10 +24,15 @@ export class PlatformController {
 
   @Get('platform')
   @UseGuards(JwtAuthGuard)
-  getSnapshot(@Req() request: AuthenticatedRequest) {
+  getSnapshot(
+    @Req() request: AuthenticatedRequest,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
     return this.platformService.getSnapshot({
       userId: request.user.sub,
       permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+      workspaceId: workspaceId || undefined,
     });
   }
 }

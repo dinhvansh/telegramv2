@@ -109,8 +109,12 @@ function generateWebhookSecret() {
 
 export function TelegramControlCenter({
   embedded = false,
+  workspaceId = null,
+  telegramBotId = null,
 }: {
   embedded?: boolean;
+  workspaceId?: string | null;
+  telegramBotId?: string | null;
 }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -140,13 +144,18 @@ export function TelegramControlCenter({
     setToken(savedToken);
   }, []);
 
+  const buildHeaders = (currentToken: string) => ({
+    Authorization: `Bearer ${currentToken}`,
+    ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
+  });
+
   async function refreshData(currentToken: string) {
     const [telegramStatus, telegramGroups] = await Promise.all([
       fetchJson<TelegramStatus>(`${apiBaseUrl}/telegram/status`, {
-        headers: { Authorization: `Bearer ${currentToken}` },
+        headers: buildHeaders(currentToken),
       }),
       fetchJson<GroupsResponse>(`${apiBaseUrl}/telegram/groups`, {
-        headers: { Authorization: `Bearer ${currentToken}` },
+        headers: buildHeaders(currentToken),
       }),
     ]);
 
@@ -167,7 +176,7 @@ export function TelegramControlCenter({
     async function load(currentToken: string) {
       try {
         const profile = await fetchJson<SessionUser>(`${apiBaseUrl}/auth/me`, {
-          headers: { Authorization: `Bearer ${currentToken}` },
+          headers: buildHeaders(currentToken),
         });
 
         if (!isMounted) {
@@ -207,7 +216,7 @@ export function TelegramControlCenter({
     return () => {
       isMounted = false;
     };
-  }, [token]);
+  }, [token, workspaceId]);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -294,16 +303,16 @@ export function TelegramControlCenter({
       async () => {
         await fetchJson(`${apiBaseUrl}/telegram/config`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
+          headers: buildHeaders(token!),
           body: JSON.stringify(payload),
         });
         await fetchJson(`${apiBaseUrl}/telegram/verify-bot`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
+          headers: buildHeaders(token!),
         });
         await fetchJson(`${apiBaseUrl}/telegram/register-webhook`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
+          headers: buildHeaders(token!),
         });
         return { ok: true };
       },
@@ -331,7 +340,7 @@ export function TelegramControlCenter({
           `${apiBaseUrl}/telegram/groups/${group.id}`,
           {
             method: "DELETE",
-            headers: { Authorization: `Bearer ${token}` },
+            headers: buildHeaders(token!),
           },
         ).then((result) => ({
           ok: result.deleted,
@@ -353,7 +362,7 @@ export function TelegramControlCenter({
       () =>
         fetchJson(`${apiBaseUrl}/telegram/groups/${group.id}/moderation`, {
           method: "PUT",
-          headers: { Authorization: `Bearer ${token}` },
+          headers: buildHeaders(token!),
           body: JSON.stringify({ moderationEnabled: nextValue }),
         }).then(() => ({ ok: true })),
       nextValue
@@ -377,7 +386,7 @@ export function TelegramControlCenter({
       () =>
         fetchJson<{ ok?: boolean; failed?: number }>(url, {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
+          headers: buildHeaders(token!),
         }).then((result) => ({
           ok: result.ok ?? (result.failed === 0),
           description:
@@ -673,7 +682,7 @@ export function TelegramControlCenter({
                     () =>
                       fetchJson(`${apiBaseUrl}/telegram/discover-groups`, {
                         method: "POST",
-                        headers: { Authorization: `Bearer ${token}` },
+                        headers: buildHeaders(token!),
                       }),
                     "Đã đồng bộ group.",
                   )

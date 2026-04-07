@@ -165,7 +165,14 @@ export default function Home() {
 
           <div className="mt-6 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4 text-sm leading-7 text-[color:var(--on-surface-variant)]">
             <p>
-              Tài khoản quản trị:
+              Tài khoản hệ thống:
+              <span className="font-semibold text-[color:var(--on-surface)]">
+                {" "}
+                superadmin@nexus.local / superadmin123
+              </span>
+            </p>
+            <p className="mt-2">
+              Workspace admin:
               <span className="font-semibold text-[color:var(--on-surface)]">
                 {" "}
                 admin@nexus.local / admin123
@@ -177,6 +184,11 @@ export default function Home() {
                 {" "}
                 operator@nexus.local / operator123
               </span>
+            </p>
+            <p className="mt-3 text-xs leading-6">
+              Sau khi đăng nhập bằng <span className="font-semibold">superadmin</span> hoặc{" "}
+              <span className="font-semibold">admin</span>, header sẽ hiện bộ chọn workspace nếu
+              tài khoản thuộc nhiều workspace.
             </p>
           </div>
         </section>

@@ -4,6 +4,7 @@ import {
   Delete,
   ForbiddenException,
   Get,
+  Headers,
   Param,
   Post,
   Put,
@@ -39,6 +40,7 @@ type AuthenticatedRequest = Request & {
     email: string;
     roles: string[];
     permissions: string[];
+    workspaceIds?: string[];
   };
 };
 
@@ -56,13 +58,18 @@ export class CampaignsController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
-  getCampaigns(@Req() request: AuthenticatedRequest) {
+  getCampaigns(
+    @Req() request: AuthenticatedRequest,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
     if (!this.assertCampaignReadAccess(request)) {
       throw new ForbiddenException('Missing required permission');
     }
     return this.campaignsService.findAll({
       userId: request.user.sub,
       permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+      workspaceId: workspaceId || undefined,
     });
   }
 
@@ -78,6 +85,7 @@ export class CampaignsController {
   getInviteLinks(
     @Param('campaignId') campaignId: string,
     @Req() request: AuthenticatedRequest,
+    @Headers('x-workspace-id') workspaceId?: string,
   ) {
     if (!this.assertCampaignReadAccess(request)) {
       throw new ForbiddenException('Missing required permission');
@@ -85,6 +93,8 @@ export class CampaignsController {
     return this.campaignsService.findInviteLinks(campaignId, {
       userId: request.user.sub,
       permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+      workspaceId: workspaceId || undefined,
     });
   }
 
@@ -93,6 +103,7 @@ export class CampaignsController {
   getCampaign(
     @Param('campaignId') campaignId: string,
     @Req() request: AuthenticatedRequest,
+    @Headers('x-workspace-id') workspaceId?: string,
   ) {
     if (!this.assertCampaignReadAccess(request)) {
       throw new ForbiddenException('Missing required permission');
@@ -100,6 +111,8 @@ export class CampaignsController {
     return this.campaignsService.findOne(campaignId, {
       userId: request.user.sub,
       permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+      workspaceId: workspaceId || undefined,
     });
   }
 
@@ -108,6 +121,7 @@ export class CampaignsController {
   getCampaignMembers(
     @Param('campaignId') campaignId: string,
     @Req() request: AuthenticatedRequest,
+    @Headers('x-workspace-id') workspaceId?: string,
   ) {
     if (!this.assertCampaignReadAccess(request)) {
       throw new ForbiddenException('Missing required permission');
@@ -115,6 +129,8 @@ export class CampaignsController {
     return this.campaignsService.findMembers(campaignId, {
       userId: request.user.sub,
       permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+      workspaceId: workspaceId || undefined,
     });
   }
 

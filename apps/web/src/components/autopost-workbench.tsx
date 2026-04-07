@@ -228,7 +228,13 @@ function summarizeGroupStatus(schedules: AutopostSchedule[]) {
 }
 
 
-export function AutopostWorkbench() {
+export function AutopostWorkbench({
+  workspaceId = null,
+  telegramBotId = null,
+}: {
+  workspaceId?: string | null;
+  telegramBotId?: string | null;
+}) {
   const [token, setToken] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<AutopostSnapshot | null>(null);
   const [selectedTelegramGroupIds, setSelectedTelegramGroupIds] = useState<string[]>([]);
@@ -260,13 +266,18 @@ export function AutopostWorkbench() {
     setToken(window.localStorage.getItem(authStorageKey));
   }, []);
 
+  const buildHeaders = (currentToken: string) => ({
+    Authorization: `Bearer ${currentToken}`,
+    ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
+  });
+
   useEffect(() => {
     let active = true;
 
     async function load(currentToken: string) {
       try {
         const data = await fetchJson<AutopostSnapshot>(`${apiBaseUrl}/autopost`, {
-          headers: { Authorization: `Bearer ${currentToken}` },
+          headers: buildHeaders(currentToken),
         });
 
         if (!active) {
@@ -304,7 +315,7 @@ export function AutopostWorkbench() {
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [token, workspaceId]);
 
   const selectedGroupCount = useMemo(() => {
     if (!snapshot) {
@@ -393,7 +404,7 @@ export function AutopostWorkbench() {
     }
 
     const data = await fetchJson<AutopostSnapshot>(`${apiBaseUrl}/autopost`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: buildHeaders(token),
     });
     setSnapshot(data);
   }
@@ -456,7 +467,7 @@ export function AutopostWorkbench() {
         snapshot: AutopostSnapshot;
       }>(`${apiBaseUrl}/autopost/schedules`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: buildHeaders(token),
         body: JSON.stringify({
           ...scheduleForm,
           scheduledFor:
@@ -560,7 +571,7 @@ export function AutopostWorkbench() {
         `${apiBaseUrl}/autopost/schedules/${editingScheduleId}`,
         {
           method: "PUT",
-          headers: { Authorization: `Bearer ${token}` },
+          headers: buildHeaders(token),
           body: JSON.stringify({
             ...scheduleForm,
             scheduledFor:
@@ -609,7 +620,7 @@ export function AutopostWorkbench() {
         snapshot: AutopostSnapshot;
       }>(`${apiBaseUrl}/autopost/send-now`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: buildHeaders(token),
         body: JSON.stringify({
           ...scheduleForm,
           scheduledFor: null,
@@ -643,7 +654,7 @@ export function AutopostWorkbench() {
         snapshot: AutopostSnapshot;
       }>(`${apiBaseUrl}/autopost/schedules/${scheduleId}/toggle`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: buildHeaders(token),
       });
       setSnapshot(result.snapshot);
       setNotice(`Đã đổi trạng thái lịch sang ${result.status}.`);
@@ -668,7 +679,7 @@ export function AutopostWorkbench() {
         `${apiBaseUrl}/autopost/schedules/${scheduleId}`,
         {
           method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
+          headers: buildHeaders(token),
         },
       );
       setSnapshot(result.snapshot);

@@ -229,7 +229,13 @@ function formatJsonPayload(value: unknown) {
   }
 }
 
-export function ModerationWorkbench() {
+export function ModerationWorkbench({
+  workspaceId = null,
+  telegramBotId = null,
+}: {
+  workspaceId?: string | null;
+  telegramBotId?: string | null;
+}) {
   const [token, setToken] = useState<string | null>(null);
   const [events, setEvents] = useState<ModerationEvent[]>([]);
   const [config, setConfig] = useState<ModerationConfig | null>(null);
@@ -278,8 +284,16 @@ export function ModerationWorkbench() {
     setToken(window.localStorage.getItem(authStorageKey));
   }, []);
 
+  const buildHeaders = useCallback(
+    (currentToken: string) => ({
+      Authorization: `Bearer ${currentToken}`,
+      ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
+    }),
+    [workspaceId],
+  );
+
   const loadAll = useCallback(async (currentToken: string) => {
-    const headers = { Authorization: `Bearer ${currentToken}` };
+    const headers = buildHeaders(currentToken);
     const [eventsResponse, configResponse, debugResponse] = await Promise.all([
       fetchJson<ModerationEvent[]>(`${apiBaseUrl}/moderation/events`, { headers }),
       fetchJson<ModerationConfig>(`${apiBaseUrl}/moderation/config`, { headers }),
@@ -308,7 +322,7 @@ export function ModerationWorkbench() {
       (firstEvent?.manualDecision ?? firstEvent?.decision ?? "REVIEW") as SpamDecision,
     );
     setManualNote(firstEvent?.manualNote ?? "");
-  }, [selectedScopeKey]);
+  }, [buildHeaders, selectedScopeKey]);
 
   useEffect(() => {
     let active = true;
@@ -431,7 +445,7 @@ export function ModerationWorkbench() {
     try {
       await fetchJson(`${apiBaseUrl}/moderation/events/${selectedEvent.id}/action`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: buildHeaders(token),
         body: JSON.stringify({
           decision: manualDecision,
           note: manualNote,
@@ -462,7 +476,7 @@ export function ModerationWorkbench() {
     try {
       const result = await fetchJson<AnalyzeResponse>(`${apiBaseUrl}/moderation/analyze`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: buildHeaders(token),
         body: JSON.stringify({
           source: "manual",
           eventType: simulateForm.eventType,
@@ -500,7 +514,7 @@ export function ModerationWorkbench() {
         `${apiBaseUrl}/telegram/commands/execute`,
         {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
+          headers: buildHeaders(token),
           body: JSON.stringify(commandForm),
         },
       );
@@ -530,7 +544,7 @@ export function ModerationWorkbench() {
     try {
       await fetchJson(`${apiBaseUrl}/moderation/jobs/process-due`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: buildHeaders(token),
       });
       await refreshData();
       setNotice("Đã chạy xử lý các action đến hạn.");
@@ -614,7 +628,7 @@ export function ModerationWorkbench() {
         </div>
       ) : null}
 
-      <TelegramControlCenter embedded />
+      <TelegramControlCenter embedded workspaceId={workspaceId} />
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">

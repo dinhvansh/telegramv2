@@ -35,12 +35,15 @@ type UserItem = {
   permissionCount: number;
 };
 
+type WorkspaceCatalogItem = { id: string; name: string; slug: string; organizationId: string };
+
 type CreateUserForm = {
   name: string;
   email: string;
   username: string;
   password: string;
   department: string;
+  workspaceId: string;
   roleId: string;
   status: "ACTIVE" | "AWAY" | "DISABLED";
 };
@@ -110,6 +113,7 @@ export function RolesWorkbench({
   const [roles, setRoles] = useState<RoleItem[]>([]);
   const [permissionCatalog, setPermissionCatalog] = useState<PermissionItem[]>([]);
   const [users, setUsers] = useState<UserItem[]>([]);
+  const [workspaceCatalog, setWorkspaceCatalog] = useState<WorkspaceCatalogItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
@@ -129,6 +133,7 @@ export function RolesWorkbench({
     username: "new_user",
     password: "ChangeMe123!",
     department: "Vận hành",
+    workspaceId: "",
     roleId: "",
     status: "ACTIVE",
   });
@@ -143,10 +148,11 @@ export function RolesWorkbench({
     async function load(currentToken: string) {
       try {
         const headers = { Authorization: `Bearer ${currentToken}` };
-        const [rolesResponse, usersResponse, permissionResponse] = await Promise.all([
+        const [rolesResponse, usersResponse, permissionResponse, workspaceResponse] = await Promise.all([
           fetchJson<RoleItem[]>(`${apiBaseUrl}/roles`, { headers }),
           fetchJson<UserItem[]>(`${apiBaseUrl}/users`, { headers }),
           fetchJson<PermissionItem[]>(`${apiBaseUrl}/roles/catalog`, { headers }),
+          fetchJson<{ workspaces: WorkspaceCatalogItem[] }>(`${apiBaseUrl}/workspaces/catalog`, { headers }),
         ]);
 
         if (!active) {
@@ -156,9 +162,11 @@ export function RolesWorkbench({
         setRoles(rolesResponse);
         setUsers(usersResponse);
         setPermissionCatalog(permissionResponse);
+        setWorkspaceCatalog(workspaceResponse.workspaces);
         setForm((current) => ({
           ...current,
           roleId: current.roleId || rolesResponse[0]?.id || "",
+          workspaceId: current.workspaceId || workspaceResponse.workspaces[0]?.id || "",
         }));
         setError(null);
       } catch (loadError) {
@@ -197,21 +205,23 @@ export function RolesWorkbench({
     }
 
     const headers = { Authorization: `Bearer ${token}` };
-    const [rolesResponse, usersResponse, permissionResponse] = await Promise.all([
+    const [rolesResponse, usersResponse, permissionResponse, workspaceResponse] = await Promise.all([
       fetchJson<RoleItem[]>(`${apiBaseUrl}/roles`, { headers }),
       fetchJson<UserItem[]>(`${apiBaseUrl}/users`, { headers }),
       fetchJson<PermissionItem[]>(`${apiBaseUrl}/roles/catalog`, { headers }),
+      fetchJson<{ workspaces: WorkspaceCatalogItem[] }>(`${apiBaseUrl}/workspaces/catalog`, { headers }),
     ]);
 
     setRoles(rolesResponse);
     setUsers(usersResponse);
     setPermissionCatalog(permissionResponse);
+    setWorkspaceCatalog(workspaceResponse.workspaces);
   }
 
   async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!token || !form.roleId) {
+    if (!token || !form.roleId || !form.workspaceId) {
       return;
     }
 
@@ -546,6 +556,18 @@ export function RolesWorkbench({
                 className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
                 placeholder="Phòng ban"
               />
+              <select
+                value={form.workspaceId}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, workspaceId: event.target.value }))
+                }
+                className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
+              >
+                <option value="">Workspace</option>
+                {workspaceCatalog.map((ws) => (
+                  <option key={ws.id} value={ws.id}>{ws.name}</option>
+                ))}
+              </select>
               <select
                 value={form.roleId}
                 onChange={(event) =>

@@ -83,10 +83,14 @@ export function MembersWorkbench({
   embedded = false,
   isAssignedCampaignView = false,
   canEditMembers = true,
+  workspaceId = null,
+  telegramBotId = null,
 }: {
   embedded?: boolean;
   isAssignedCampaignView?: boolean;
   canEditMembers?: boolean;
+  workspaceId?: string | null;
+  telegramBotId?: string | null;
 }) {
   const searchParams = useSearchParams();
   const campaignId = searchParams.get("campaignId");
@@ -113,6 +117,13 @@ export function MembersWorkbench({
     setToken(window.localStorage.getItem(authStorageKey));
   }, []);
 
+  const scopedHeaders = token
+    ? {
+        Authorization: `Bearer ${token}`,
+        ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
+      }
+    : undefined;
+
   useEffect(() => {
     let active = true;
 
@@ -121,14 +132,14 @@ export function MembersWorkbench({
         const membersResponse = await fetchJson<MembersResponse>(
           `${apiBaseUrl}/moderation/members${campaignId ? `?campaignId=${campaignId}` : ""}`,
           {
-            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            headers: scopedHeaders,
           },
         );
         let usersResponse: UserItem[] = [];
         let hasOwnerAccess = false;
         try {
           usersResponse = await fetchJson<UserItem[]>(`${apiBaseUrl}/users`, {
-            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            headers: scopedHeaders,
           });
           hasOwnerAccess = true;
         } catch {
@@ -175,7 +186,7 @@ export function MembersWorkbench({
     return () => {
       active = false;
     };
-  }, [campaignId, token]);
+  }, [campaignId, token, workspaceId]);
 
   useEffect(() => {
     const initialCampaignFilter = campaignId ?? "all";
@@ -280,7 +291,7 @@ export function MembersWorkbench({
       const response = await fetchJson<MemberDetailResponse>(
         `${apiBaseUrl}/moderation/members/${memberId}`,
         {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${token}`, ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}) },
         },
       );
 
@@ -315,7 +326,7 @@ export function MembersWorkbench({
         `${apiBaseUrl}/moderation/members/${selectedMember.id}`,
         {
           method: "PUT",
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${token}`, ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}) },
           body: JSON.stringify({
             ownerName,
             note,
@@ -357,7 +368,7 @@ export function MembersWorkbench({
         `${apiBaseUrl}/moderation/members/${selectedMember.id}/reset-warning`,
         {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${token}`, ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}) },
         },
       );
 
@@ -735,7 +746,7 @@ export function MembersWorkbench({
               </div>
               ) : (
                 <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm text-[color:var(--on-surface-variant)]">
-                  Quyá»n hiá»‡n táº¡i chá»‰ cho xem. KhÃ´ng thá»ƒ sá»­a owner, ghi chÃº hoáº·c reset cáº£nh bÃ¡o.
+                                    Quyền hiện tại chỉ cho xem. Không thể sửa owner, ghi chú hoặc reset cảnh báo.
                 </div>
               )}
             </div>

@@ -87,7 +87,7 @@ export class TelegramActionsService {
       await this.processDueActionJobs();
     }
 
-    const config = await this.getResolvedConfig();
+    const config = await this.getResolvedConfig(input.chatId || undefined);
     const actionVariant = this.resolveActionVariant(input);
     if (
       input.decision === SpamDecision.ALLOW &&
@@ -409,18 +409,19 @@ export class TelegramActionsService {
     return result;
   }
 
-  async processDueActionJobs(limit = 20) {
+  async processDueActionJobs(limit = 20, workspaceId?: string) {
     if (!process.env.DATABASE_URL) {
       return { processed: 0, jobs: [] };
     }
 
-    const config = await this.getResolvedConfig();
-    if (!config.botToken) {
+    const workspaceJobWhere = await this.getWorkspaceJobWhere(workspaceId);
+    if (workspaceId && workspaceJobWhere === null) {
       return { processed: 0, jobs: [] };
     }
 
     const jobs = await (this.prisma as any).moderationActionJob.findMany({
       where: {
+        ...(workspaceJobWhere || {}),
         status: 'PENDING',
         expireAt: {
           lte: new Date(),
@@ -440,6 +441,25 @@ export class TelegramActionsService {
     }> = [];
 
     for (const job of jobs) {
+      const config = await this.getResolvedConfig(job.chatId || undefined);
+      if (!config.botToken) {
+        results.push({
+          id: String(job.id),
+          status: 'FAILED',
+          completedAt: new Date().toISOString(),
+          lastError: 'Missing Telegram bot token',
+        });
+        await (this.prisma as any).moderationActionJob.update({
+          where: { id: job.id },
+          data: {
+            status: 'FAILED',
+            completedAt: new Date(),
+            lastError: 'Missing Telegram bot token',
+          },
+        });
+        continue;
+      }
+
       const outcome = await this.executeScheduledJob(job, config.botToken);
       results.push(outcome);
     }
@@ -450,12 +470,18 @@ export class TelegramActionsService {
     };
   }
 
-  async listActionJobs(limit = 50) {
+  async listActionJobs(limit = 50, workspaceId?: string) {
     if (!process.env.DATABASE_URL) {
       return [];
     }
 
+    const workspaceJobWhere = await this.getWorkspaceJobWhere(workspaceId);
+    if (workspaceId && workspaceJobWhere === null) {
+      return [];
+    }
+
     const items = await (this.prisma as any).moderationActionJob.findMany({
+      where: workspaceJobWhere || undefined,
       orderBy: [{ status: 'asc' }, { expireAt: 'asc' }],
       take: Math.max(1, Math.min(200, limit)),
     });
@@ -1045,13 +1071,43 @@ export class TelegramActionsService {
     return `${totalSeconds} giây`;
   }
 
-  private async getResolvedConfig() {
+  private async getResolvedConfig(chatId?: string) {
     const envConfig = {
       botToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
     };
 
     if (!process.env.DATABASE_URL) {
       return envConfig;
+    }
+
+    if (chatId) {
+      const group = await this.prisma.telegramGroup.findUnique({
+        where: {
+          externalId: chatId,
+        },
+        include: {
+          telegramBot: true,
+        },
+      });
+
+      if (group?.telegramBot?.encryptedBotToken) {
+        return {
+          botToken: decryptSecretValue(group.telegramBot.encryptedBotToken),
+        };
+      }
+    }
+
+    const primaryBot = await this.prisma.telegramBot.findFirst({
+      where: {
+        isActive: true,
+      },
+      orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+    });
+
+    if (primaryBot?.encryptedBotToken) {
+      return {
+        botToken: decryptSecretValue(primaryBot.encryptedBotToken),
+      };
     }
 
     const setting = await this.prisma.systemSetting.findUnique({
@@ -1064,6 +1120,33 @@ export class TelegramActionsService {
       botToken: setting?.value
         ? decryptSecretValue(setting.value)
         : envConfig.botToken,
+    };
+  }
+
+  private async getWorkspaceJobWhere(workspaceId?: string) {
+    if (!workspaceId) {
+      return null;
+    }
+
+    const groups = await this.prisma.telegramGroup.findMany({
+      where: { workspaceId },
+      select: { title: true, externalId: true },
+    });
+
+    const chatIds = groups
+      .map((group) => group.externalId)
+      .filter((value): value is string => Boolean(value));
+    const titles = groups.map((group) => group.title);
+
+    if (!chatIds.length && !titles.length) {
+      return null;
+    }
+
+    return {
+      OR: [
+        chatIds.length ? { chatId: { in: chatIds } } : undefined,
+        titles.length ? { groupTitle: { in: titles } } : undefined,
+      ].filter(Boolean),
     };
   }
 

@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -9,6 +18,16 @@ type UpdateRoleBody = {
   permissions: string[];
 };
 
+type AuthenticatedRequest = Request & {
+  user: {
+    sub: string;
+    email: string;
+    roles: string[];
+    permissions: string[];
+    workspaceIds?: string[];
+  };
+};
+
 @Controller('roles')
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
@@ -16,21 +35,37 @@ export class RolesController {
   @Get()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
-  getRoles() {
-    return this.rolesService.findAll();
+  getRoles(@Req() request: AuthenticatedRequest) {
+    return this.rolesService.findAll({
+      userId: request.user.sub,
+      permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+    });
   }
 
   @Get('catalog')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
-  getPermissionCatalog() {
-    return this.rolesService.findPermissionCatalog();
+  getPermissionCatalog(@Req() request: AuthenticatedRequest) {
+    return this.rolesService.findPermissionCatalog({
+      userId: request.user.sub,
+      permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+    });
   }
 
   @Patch(':roleId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
-  updateRole(@Param('roleId') roleId: string, @Body() body: UpdateRoleBody) {
-    return this.rolesService.updateRolePermissions(roleId, body);
+  updateRole(
+    @Req() request: AuthenticatedRequest,
+    @Param('roleId') roleId: string,
+    @Body() body: UpdateRoleBody,
+  ) {
+    return this.rolesService.updateRolePermissions(roleId, body, {
+      userId: request.user.sub,
+      permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+    });
   }
 }

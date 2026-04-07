@@ -28,6 +28,7 @@ type ModerateInput = {
   aiMode?: 'off' | 'fallback_only' | 'suspicious_only';
   aiConfidenceThreshold?: number;
   aiOverrideAction?: boolean;
+  workspaceId?: string;
 };
 
 type AiModerationResult = {
@@ -110,7 +111,11 @@ export class ModerationEngineService {
     const effectiveAiSettings = await this.resolveEffectiveAiSettings(input);
 
     const effectivePolicy =
-      await this.moderationService.getResolvedPolicyForGroup(input.groupTitle);
+      await this.moderationService.getResolvedPolicyForGroup({
+        groupTitle: input.groupTitle,
+        groupExternalId: input.groupExternalId || null,
+        workspaceId: input.workspaceId,
+      });
     const activeKeywords = uniqueNormalizedValues([
       ...builtInBlacklistKeywords,
       ...effectivePolicy.customKeywords,
@@ -253,6 +258,7 @@ export class ModerationEngineService {
         actorExternalId,
         groupTitle: input.groupTitle,
         decision: baseDecision,
+        workspaceId: input.workspaceId,
       });
     matchedRules.push(...warningContext.matchedRules);
     const decision = warningContext.effectiveDecision;
@@ -345,12 +351,38 @@ export class ModerationEngineService {
     };
   }
 
-  async getEvents() {
+  async getEvents(workspaceId?: string) {
     if (!process.env.DATABASE_URL) {
       return [];
     }
 
+    let where: Record<string, unknown> | undefined;
+    if (workspaceId) {
+      const groups = await this.prisma.telegramGroup.findMany({
+        where: { workspaceId },
+        select: { title: true, externalId: true },
+      });
+      const groupTitles = groups.map((group) => group.title);
+      const groupExternalIds = groups
+        .map((group) => group.externalId)
+        .filter((value): value is string => Boolean(value));
+
+      if (!groupTitles.length && !groupExternalIds.length) {
+        return [];
+      }
+
+      where = {
+        OR: [
+          groupTitles.length ? { groupTitle: { in: groupTitles } } : undefined,
+          groupExternalIds.length
+            ? { groupExternalId: { in: groupExternalIds } }
+            : undefined,
+        ].filter(Boolean),
+      };
+    }
+
     const events = await this.prisma.spamEvent.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
