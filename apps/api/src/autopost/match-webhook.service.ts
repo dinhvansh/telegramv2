@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
 import {
   AutopostScheduleStatus,
   AutopostTargetPlatform,
 } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 import { SystemLogsService } from '../system-logs/system-logs.service';
 import { MatchAiService } from './match-ai.service';
 
@@ -28,6 +28,12 @@ export type MatchWebhookPayload = {
   data: MatchScheduleInput[];
 };
 
+type ActiveTelegramGroup = {
+  id: string;
+  title: string;
+  externalId: string;
+};
+
 @Injectable()
 export class MatchWebhookService {
   constructor(
@@ -39,32 +45,37 @@ export class MatchWebhookService {
   private buildMessage(match: MatchScheduleInput): string {
     const dateTime = `${match.start_date} ${match.start_time}`;
     const lines = [
-      `⚽ *${match.home_team}* vs *${match.away_team}*`,
-      ``,
-      `🏆 ${match.league_name}`,
-      `📅 ${dateTime}`,
-      match.commentator_name ? `🎙️ BLV: ${match.commentator_name}` : ``,
-      ``,
-      `👉 Xem ngay: https://ngoaihang.live/${match.slug}`,
-    ].filter((l) => l !== ``);
+      `*${match.home_team}* vs *${match.away_team}*`,
+      '',
+      `Giai dau: ${match.league_name}`,
+      `Thoi gian: ${dateTime}`,
+      match.commentator_name ? `BLV: ${match.commentator_name}` : '',
+      '',
+      `Xem ngay: https://ngoaihang.live/${match.slug}`,
+    ].filter(Boolean);
 
     return lines.join('\n');
   }
 
   private buildMediaUrl(match: MatchScheduleInput): string | null {
-    // Prefer away_team logo, fallback to home_team logo
     return match.away_logo || match.home_logo || null;
   }
 
-  private async getTelegramGroupIds(workspaceId?: string): Promise<string[]> {
-    const groups = await this.prisma.telegramGroup.findMany({
+  private async getActiveTelegramGroups(
+    workspaceId?: string,
+  ): Promise<ActiveTelegramGroup[]> {
+    return this.prisma.telegramGroup.findMany({
       where: {
         isActive: true,
         ...(workspaceId ? { workspaceId } : {}),
       },
-      select: { id: true },
+      select: {
+        id: true,
+        title: true,
+        externalId: true,
+      },
+      orderBy: { title: 'asc' },
     });
-    return groups.map((g) => g.id);
   }
 
   async createMatchSchedules(
@@ -79,14 +90,26 @@ export class MatchWebhookService {
     aiUsed: boolean;
   }> {
     const matches = payload.data || [];
-    const groupIds = await this.getTelegramGroupIds(workspaceId);
+    const groups = await this.getActiveTelegramGroups(workspaceId);
 
     if (matches.length === 0) {
-      return { total: 0, created: 0, skipped: 0, errors: ['No matches provided'], aiUsed: false };
+      return {
+        total: 0,
+        created: 0,
+        skipped: 0,
+        errors: ['No matches provided'],
+        aiUsed: false,
+      };
     }
 
-    if (groupIds.length === 0) {
-      return { total: matches.length, created: 0, skipped: 0, errors: ['No active telegram groups found'], aiUsed: false };
+    if (groups.length === 0) {
+      return {
+        total: matches.length,
+        created: 0,
+        skipped: 0,
+        errors: ['No active telegram groups found'],
+        aiUsed: false,
+      };
     }
 
     const results = {
@@ -102,13 +125,20 @@ export class MatchWebhookService {
         const dateStr = match.start_date;
         const timeStr = match.start_time;
         const scheduledFor = new Date(`${dateStr}T${timeStr}Z`);
-        if (isNaN(scheduledFor.getTime())) {
+        if (Number.isNaN(scheduledFor.getTime())) {
           throw new Error(`Invalid date: ${dateStr}T${timeStr}Z`);
         }
+
+        // Schedule the post 30 minutes before kickoff.
         scheduledFor.setMinutes(scheduledFor.getMinutes() - 30);
 
         const existing = await this.prisma.autopostSchedule.findFirst({
-          where: { title: { contains: match.match_id } },
+          where: {
+            title: { contains: match.match_id },
+            target: {
+              externalId: { in: groups.map((group) => group.externalId) },
+            },
+          },
         });
 
         if (existing) {
@@ -116,7 +146,6 @@ export class MatchWebhookService {
           continue;
         }
 
-        // Build message — use AI if requested
         let message: string;
         if (useAi) {
           const aiResult = await this.matchAiService.enhanceMatchPost({
@@ -142,20 +171,22 @@ export class MatchWebhookService {
 
         const mediaUrl = this.buildMediaUrl(match);
 
-        // Create one schedule per target group
-        for (const groupId of groupIds) {
+        for (const group of groups) {
           const target = await this.prisma.autopostTarget.upsert({
             where: {
               platform_externalId: {
                 platform: AutopostTargetPlatform.TELEGRAM,
-                externalId: `match-${match.match_id}-group-${groupId}`,
+                externalId: group.externalId,
               },
             },
-            update: {},
+            update: {
+              displayName: group.title,
+              status: 'CONNECTED',
+            },
             create: {
               platform: AutopostTargetPlatform.TELEGRAM,
-              externalId: `match-${match.match_id}-group-${groupId}`,
-              displayName: `${match.home_team} vs ${match.away_team}`,
+              externalId: group.externalId,
+              displayName: group.title,
               status: 'CONNECTED',
             },
           });
@@ -183,11 +214,11 @@ export class MatchWebhookService {
             match_id: match.match_id,
             league: match.league_name,
             scheduled_for: scheduledFor.toISOString(),
-            group_count: groupIds.length,
+            group_count: groups.length,
           },
         });
-      } catch (err) {
-        results.errors.push(`${match.match_id}: ${(err as Error).message}`);
+      } catch (error) {
+        results.errors.push(`${match.match_id}: ${(error as Error).message}`);
       }
     }
 

@@ -544,6 +544,201 @@ function BotsTab({
   );
 }
 
+// ─── Match Scheduler Tab ──────────────────────────────────────────────────────
+
+type MatchSchedulerResult = {
+  total: number;
+  created: number;
+  skipped: number;
+  errors: string[];
+  aiUsed: boolean;
+};
+
+function MatchSchedulerTab({
+  token,
+  catalog,
+}: {
+  token: string;
+  catalog: Catalog | null;
+}) {
+  const [workspaceId, setWorkspaceId] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [useAi, setUseAi] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [result, setResult] = useState<MatchSchedulerResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleTrigger() {
+    if (!workspaceId) return;
+    setIsSubmitting(true);
+    setError(null);
+    setResult(null);
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        "x-workspace-id": workspaceId,
+      };
+      if (useAi) headers["x-use-ai"] = "true";
+
+      const response = await fetch("/api/webhook/matches", {
+        method: "POST",
+        cache: "no-store",
+        headers,
+        body: JSON.stringify({
+          success: true,
+          from_date: fromDate || undefined,
+          to_date: toDate || undefined,
+          count: 0,
+          data: [],
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `HTTP ${response.status}`);
+      }
+
+      const data = (await response.json()) as MatchSchedulerResult;
+      setResult(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gọi webhook thất bại");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <section className="rounded-[24px] bg-[color:var(--surface-card)] p-6">
+        <div className="mb-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
+            N8n Automation
+          </p>
+          <h3 className="mt-1 text-xl font-black tracking-tight">Match Scheduler</h3>
+        </div>
+        <p className="mt-2 text-sm text-[color:var(--on-surface-variant)]">
+          Kích hoạt webhook nhận lịch thi đấu từ n8n. N8n gọi <code>POST /api/webhook/matches</code> với danh sách
+          trận đấu — mỗi trận sẽ được tạo thành một autopost schedule gửi 30 phút trước giờ thi đấu.
+        </p>
+
+        <div className="mt-6 space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-[color:var(--on-surface-variant)]">
+                Workspace
+              </label>
+              <select
+                value={workspaceId}
+                onChange={(e) => setWorkspaceId(e.target.value)}
+                className="w-full rounded-[14px] bg-[color:var(--surface-low)] px-4 py-3 text-sm outline-none"
+                required
+              >
+                <option value="">-- Chọn workspace --</option>
+                {catalog?.workspaces.map((w) => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <label className="mb-1 block text-xs font-semibold text-[color:var(--on-surface-variant)]">
+                  Từ ngày (tùy chọn)
+                </label>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="w-full rounded-[14px] bg-[color:var(--surface-low)] px-4 py-3 text-sm outline-none"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="mb-1 block text-xs font-semibold text-[color:var(--on-surface-variant)]">
+                  Đến ngày (tùy chọn)
+                </label>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="w-full rounded-[14px] bg-[color:var(--surface-low)] px-4 py-3 text-sm outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between rounded-[14px] bg-[color:var(--surface-low)] px-4 py-3">
+            <div>
+              <p className="text-sm font-semibold text-[color:var(--on-surface)]">Dùng AI viết caption</p>
+              <p className="text-xs text-[color:var(--on-surface-variant)]">
+                Bật header <code>x-use-ai: true</code> — AI sẽ viết caption tiếng Việt hấp dẫn cho mỗi trận đấu.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setUseAi(!useAi)}
+              className={`shrink-0 rounded-[12px] px-4 py-2 text-sm font-bold transition-all ${
+                useAi
+                  ? "bg-[color:var(--primary)] text-white"
+                  : "bg-[color:var(--surface-card)] text-[color:var(--on-surface-variant)]"
+              }`}
+            >
+              {useAi ? "Bật" : "Tắt"}
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void handleTrigger()}
+            disabled={isSubmitting || !workspaceId}
+            className="rounded-[14px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-6 py-3 text-sm font-bold text-white disabled:opacity-50"
+          >
+            {isSubmitting ? "Đang gọi webhook..." : "Kích hoạt Match Webhook"}
+          </button>
+        </div>
+      </section>
+
+      {error && (
+        <div className="rounded-[16px] bg-[color:var(--danger-soft)] px-4 py-3 text-sm font-semibold text-[color:var(--danger)]">
+          Lỗi: {error}
+        </div>
+      )}
+
+      {result && (
+        <section className="rounded-[24px] bg-[color:var(--surface-card)] p-6">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
+            Kết quả
+          </p>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-[16px] bg-[color:var(--success-soft)] p-4 text-center">
+              <p className="text-3xl font-black text-[color:var(--success)]">{result.created}</p>
+              <p className="mt-1 text-xs font-semibold text-[color:var(--success)]">Đã tạo</p>
+            </div>
+            <div className="rounded-[16px] bg-[color:var(--surface-low)] p-4 text-center">
+              <p className="text-3xl font-black text-[color:var(--on-surface)]">{result.skipped}</p>
+              <p className="mt-1 text-xs font-semibold text-[color:var(--on-surface-variant)]">Bỏ qua (trùng)</p>
+            </div>
+            <div className="rounded-[16px] bg-[color:var(--primary-soft)] p-4 text-center">
+              <p className={`text-3xl font-black ${result.aiUsed ? "text-[color:var(--primary)]" : "text-[color:var(--on-surface)]"}`}>
+                {result.aiUsed ? "AI ✓" : "Normal"}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-[color:var(--on-surface-variant)]">Chế độ</p>
+            </div>
+          </div>
+          {result.errors.length > 0 && (
+            <div className="mt-4 rounded-[14px] bg-[color:var(--danger-soft)] px-4 py-3 text-sm text-[color:var(--danger)]">
+              <p className="font-semibold">Lỗi:</p>
+              <ul className="mt-1 list-inside list-disc space-y-1">
+                {result.errors.map((e, i) => <li key={i}>{e}</li>)}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
+
 // ─── Memberships Tab ──────────────────────────────────────────────────────────
 
 function MembershipsTab({
@@ -708,7 +903,7 @@ function MembershipsTab({
 
 // ─── Main Workbench ───────────────────────────────────────────────────────────
 
-type ActiveTab = "organizations" | "workspaces" | "bots" | "memberships";
+type ActiveTab = "organizations" | "workspaces" | "bots" | "memberships" | "matches";
 
 export function WorkspacesWorkbench() {
   const [token, setToken] = useState<string | null>(null);
@@ -751,6 +946,7 @@ export function WorkspacesWorkbench() {
     { key: "workspaces", label: "Workspaces" },
     { key: "bots", label: "Bots" },
     { key: "memberships", label: "Memberships" },
+    { key: "matches", label: "Match Scheduler" },
   ];
 
   return (
@@ -762,7 +958,7 @@ export function WorkspacesWorkbench() {
           </p>
           <h3 className="mt-1 text-2xl font-black tracking-tight">Quản lý Workspaces</h3>
           <p className="mt-2 text-sm text-[color:var(--on-surface-variant)]">
-            Quản lý Organization, Workspace, Bot và phân quyền truy cập.
+            Quản lý Organization, Workspace, Bot, phân quyền và lịch thi đấu.
           </p>
         </div>
         <button
@@ -828,6 +1024,9 @@ export function WorkspacesWorkbench() {
               catalog={catalog}
               onCreated={() => loadData(token)}
             />
+          )}
+          {activeTab === "matches" && token && (
+            <MatchSchedulerTab token={token} catalog={catalog} />
           )}
         </>
       )}

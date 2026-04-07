@@ -78,6 +78,15 @@ export default function WorkspacesPage() {
 
   return (
     <div className="min-h-screen bg-[color:var(--surface)] px-5 py-8 lg:px-10 lg:py-10">
+      <a
+        href="/dashboard"
+        className="mb-6 inline-flex items-center gap-2 rounded-full bg-[color:var(--surface-card)] px-4 py-2 text-sm font-semibold text-[color:var(--on-surface)] shadow-[0_4px_16px_rgba(42,52,57,0.04)] transition-all hover:bg-white/80"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4">
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
+        Quay lại Dashboard
+      </a>
       <WorkspacesWorkbench />
     </div>
   );
