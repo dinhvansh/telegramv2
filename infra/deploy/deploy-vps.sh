@@ -50,12 +50,13 @@ if [[ -d "$APP_DIR/.git" ]]; then
 fi
 
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d postgres redis
+docker compose --env-file .env.production -f docker-compose.prod.yml build api web
 
 if [[ "$should_push_prisma_schema" == true ]]; then
   docker compose --env-file .env.production -f docker-compose.prod.yml run --rm --no-deps api npx prisma db push
 fi
 
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build api web
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d api web
 
 for _ in $(seq 1 30); do
   if curl -fsS http://127.0.0.1:4000/api/health >/dev/null; then
