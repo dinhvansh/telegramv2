@@ -5,6 +5,7 @@ import {
   AutopostTargetPlatform,
 } from '@prisma/client';
 import { SystemLogsService } from '../system-logs/system-logs.service';
+import { MatchAiService } from './match-ai.service';
 
 export type MatchScheduleInput = {
   match_id: string;
@@ -32,6 +33,7 @@ export class MatchWebhookService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly systemLogsService: SystemLogsService,
+    private readonly matchAiService: MatchAiService,
   ) {}
 
   private buildMessage(match: MatchScheduleInput): string {
@@ -65,21 +67,26 @@ export class MatchWebhookService {
     return groups.map((g) => g.id);
   }
 
-  async createMatchSchedules(payload: MatchWebhookPayload, workspaceId?: string): Promise<{
+  async createMatchSchedules(
+    payload: MatchWebhookPayload,
+    workspaceId?: string,
+    useAi?: boolean,
+  ): Promise<{
     total: number;
     created: number;
     skipped: number;
     errors: string[];
+    aiUsed: boolean;
   }> {
     const matches = payload.data || [];
     const groupIds = await this.getTelegramGroupIds(workspaceId);
 
     if (matches.length === 0) {
-      return { total: 0, created: 0, skipped: 0, errors: ['No matches provided'] };
+      return { total: 0, created: 0, skipped: 0, errors: ['No matches provided'], aiUsed: false };
     }
 
     if (groupIds.length === 0) {
-      return { total: matches.length, created: 0, skipped: 0, errors: ['No active telegram groups found'] };
+      return { total: matches.length, created: 0, skipped: 0, errors: ['No active telegram groups found'], aiUsed: false };
     }
 
     const results = {
@@ -87,22 +94,18 @@ export class MatchWebhookService {
       created: 0,
       skipped: 0,
       errors: [] as string[],
+      aiUsed: false,
     };
 
     for (const match of matches) {
       try {
-        // Parse scheduled time — assume Vietnam timezone (UTC+7)
-        const dateStr = match.start_date; // e.g. "2026-03-30"
-        const timeStr = match.start_time; // e.g. "19:00:00"
+        const dateStr = match.start_date;
+        const timeStr = match.start_time;
         const scheduledFor = new Date(`${dateStr}T${timeStr}:00.000Z`);
-        // Subtract 30 minutes for advance posting
         scheduledFor.setMinutes(scheduledFor.getMinutes() - 30);
 
-        // Check if schedule already exists for this match_id
         const existing = await this.prisma.autopostSchedule.findFirst({
-          where: {
-            title: { contains: match.match_id },
-          },
+          where: { title: { contains: match.match_id } },
         });
 
         if (existing) {
@@ -110,7 +113,30 @@ export class MatchWebhookService {
           continue;
         }
 
-        const message = this.buildMessage(match);
+        // Build message — use AI if requested
+        let message: string;
+        if (useAi) {
+          const aiResult = await this.matchAiService.enhanceMatchPost({
+            home_team: match.home_team,
+            away_team: match.away_team,
+            league_name: match.league_name,
+            start_date: match.start_date,
+            start_time: match.start_time,
+            commentator_name: match.commentator_name,
+            home_logo: match.home_logo,
+            away_logo: match.away_logo,
+          });
+
+          if (aiResult.success && aiResult.content) {
+            message = aiResult.content;
+            results.aiUsed = true;
+          } else {
+            message = this.buildMessage(match);
+          }
+        } else {
+          message = this.buildMessage(match);
+        }
+
         const mediaUrl = this.buildMediaUrl(match);
 
         // Create one schedule per target group
