@@ -104,7 +104,7 @@ Yeu cau:
         provider: 'anthropic-compatible',
         model: aiConfig.model,
       };
-    } catch (err) {
+    } catch {
       return {
         success: false,
         content: '',
