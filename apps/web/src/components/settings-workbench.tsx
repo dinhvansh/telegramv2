@@ -87,6 +87,8 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<{ kind: string; id: string; name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  void telegramBotId;
+  void isDeleting;
 
   // Edit forms
   const [editOrgId, setEditOrgId] = useState<string | null>(null);

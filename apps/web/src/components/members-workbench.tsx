@@ -117,12 +117,17 @@ export function MembersWorkbench({
     setToken(window.localStorage.getItem(authStorageKey));
   }, []);
 
-  const scopedHeaders = token
-    ? {
-        Authorization: `Bearer ${token}`,
-        ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
-      }
-    : undefined;
+  const scopedHeaders = useMemo(
+    () =>
+      token
+        ? {
+            Authorization: `Bearer ${token}`,
+            ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
+            ...(telegramBotId ? { "X-Telegram-Bot-Id": telegramBotId } : {}),
+          }
+        : undefined,
+    [telegramBotId, token, workspaceId],
+  );
 
   useEffect(() => {
     let active = true;
@@ -186,7 +191,7 @@ export function MembersWorkbench({
     return () => {
       active = false;
     };
-  }, [campaignId, token, workspaceId]);
+  }, [campaignId, scopedHeaders, token]);
 
   useEffect(() => {
     const initialCampaignFilter = campaignId ?? "all";

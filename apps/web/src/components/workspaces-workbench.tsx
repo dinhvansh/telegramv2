@@ -122,13 +122,11 @@ function EmptyState({ message }: { message: string }) {
 function OrganizationTab({
   token,
   overview,
-  catalog,
   onCreated,
   onDeleted,
 }: {
   token: string;
   overview: Overview | null;
-  catalog: Catalog | null;
   onCreated: () => void;
   onDeleted: () => void;
 }) {
@@ -802,7 +800,6 @@ export function WorkspacesWorkbench() {
             <OrganizationTab
               token={token}
               overview={overview}
-              catalog={catalog}
               onCreated={() => loadData(token)}
               onDeleted={() => loadData(token)}
             />

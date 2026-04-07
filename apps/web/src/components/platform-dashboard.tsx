@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { fallbackPlatformSnapshot, PlatformSnapshot } from "@/lib/platform-data";
 
@@ -165,10 +165,11 @@ export function PlatformDashboard({
     user?.permissions.includes("settings.manage") ||
     false;
 
-  const buildScopedHeaders = (currentToken: string) => ({
+  const buildScopedHeaders = useCallback((currentToken: string) => ({
     Authorization: `Bearer ${currentToken}`,
     ...(selectedWorkspaceId ? { "X-Workspace-Id": selectedWorkspaceId } : {}),
-  });
+    ...(selectedBotId ? { "X-Telegram-Bot-Id": selectedBotId } : {}),
+  }), [selectedBotId, selectedWorkspaceId]);
 
   useEffect(() => {
     const savedToken = window.localStorage.getItem(authStorageKey);
@@ -299,7 +300,7 @@ export function PlatformDashboard({
     return () => {
       active = false;
     };
-  }, [selectedWorkspaceId, token]);
+  }, [buildScopedHeaders, selectedWorkspaceId, token]);
 
   useEffect(() => {
     let isMounted = true;
@@ -340,7 +341,7 @@ export function PlatformDashboard({
     return () => {
       isMounted = false;
     };
-  }, [token]);
+  }, [buildScopedHeaders, token]);
 
   useEffect(() => {
     let isMounted = true;
@@ -376,7 +377,7 @@ export function PlatformDashboard({
     return () => {
       isMounted = false;
     };
-  }, [canCreateCampaign, token]);
+  }, [buildScopedHeaders, canCreateCampaign, token]);
 
   useEffect(() => {
     let isMounted = true;
@@ -423,7 +424,7 @@ export function PlatformDashboard({
     return () => {
       isMounted = false;
     };
-  }, [selectedWorkspaceId, token]);
+  }, [buildScopedHeaders, selectedWorkspaceId, token]);
 
   async function reloadSnapshot() {
     if (!token) {

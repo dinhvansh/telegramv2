@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import Image from "next/image";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
@@ -266,10 +266,11 @@ export function AutopostWorkbench({
     setToken(window.localStorage.getItem(authStorageKey));
   }, []);
 
-  const buildHeaders = (currentToken: string) => ({
+  const buildHeaders = useCallback((currentToken: string) => ({
     Authorization: `Bearer ${currentToken}`,
     ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
-  });
+    ...(telegramBotId ? { "X-Telegram-Bot-Id": telegramBotId } : {}),
+  }), [telegramBotId, workspaceId]);
 
   useEffect(() => {
     let active = true;
@@ -315,7 +316,7 @@ export function AutopostWorkbench({
     return () => {
       active = false;
     };
-  }, [token, workspaceId]);
+  }, [buildHeaders, token]);
 
   const selectedGroupCount = useMemo(() => {
     if (!snapshot) {

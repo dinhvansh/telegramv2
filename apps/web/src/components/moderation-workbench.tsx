@@ -236,6 +236,7 @@ export function ModerationWorkbench({
   workspaceId?: string | null;
   telegramBotId?: string | null;
 }) {
+  void telegramBotId;
   const [token, setToken] = useState<string | null>(null);
   const [events, setEvents] = useState<ModerationEvent[]>([]);
   const [config, setConfig] = useState<ModerationConfig | null>(null);

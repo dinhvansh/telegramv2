@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
@@ -115,12 +115,17 @@ export function CampaignsWorkbench({
     setToken(window.localStorage.getItem(authStorageKey));
   }, []);
 
-  const scopedHeaders = token
-    ? {
-        Authorization: `Bearer ${token}`,
-        ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
-      }
-    : undefined;
+  const scopedHeaders = useMemo(
+    () =>
+      token
+        ? {
+            Authorization: `Bearer ${token}`,
+            ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
+            ...(telegramBotId ? { "X-Telegram-Bot-Id": telegramBotId } : {}),
+          }
+        : undefined,
+    [telegramBotId, token, workspaceId],
+  );
 
   useEffect(() => {
     let active = true;
@@ -130,10 +135,7 @@ export function CampaignsWorkbench({
         const data = await fetchJson<CampaignAssigneeOption[]>(
           `${apiBaseUrl}/campaigns/assignees`,
           {
-            headers: {
-              Authorization: `Bearer ${currentToken}`,
-              ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
-            },
+            headers: scopedHeaders ?? { Authorization: `Bearer ${currentToken}` },
           },
         );
 
@@ -157,14 +159,14 @@ export function CampaignsWorkbench({
     return () => {
       active = false;
     };
-  }, [token, workspaceId]);
+  }, [scopedHeaders, token]);
 
-  async function reloadCampaigns() {
+  const reloadCampaigns = useCallback(async () => {
     const data = await fetchJson<CampaignItem[]>(`${apiBaseUrl}/campaigns`, {
       headers: scopedHeaders,
     });
     setCampaigns(data);
-  }
+  }, [scopedHeaders]);
 
   async function handleUpdateCampaign() {
     if (!editingCampaign || !token) {
@@ -327,7 +329,7 @@ export function CampaignsWorkbench({
     return () => {
       active = false;
     };
-  }, [token, workspaceId]);
+  }, [scopedHeaders, token]);
 
   useEffect(() => {
     function handleRefresh() {
@@ -339,7 +341,7 @@ export function CampaignsWorkbench({
     return () => {
       window.removeEventListener("campaigns:refresh", handleRefresh);
     };
-  }, []);
+  }, [reloadCampaigns]);
 
   const summary = campaigns.reduce(
     (accumulator, campaign) => ({

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
@@ -191,28 +191,33 @@ export function Member360Workbench({
     setToken(window.localStorage.getItem(authStorageKey));
   }, []);
 
-  const scopedHeaders = token
-    ? {
-        Authorization: `Bearer ${token}`,
-        ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
-      }
-    : undefined;
+  const scopedHeaders = useMemo(
+    () =>
+      token
+        ? {
+            Authorization: `Bearer ${token}`,
+            ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
+            ...(telegramBotId ? { "X-Telegram-Bot-Id": telegramBotId } : {}),
+          }
+        : undefined,
+    [telegramBotId, token, workspaceId],
+  );
 
-  async function loadSummary(currentToken: string) {
+  const loadSummary = useCallback(async (currentToken: string) => {
     const response = await fetchJson<{ items: SummaryItem[] }>(`${apiBaseUrl}/moderation/member360`, {
-      headers: { Authorization: `Bearer ${currentToken}`, ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}) },
+      headers: scopedHeaders ?? { Authorization: `Bearer ${currentToken}` },
     });
     setItems(response.items);
     setSelectedExternalId((current) => current || response.items[0]?.externalId || null);
-  }
+  }, [scopedHeaders]);
 
-  async function loadProfile(currentToken: string, externalId: string) {
+  const loadProfile = useCallback(async (currentToken: string, externalId: string) => {
     const response = await fetchJson<ProfileResponse>(
       `${apiBaseUrl}/moderation/member360/${encodeURIComponent(externalId)}`,
-      { headers: { Authorization: `Bearer ${currentToken}` } },
+      { headers: scopedHeaders ?? { Authorization: `Bearer ${currentToken}` } },
     );
     setSelectedProfile(response.profile);
-  }
+  }, [scopedHeaders]);
 
   useEffect(() => {
     let active = true;
@@ -235,7 +240,7 @@ export function Member360Workbench({
     return () => {
       active = false;
     };
-  }, [token, workspaceId]);
+  }, [loadSummary, token]);
 
   useEffect(() => {
     let active = true;
@@ -258,7 +263,7 @@ export function Member360Workbench({
     return () => {
       active = false;
     };
-  }, [selectedExternalId, token]);
+  }, [loadProfile, selectedExternalId, token]);
 
   useEffect(() => {
     const primary = getPrimaryMember(selectedProfile);

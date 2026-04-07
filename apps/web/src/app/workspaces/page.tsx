@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { WorkspacesWorkbench } from "@/components/workspaces-workbench";
 
-const workspaceStorageKey = "telegram-ops-workspace-id";
 const authStorageKey = "telegram-ops-access-token";
 
 type SessionUser = {
@@ -42,7 +41,6 @@ async function fetchJson<T>(url: string, token: string, init?: RequestInit): Pro
 
 export default function WorkspacesPage() {
   const [user, setUser] = useState<SessionUser | null>(null);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -51,10 +49,6 @@ export default function WorkspacesPage() {
 
     fetchJson<SessionUser>("/api/auth/me", token).then((data) => {
       setUser(data);
-      // Restore selected workspace from localStorage
-      const stored = window.localStorage.getItem(workspaceStorageKey);
-      if (stored) setSelectedWorkspaceId(stored);
-      else if (data.defaultWorkspaceId) setSelectedWorkspaceId(data.defaultWorkspaceId);
       setIsLoading(false);
     }).catch(() => {
       setIsLoading(false);

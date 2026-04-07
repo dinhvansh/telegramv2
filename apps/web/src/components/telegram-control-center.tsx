@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
@@ -144,12 +144,13 @@ export function TelegramControlCenter({
     setToken(savedToken);
   }, []);
 
-  const buildHeaders = (currentToken: string) => ({
+  const buildHeaders = useCallback((currentToken: string) => ({
     Authorization: `Bearer ${currentToken}`,
     ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
-  });
+    ...(telegramBotId ? { "X-Telegram-Bot-Id": telegramBotId } : {}),
+  }), [telegramBotId, workspaceId]);
 
-  async function refreshData(currentToken: string) {
+  const refreshData = useCallback(async (currentToken: string) => {
     const [telegramStatus, telegramGroups] = await Promise.all([
       fetchJson<TelegramStatus>(`${apiBaseUrl}/telegram/status`, {
         headers: buildHeaders(currentToken),
@@ -168,7 +169,7 @@ export function TelegramControlCenter({
         ? telegramStatus.webhookUrl.replace(/\/api\/telegram\/webhook$/, "")
         : current.publicBaseUrl,
     }));
-  }
+  }, [buildHeaders]);
 
   useEffect(() => {
     let isMounted = true;
@@ -216,7 +217,7 @@ export function TelegramControlCenter({
     return () => {
       isMounted = false;
     };
-  }, [token, workspaceId]);
+  }, [buildHeaders, refreshData, token]);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
