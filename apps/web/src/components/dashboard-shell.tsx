@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { ContactsWorkbench } from "@/components/contacts-workbench";
 import { AutopostWorkbench } from "@/components/autopost-workbench";
 import { CampaignsWorkbench } from "@/components/campaigns-workbench";
 import { Member360Workbench } from "@/components/member360-workbench";
@@ -282,6 +283,17 @@ export function DashboardShell({
         <>
           <path d="M12 3 4 7v5c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V7z" />
           <path d="m9.5 12 1.5 1.5 3.5-3.5" />
+        </>
+      ),
+    },
+    {
+      key: "contacts",
+      href: "/contacts",
+      label: "Contacts",
+      description: "Import contacts and resolve Telegram IDs.",
+      icon: (
+        <>
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
         </>
       ),
     },
@@ -783,6 +795,7 @@ export function DashboardShell({
             <SettingsWorkbench telegramBotId={selectedBotId} />
           ) : null}
           {page === "workspaces" ? <WorkspacesWorkbench /> : null}
+          {page === "contacts" ? <ContactsWorkbench /> : null}
         </div>
       </main>
     </div>

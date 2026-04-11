@@ -425,6 +425,14 @@ export class WorkspaceBootstrapService implements OnApplicationBootstrap {
           description: 'Manage autopost schedules and logs',
         },
       }),
+      this.prisma.permission.upsert({
+        where: { code: 'contacts.manage' },
+        update: { description: 'Import contacts and resolve Telegram user IDs' },
+        create: {
+          code: 'contacts.manage',
+          description: 'Import contacts and resolve Telegram user IDs',
+        },
+      }),
     ]);
 
     const superAdminRole = await this.prisma.role.upsert({

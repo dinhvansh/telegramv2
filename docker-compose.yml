@@ -45,6 +45,8 @@ services:
       AI_DEFAULT_MODEL: ${AI_DEFAULT_MODEL:-nexus-guard-mini}
       AI_DEFAULT_API_TOKEN: ${AI_DEFAULT_API_TOKEN:-}
       AI_DEFAULT_PROMPT: ${AI_DEFAULT_PROMPT:-Ban la AI moderation assistant. Tra ve JSON ngan gon voi risk_score va action_goi_y.}
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID:-}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH:-}
     depends_on:
       postgres:
         condition: service_healthy

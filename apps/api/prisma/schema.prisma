@@ -398,6 +398,15 @@ model GroupMembershipSession {
   @@unique([communityMemberId, sessionNo])
 }
 
+model TelegramSession {
+  id          String   @id @default(cuid())
+  phoneNumber String   @unique
+  sessionData String
+  userId      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model MetricCard {
   id        String    @id @default(cuid())
   label     String    @unique

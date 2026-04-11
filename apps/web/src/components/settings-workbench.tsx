@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
@@ -89,6 +89,16 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
   const [isDeleting, setIsDeleting] = useState(false);
   void telegramBotId;
   void isDeleting;
+
+  // Telegram QR Login state
+  const [tgAuthStatus, setTgAuthStatus] = useState<{ authenticated: boolean } | null>(null);
+  const [qrToken, setQrToken] = useState<string | null>(null);
+  const [qrExpires, setQrExpires] = useState(0);
+  const [qrReady, setQrReady] = useState(false);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrError, setQrError] = useState<string | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Edit forms
   const [editOrgId, setEditOrgId] = useState<string | null>(null);
@@ -223,7 +233,80 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
     finally { setIsDeleting(false); setDeleteTarget(null); }
   }
 
-  if (isLoading) return <div className="flex h-48 items-center justify-center"><p className="text-sm font-semibold text-[color:var(--on-surface-variant)]">Đang tải...</p></div>;
+  // Check Telegram auth status on mount
+  useEffect(() => {
+    checkTgAuthStatus();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
+  async function checkTgAuthStatus() {
+    if (!headers) { setTgAuthStatus({ authenticated: false }); return; }
+    try {
+      const res = await fetch(`${apiBaseUrl}/contacts/auth/status`, { headers });
+      if (res.ok) setTgAuthStatus(await res.json() as { authenticated: boolean });
+      else setTgAuthStatus({ authenticated: false });
+    } catch { setTgAuthStatus({ authenticated: false }); }
+  }
+
+  async function startQrLogin() {
+    setQrLoading(true); setQrError(null); setQrToken(null); setQrReady(false);
+    try {
+      const res = await fetch(`${apiBaseUrl}/contacts/auth/qr/start`, { method: "POST", headers });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || `HTTP ${res.status}`);
+      const data = await res.json() as { token: string; expiresIn: number };
+      setQrToken(data.token);
+      setQrExpires(data.expiresIn);
+      startPolling();
+    } catch (e) { setQrError(e instanceof Error ? e.message : "Tạo QR thất bại"); }
+    finally { setQrLoading(false); }
+  }
+
+  function startPolling() {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`${apiBaseUrl}/contacts/auth/qr/poll`, { headers });
+        if (!res.ok) { clearInterval(pollRef.current!); return; }
+        const data = await res.json() as { ready: boolean; token?: string; expiresIn?: number };
+        setQrToken(data.token || null);
+        setQrExpires(data.expiresIn || 0);
+        if (data.ready) {
+          setQrReady(true);
+          clearInterval(pollRef.current!);
+          await confirmQrLogin();
+        }
+      } catch { clearInterval(pollRef.current!); }
+    }, 3000);
+  }
+
+  async function confirmQrLogin() {
+    try {
+      const res = await fetch(`${apiBaseUrl}/contacts/auth/qr/confirm`, { headers });
+      if (res.ok) setTgAuthStatus({ authenticated: true });
+    } catch { /* ignore */ }
+  }
+
+  async function handleTgLogout() {
+    if (pollRef.current) clearInterval(pollRef.current);
+    setTgAuthStatus({ authenticated: false });
+    setQrToken(null);
+    setQrReady(false);
+  }
+
+  async function handleImportContacts(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fileInput = e.currentTarget.elements.namedItem("contactsFile") as HTMLInputElement;
+    if (!fileInput.files?.[0]) return;
+    const contacts = JSON.parse(await fileInput.files[0].text());
+    if (!Array.isArray(contacts)) { setError("JSON phải là array."); return; }
+    setNotice("Đang import... vui lòng chờ.");
+    try {
+      const res = await fetch(`${apiBaseUrl}/contacts/import`, { method: "POST", headers, body: JSON.stringify(contacts) });
+      const data = await res.json() as { total: number; resolved: number; failed: number; error?: string };
+      if (data.error) throw new Error(data.error);
+      setNotice(`Xong! ${data.resolved}/${data.total} đã resolve.`);
+    } catch (e) { setError(e instanceof Error ? e.message : "Import thất bại."); }
+  }
   if (!token) return <div className="flex h-48 items-center justify-center"><p className="text-sm font-semibold text-[color:var(--warning)]">Cần đăng nhập.</p></div>;
 
   return (
@@ -312,6 +395,118 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
             </div>
           </div>
         </div>
+      </section>
+
+      {/* ===== TELEGRAM QR LOGIN ===== */}
+      <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">Telegram Userbot</p>
+            <h3 className="mt-1 text-xl font-black tracking-tight">Kết nối tài khoản Telegram</h3>
+          </div>
+          <div>
+            {tgAuthStatus?.authenticated ? (
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-[color:var(--success)]" />
+                <span className="text-sm font-semibold text-[color:var(--success)]">Đã kết nối</span>
+                <button type="button" onClick={() => handleTgLogout()} className="rounded-[14px] bg-[color:var(--danger-soft)] px-4 py-2 text-xs font-semibold text-[color:var(--danger)]">Ngắt kết nối</button>
+              </div>
+            ) : (
+              <span className="text-sm font-semibold text-[color:var(--on-surface-variant)]">Chưa kết nối</span>
+            )}
+          </div>
+        </div>
+
+        <p className="mt-2 text-sm text-[color:var(--on-surface-variant)]">
+          Quét QR để đăng nhập bằng tài khoản Telegram của bạn. Dùng để resolve user ID từ số điện thoại.
+        </p>
+
+        {qrError && (
+          <div className="mt-4 rounded-[16px] bg-[color:var(--danger-soft)] px-4 py-3 text-sm font-semibold text-[color:var(--danger)]">{qrError}</div>
+        )}
+
+        <div className="mt-6">
+          {!tgAuthStatus ? (
+            <p className="text-sm text-[color:var(--on-surface-variant)]">Đang kiểm tra...</p>
+          ) : tgAuthStatus.authenticated ? (
+            <div className="flex items-center gap-3 rounded-[16px] bg-white px-5 py-4">
+              <span className="h-10 w-10 rounded-full bg-[color:var(--success-soft)] flex items-center justify-center text-lg">✓</span>
+              <div>
+                <p className="text-sm font-bold">Đã kết nối Telegram</p>
+                <p className="text-xs text-[color:var(--on-surface-variant)]">Có thể resolve user ID từ số điện thoại</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-8">
+              <div className="flex flex-col items-center gap-4">
+                {!qrToken ? (
+                  <button type="button" onClick={() => void startQrLogin()} disabled={qrLoading}
+                    className="rounded-[16px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-6 py-3 text-sm font-bold text-white disabled:opacity-50">
+                    {qrLoading ? "Đang tạo QR..." : "Tạo QR Code"}
+                  </button>
+                ) : (
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="rounded-xl bg-white p-4">
+                      <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent("tg://login?token=" + qrToken)}`}
+                        alt="Telegram QR" width={200} height={200} />
+                    </div>
+                    <p className="text-sm text-[color:var(--on-surface-variant)]">Quét bằng app Telegram</p>
+                    <p className="text-xs font-mono text-[color:var(--on-surface-variant)]">Hết hạn trong {qrExpires}s</p>
+                    {qrReady && <p className="text-sm font-bold text-[color:var(--success)]">Đã quét! Đang xác nhận...</p>}
+                    <button type="button" onClick={() => { if (pollRef.current) clearInterval(pollRef.current); setQrToken(null); }}
+                      className="text-xs text-[color:var(--on-surface-variant)] hover:text-white">Tạo lại QR</button>
+                  </div>
+                )}
+              </div>
+              <div className="rounded-[16px] bg-white px-5 py-4">
+                <p className="text-sm font-bold">Cần API credentials</p>
+                <p className="mt-1 text-xs text-[color:var(--on-surface-variant)]">Thêm TELEGRAM_API_ID và TELEGRAM_API_HASH vào .env rồi restart server.</p>
+                <p className="mt-2 text-xs text-[color:var(--on-surface-variant)]">Lấy tại <a href="https://my.telegram.org" target="_blank" rel="noopener noreferrer" className="text-[color:var(--primary)] underline">my.telegram.org</a></p>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ===== CONTACTS IMPORT ===== */}
+      <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">Contacts</p>
+            <h3 className="mt-1 text-xl font-black tracking-tight">Import danh bạ JSON</h3>
+          </div>
+          {!tgAuthStatus?.authenticated && (
+            <span className="rounded-full bg-[color:var(--warning-soft)] px-4 py-2 text-xs font-semibold text-[color:var(--warning)]">
+              Cần kết nối Telegram trước
+            </span>
+          )}
+        </div>
+
+        <p className="mt-2 text-sm text-[color:var(--on-surface-variant)]">
+          Upload file JSON chứa danh sách contacts từ Telegram export. Hệ thống sẽ resolve user ID cho từng số điện thoại.
+        </p>
+
+        <form onSubmit={handleImportContacts} className="mt-6 space-y-4">
+          <div>
+            <input
+              type="file"
+              name="contactsFile"
+              accept=".json"
+              disabled={!tgAuthStatus?.authenticated}
+              className="block w-full text-sm text-[color:var(--on-surface-variant)] file:mr-4 file:py-2 file:px-4 file:rounded-[14px] file:border-0 file:text-sm file:font-semibold file:bg-[color:var(--primary)] file:text-white hover:file:bg-[color:var(--primary-dim)] file:cursor-pointer cursor-pointer disabled:opacity-40"
+            />
+            <p className="mt-2 text-xs text-[color:var(--on-surface-variant)]">
+              JSON format: <code className="bg-[color:var(--surface-low)] px-1.5 py-0.5 rounded text-xs">{'[{"phone_number":"+84...","first_name":"Tên","last_name":"..."}]'}</code>
+            </p>
+          </div>
+          <button
+            type="submit"
+            disabled={!tgAuthStatus?.authenticated || importLoading}
+            className="rounded-[16px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-6 py-3 text-sm font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:opacity-40"
+          >
+            {importLoading ? "Đang import..." : "Import & Resolve"}
+          </button>
+        </form>
       </section>
 
       {/* ===== WORKSPACE ADMIN ===== */}

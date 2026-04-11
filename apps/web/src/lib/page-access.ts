@@ -8,7 +8,8 @@ export type DashboardPage =
   | "roles"
   | "telegram"
   | "settings"
-  | "workspaces";
+  | "workspaces"
+  | "contacts";
 
 export const pagePermissionMap: Record<DashboardPage, string[]> = {
   dashboard: [],
@@ -21,6 +22,7 @@ export const pagePermissionMap: Record<DashboardPage, string[]> = {
   telegram: ["settings.manage"],
   settings: ["settings.manage"],
   workspaces: ["organization.manage"],
+  contacts: ["contacts.manage"],
 };
 
 export function canAccessPage(

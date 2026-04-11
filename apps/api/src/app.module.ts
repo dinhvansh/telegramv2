@@ -12,6 +12,8 @@ import { SettingsModule } from './settings/settings.module';
 import { SystemLogsModule } from './system-logs/system-logs.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { TelegramActionsModule } from './telegram-actions/telegram-actions.module';
+import { ContactsModule } from './contacts/contacts.module';
+import { MtprotoModule } from './telegram-mtproto/mtproto.module';
 import { UsersModule } from './users/users.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 
@@ -32,6 +34,8 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
     TelegramActionsModule,
     TelegramModule,
     WorkspacesModule,
+    ContactsModule,
+    MtprotoModule,
   ],
 })
 export class AppModule {}

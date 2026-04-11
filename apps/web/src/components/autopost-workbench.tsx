@@ -327,6 +327,13 @@ export function AutopostWorkbench({
     [matchFromDate, matchToDate],
   );
 
+  const matchWebhookCurl = useMemo(() => {
+    const h = [`-H "Content-Type: application/json"`, `-H "x-webhook-secret: tg-matches-webhook-secret-2026"`];
+    if (matchWorkspaceId) h.push(`-H "x-workspace-id: ${matchWorkspaceId}"`);
+    if (matchUseAi) h.push(`-H "x-use-ai: true"`);
+    return [`curl -X POST "${matchWebhookUrl}"`, ...h, `-d ${matchWebhookPayload}`].join(' \\\n  ');
+  }, [matchWorkspaceId, matchUseAi, matchWebhookPayload, matchWebhookUrl]);
+
   useEffect(() => {
     let active = true;
 
@@ -939,42 +946,47 @@ export function AutopostWorkbench({
                     {matchWebhookUrl}
                   </div>
                 </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div>
-                    <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--on-surface-variant)]">
-                      Header bắt buộc
-                    </p>
-                    <div className="rounded-[14px] bg-white px-4 py-3 text-[13px] leading-6 text-[color:var(--on-surface)]">
-                      <p><span className="font-mono">Authorization</span>: Bearer token đăng nhập</p>
-                      <p><span className="font-mono">x-workspace-id</span>: {selectedMatchWorkspace?.id || "chọn workspace để lấy id"}</p>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--on-surface-variant)]">
-                      Header tùy chọn
-                    </p>
-                    <div className="rounded-[14px] bg-white px-4 py-3 text-[13px] leading-6 text-[color:var(--on-surface)]">
-                      <p><span className="font-mono">x-use-ai</span>: {matchUseAi ? "true" : "false"}</p>
-                      <p><span className="font-mono">Content-Type</span>: application/json</p>
-                    </div>
-                  </div>
+                <div className="rounded-[14px] bg-[color:var(--warning-soft)] px-4 py-3 text-[13px] leading-6 text-[color:var(--warning)]">
+                  <p className="font-semibold">Không cần đăng nhập — chỉ cần gửi đúng secret.</p>
+                  <p className="mt-1">Secret cố định: <code className="font-mono font-bold">tg-matches-webhook-secret-2026</code></p>
                 </div>
                 <div>
-                  <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                  <div className="mb-1 flex items-center justify-between">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--on-surface-variant)]">
-                      Payload mẫu
+                      Curl cho n8n
                     </p>
                     <button
                       type="button"
-                      onClick={() => void copyText(matchWebhookPayload, "payload mẫu")}
+                      onClick={() => void copyText(matchWebhookCurl, "curl command")}
                       className="rounded-[12px] bg-white px-3 py-2 text-xs font-bold text-[color:var(--primary)]"
                     >
-                      Copy payload
+                      Copy curl
                     </button>
                   </div>
-                  <pre className="overflow-x-auto rounded-[14px] bg-[#0f172a] px-4 py-3 text-[12px] leading-6 text-slate-100">
-                    {matchWebhookPayload}
+                  <pre className="overflow-x-auto rounded-[14px] bg-[#0f172a] px-4 py-3 text-[11px] leading-5 text-slate-100 whitespace-pre-wrap">
+                    {matchWebhookCurl}
                   </pre>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--on-surface-variant)]">
+                      Headers
+                    </p>
+                    <div className="rounded-[14px] bg-white px-4 py-3 text-[12px] leading-5 font-mono">
+                      <p>x-webhook-secret: <span className="font-bold">tg-matches-webhook-secret-2026</span></p>
+                      <p>x-workspace-id: {selectedMatchWorkspace?.id || "workspace id"}</p>
+                      <p>Content-Type: application/json</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--on-surface-variant)]">
+                      Tùy chọn
+                    </p>
+                    <div className="rounded-[14px] bg-white px-4 py-3 text-[12px] leading-5">
+                      <p className="font-mono">x-use-ai: {matchUseAi ? "true" : "false"}</p>
+                      <p className="text-[color:var(--on-surface-variant)] text-xs mt-1">Dùng AI viết caption</p>
+                    </div>
+                  </div>
                 </div>
                 {matchCopyNotice ? (
                   <p className="text-xs font-semibold text-[color:var(--success)]">{matchCopyNotice}</p>
