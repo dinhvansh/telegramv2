@@ -5,6 +5,14 @@ const apiProxyTarget =
   "http://telegram-api:4000/api";
 
 const nextConfig: NextConfig = {
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "api.qrserver.com",
+      },
+    ],
+  },
   async rewrites() {
     return [
       {

@@ -1,8 +1,41 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { MtprotoService, ResolvedUser } from '../telegram-mtproto/mtproto.service';
-import { ContactsService, ContactInput, ResolvedContact } from './contacts.service';
+import {
+  MtprotoService,
+  ResolvedUser,
+} from '../telegram-mtproto/mtproto.service';
+import {
+  ContactsService,
+  ContactInput,
+  ResolvedContact,
+} from './contacts.service';
 
 const RESOLVE_DELAY_MS = 1000;
+
+type ResolverError = {
+  message?: string;
+  errorMessage?: string;
+};
+
+function getResolverErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === 'object' && error !== null) {
+    const maybeError = error as ResolverError;
+    if (
+      typeof maybeError.errorMessage === 'string' &&
+      maybeError.errorMessage.trim()
+    ) {
+      return maybeError.errorMessage;
+    }
+    if (typeof maybeError.message === 'string' && maybeError.message.trim()) {
+      return maybeError.message;
+    }
+  }
+
+  return 'Unknown resolve error';
+}
 
 @Injectable()
 export class TelegramResolverService {
@@ -53,7 +86,9 @@ export class TelegramResolverService {
     // Check auth
     const isAuth = await this.mtprotoService.isAuthenticated();
     if (!isAuth) {
-      this.logger.warn('MTProto not authenticated — contacts queued but not resolved');
+      this.logger.warn(
+        'MTProto not authenticated — contacts queued but not resolved',
+      );
       return {
         total: contacts.length,
         resolved: 0,
@@ -62,7 +97,11 @@ export class TelegramResolverService {
         results: results.concat(
           importResult.results
             .filter((r) => r.status === 'pending')
-            .map((r) => ({ ...r, status: 'failed' as const, error: 'MTProto not authenticated. Complete auth first.' })),
+            .map((r) => ({
+              ...r,
+              status: 'failed' as const,
+              error: 'MTProto not authenticated. Complete auth first.',
+            })),
         ),
       };
     }
@@ -80,7 +119,8 @@ export class TelegramResolverService {
       delay = RESOLVE_DELAY_MS;
 
       try {
-        const resolvedUser = await this.mtprotoService.resolvePhoneToUserId(phone);
+        const resolvedUser =
+          await this.mtprotoService.resolvePhoneToUserId(phone);
 
         if (!resolvedUser) {
           // User not found on Telegram — save what we have from JSON
@@ -110,15 +150,18 @@ export class TelegramResolverService {
             status: 'resolved',
           });
           resolved++;
-          this.logger.log(`Resolved ${phone} → ${resolvedUser.userId} (@${resolvedUser.username || 'no username'})`);
+          this.logger.log(
+            `Resolved ${phone} → ${resolvedUser.userId} (@${resolvedUser.username || 'no username'})`,
+          );
         }
-      } catch (error: any) {
-        this.logger.error(`Failed to resolve ${phone}: ${error.errorMessage || error.message}`);
+      } catch (error: unknown) {
+        const errorMessage = getResolverErrorMessage(error);
+        this.logger.error(`Failed to resolve ${phone}: ${errorMessage}`);
         results.push({
           phone_number: phone,
           displayName: this.buildDisplayName(contact),
           status: 'failed',
-          error: error.errorMessage || error.message,
+          error: errorMessage,
         });
         failed++;
       }

@@ -9,7 +9,10 @@ import {
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
-import { MtprotoService, QrCodeResult } from '../telegram-mtproto/mtproto.service';
+import {
+  MtprotoService,
+  QrCodeResult,
+} from '../telegram-mtproto/mtproto.service';
 import type { QrPollResult } from '../telegram-mtproto/mtproto.service';
 import { TelegramResolverService } from './telegram-resolver.service';
 import type { ContactInput } from './contacts.service';
@@ -39,7 +42,7 @@ export class ContactsController {
   @Get('auth/qr/poll')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('contacts.manage')
-  async pollQr(): Promise<QrPollResult> {
+  pollQr(): QrPollResult {
     return this.mtprotoService.pollQrCode();
   }
 
@@ -48,7 +51,11 @@ export class ContactsController {
   @Get('auth/qr/confirm')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('contacts.manage')
-  async confirmQr(): Promise<{ success: boolean; userId: string; username?: string }> {
+  async confirmQr(): Promise<{
+    success: boolean;
+    userId: string;
+    username?: string;
+  }> {
     const result = await this.mtprotoService.confirmQrLogin();
     return { success: true, userId: result.userId, username: result.username };
   }

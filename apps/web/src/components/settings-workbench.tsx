@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const apiBaseUrl = "/api";
@@ -66,10 +67,10 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [modelsNotice, setModelsNotice] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
   const [modelOptions, setModelOptions] = useState<AiModelItem[]>([]);
 
   const [form, setForm] = useState({ systemName: "", twoFaRequired: true, websocketStrategy: "", aiBaseUrl: "", aiApiToken: "", aiModel: "", aiPrompt: "" });
@@ -97,7 +98,6 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
   const [qrReady, setQrReady] = useState(false);
   const [qrLoading, setQrLoading] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
-  const [importLoading, setImportLoading] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Edit forms
@@ -135,7 +135,7 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
       setCreateWsForm((c) => ({ ...c, orgId: c.orgId || cat?.organizations[0]?.id || "" }));
       setCreateBotForm((c) => ({ ...c, wsId: c.wsId || cat?.workspaces[0]?.id || "" }));
     } catch (e) { setError(e instanceof Error ? e.message : "Lỗi khi tải."); }
-    setIsRefreshing(false); setIsLoading(false);
+    setIsRefreshing(false);
   }, [headers]);
 
   useEffect(() => { if (headers) void loadAll(); }, [headers, loadAll]);
@@ -233,20 +233,20 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
     finally { setIsDeleting(false); setDeleteTarget(null); }
   }
 
-  // Check Telegram auth status on mount
-  useEffect(() => {
-    checkTgAuthStatus();
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, []);
-
-  async function checkTgAuthStatus() {
+  const checkTgAuthStatus = useCallback(async () => {
     if (!headers) { setTgAuthStatus({ authenticated: false }); return; }
     try {
       const res = await fetch(`${apiBaseUrl}/contacts/auth/status`, { headers });
       if (res.ok) setTgAuthStatus(await res.json() as { authenticated: boolean });
       else setTgAuthStatus({ authenticated: false });
     } catch { setTgAuthStatus({ authenticated: false }); }
-  }
+  }, [headers]);
+
+  // Check Telegram auth status on mount
+  useEffect(() => {
+    void checkTgAuthStatus();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [checkTgAuthStatus]);
 
   async function startQrLogin() {
     setQrLoading(true); setQrError(null); setQrToken(null); setQrReady(false);
@@ -295,17 +295,27 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
 
   async function handleImportContacts(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setImportLoading(true);
     const fileInput = e.currentTarget.elements.namedItem("contactsFile") as HTMLInputElement;
-    if (!fileInput.files?.[0]) return;
-    const contacts = JSON.parse(await fileInput.files[0].text());
-    if (!Array.isArray(contacts)) { setError("JSON phải là array."); return; }
-    setNotice("Đang import... vui lòng chờ.");
+    if (!fileInput.files?.[0]) {
+      setImportLoading(false);
+      return;
+    }
+
     try {
+      const contacts = JSON.parse(await fileInput.files[0].text()) as unknown;
+      if (!Array.isArray(contacts)) {
+        setError("JSON phải là array.");
+        return;
+      }
+
+      setNotice("Đang import... vui lòng chờ.");
       const res = await fetch(`${apiBaseUrl}/contacts/import`, { method: "POST", headers, body: JSON.stringify(contacts) });
       const data = await res.json() as { total: number; resolved: number; failed: number; error?: string };
       if (data.error) throw new Error(data.error);
       setNotice(`Xong! ${data.resolved}/${data.total} đã resolve.`);
     } catch (e) { setError(e instanceof Error ? e.message : "Import thất bại."); }
+    finally { setImportLoading(false); }
   }
   if (!token) return <div className="flex h-48 items-center justify-center"><p className="text-sm font-semibold text-[color:var(--warning)]">Cần đăng nhập.</p></div>;
 
@@ -447,8 +457,13 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
                 ) : (
                   <div className="flex flex-col items-center gap-3">
                     <div className="rounded-xl bg-white p-4">
-                      <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent("tg://login?token=" + qrToken)}`}
-                        alt="Telegram QR" width={200} height={200} />
+                      <Image
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent("tg://login?token=" + qrToken)}`}
+                        alt="Telegram QR"
+                        width={200}
+                        height={200}
+                        unoptimized
+                      />
                     </div>
                     <p className="text-sm text-[color:var(--on-surface-variant)]">Quét bằng app Telegram</p>
                     <p className="text-xs font-mono text-[color:var(--on-surface-variant)]">Hết hạn trong {qrExpires}s</p>

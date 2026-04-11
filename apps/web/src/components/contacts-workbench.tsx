@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 const apiBaseUrl = "/api";
@@ -43,6 +44,25 @@ type ImportResult = {
   results: ResolvedContact[];
 };
 
+type ErrorWithMessage = {
+  message?: string;
+};
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const candidate = (error as ErrorWithMessage).message;
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate;
+    }
+  }
+
+  return fallback;
+}
+
 export function ContactsWorkbench() {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [qrToken, setQrToken] = useState<string | null>(null);
@@ -60,15 +80,7 @@ export function ContactsWorkbench() {
     Authorization: `Bearer ${localStorage.getItem(authStorageKey) || ""}`,
   }), []);
 
-  // Check auth status on mount
-  useEffect(() => {
-    checkAuthStatus();
-    return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    };
-  }, []);
-
-  const checkAuthStatus = async () => {
+  const checkAuthStatus = useCallback(async () => {
     setAuthStatus({ authenticated: false });
     try {
       const res = await fetch(`${apiBaseUrl}/contacts/auth/status`, {
@@ -82,7 +94,15 @@ export function ContactsWorkbench() {
     } catch {
       setAuthStatus({ authenticated: false });
     }
-  };
+  }, [getHeaders]);
+
+  // Check auth status on mount
+  useEffect(() => {
+    void checkAuthStatus();
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, [checkAuthStatus]);
 
   const startQrLogin = async () => {
     setQrLoading(true);
@@ -102,8 +122,8 @@ export function ContactsWorkbench() {
       setQrToken(data.token);
       setQrExpires(data.expiresIn);
       startPolling();
-    } catch (err: any) {
-      setLoginError(err.message || "Failed to generate QR code");
+    } catch (err: unknown) {
+      setLoginError(getErrorMessage(err, "Failed to generate QR code"));
     } finally {
       setQrLoading(false);
     }
@@ -141,12 +161,12 @@ export function ContactsWorkbench() {
         headers: getHeaders(),
       });
       if (res.ok) {
-        const data = await res.json() as QrConfirmResult;
+        await res.json() as QrConfirmResult;
         setAuthStatus({ authenticated: true });
         setTab("import");
       }
-    } catch (err: any) {
-      setLoginError(err.message);
+    } catch (err: unknown) {
+      setLoginError(getErrorMessage(err, "Failed to confirm QR login"));
     }
   };
 
@@ -167,7 +187,7 @@ export function ContactsWorkbench() {
       const fileInput = form.elements.namedItem("contactsFile") as HTMLInputElement;
       if (!fileInput.files?.[0]) return;
 
-      const contacts = JSON.parse(await fileInput.files[0].text());
+      const contacts = JSON.parse(await fileInput.files[0].text()) as unknown;
       if (!Array.isArray(contacts)) {
         alert("JSON must be an array of contacts");
         return;
@@ -180,8 +200,8 @@ export function ContactsWorkbench() {
       });
       const data = await res.json() as ImportResult;
       setImportResult(data);
-    } catch (err: any) {
-      alert("Import failed: " + (err.message || "Unknown error"));
+    } catch (err: unknown) {
+      alert(`Import failed: ${getErrorMessage(err, "Unknown error")}`);
     } finally {
       setImportLoading(false);
     }
@@ -195,11 +215,12 @@ export function ContactsWorkbench() {
     // Use a simple QR code API that takes URL and returns image
     const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(loginUrl)}`;
     return (
-      <img
+      <Image
         src={qrApiUrl}
         alt="Telegram QR Code"
         width={200}
         height={200}
+        unoptimized
         style={{ imageRendering: "pixelated" }}
       />
     );

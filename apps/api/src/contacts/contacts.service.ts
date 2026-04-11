@@ -23,9 +23,7 @@ export class ContactsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async importContacts(
-    contacts: ContactInput[],
-  ): Promise<{
+  async importContacts(contacts: ContactInput[]): Promise<{
     total: number;
     resolved: number;
     skipped: number;
@@ -33,7 +31,7 @@ export class ContactsService {
     results: ResolvedContact[];
   }> {
     const results: ResolvedContact[] = [];
-    let resolved = 0;
+    const resolved = 0;
     let skipped = 0;
     let failed = 0;
 
@@ -65,16 +63,7 @@ export class ContactsService {
         continue;
       }
 
-      try {
-        results.push({ phone_number: phone, status: 'pending' });
-      } catch (error: any) {
-        results.push({
-          phone_number: phone,
-          status: 'failed',
-          error: error.message,
-        });
-        failed++;
-      }
+      results.push({ phone_number: phone, status: 'pending' });
     }
 
     return {
@@ -92,7 +81,9 @@ export class ContactsService {
     username?: string;
     displayName?: string;
   }): Promise<void> {
-    const initials = this.getInitials(data.displayName || data.username || data.phoneNumber);
+    const initials = this.getInitials(
+      data.displayName || data.username || data.phoneNumber,
+    );
 
     await this.prisma.telegramUser.upsert({
       where: { externalId: data.externalId || `temp_${data.phoneNumber}` },

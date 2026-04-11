@@ -427,7 +427,9 @@ export class WorkspaceBootstrapService implements OnApplicationBootstrap {
       }),
       this.prisma.permission.upsert({
         where: { code: 'contacts.manage' },
-        update: { description: 'Import contacts and resolve Telegram user IDs' },
+        update: {
+          description: 'Import contacts and resolve Telegram user IDs',
+        },
         create: {
           code: 'contacts.manage',
           description: 'Import contacts and resolve Telegram user IDs',
