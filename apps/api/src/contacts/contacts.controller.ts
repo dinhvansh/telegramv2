@@ -17,6 +17,34 @@ import type { QrPollResult } from '../telegram-mtproto/mtproto.service';
 import { TelegramResolverService } from './telegram-resolver.service';
 import type { ContactInput } from './contacts.service';
 
+type ContactsImportObject = {
+  contacts?: {
+    list?: ContactInput[];
+  };
+  list?: ContactInput[];
+};
+
+function normalizeContactsPayload(body: unknown): ContactInput[] | null {
+  if (Array.isArray(body)) {
+    return body as ContactInput[];
+  }
+
+  if (typeof body !== 'object' || body === null) {
+    return null;
+  }
+
+  const payload = body as ContactsImportObject;
+  if (Array.isArray(payload.contacts?.list)) {
+    return payload.contacts.list;
+  }
+
+  if (Array.isArray(payload.list)) {
+    return payload.list;
+  }
+
+  return null;
+}
+
 @Controller('contacts')
 export class ContactsController {
   constructor(
@@ -75,10 +103,16 @@ export class ContactsController {
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('contacts.manage')
-  async importContacts(@Body() contacts: ContactInput[]) {
-    if (!Array.isArray(contacts)) {
-      return { error: 'Body must be a JSON array of contacts' };
+  async importContacts(@Body() body: unknown) {
+    const contacts = normalizeContactsPayload(body);
+
+    if (!contacts) {
+      return {
+        error:
+          'Body must be a JSON array of contacts or a Telegram export object with contacts.list',
+      };
     }
+
     return this.telegramResolverService.resolveContacts(contacts);
   }
 }

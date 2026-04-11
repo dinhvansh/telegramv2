@@ -48,6 +48,13 @@ type ErrorWithMessage = {
   message?: string;
 };
 
+type ImportPayloadObject = {
+  contacts?: {
+    list?: unknown[];
+  };
+  list?: unknown[];
+};
+
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) {
     return error.message;
@@ -61,6 +68,27 @@ function getErrorMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function normalizeContactsPayload(payload: unknown) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (typeof payload !== "object" || payload === null) {
+    return null;
+  }
+
+  const candidate = payload as ImportPayloadObject;
+  if (Array.isArray(candidate.contacts?.list)) {
+    return candidate.contacts.list;
+  }
+
+  if (Array.isArray(candidate.list)) {
+    return candidate.list;
+  }
+
+  return null;
 }
 
 export function ContactsWorkbench() {
@@ -187,9 +215,10 @@ export function ContactsWorkbench() {
       const fileInput = form.elements.namedItem("contactsFile") as HTMLInputElement;
       if (!fileInput.files?.[0]) return;
 
-      const contacts = JSON.parse(await fileInput.files[0].text()) as unknown;
-      if (!Array.isArray(contacts)) {
-        alert("JSON must be an array of contacts");
+      const payload = JSON.parse(await fileInput.files[0].text()) as unknown;
+      const contacts = normalizeContactsPayload(payload);
+      if (!contacts) {
+        alert("JSON phải là mảng contact hoặc file Telegram export có contacts.list");
         return;
       }
 

@@ -39,6 +39,13 @@ type WorkspaceCatalog = {
   roles: Array<{ id: string; name: string }>;
 };
 
+type ContactsImportPayloadObject = {
+  contacts?: {
+    list?: unknown[];
+  };
+  list?: unknown[];
+};
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, cache: "no-store", headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
   if (!response.ok) {
@@ -50,6 +57,17 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 function mapSettings(items: SettingItem[]) { const m = new Map<string, string>(); for (const i of items) m.set(i.key, i.value); return m; }
+
+function normalizeContactsPayload(payload: unknown) {
+  if (Array.isArray(payload)) return payload;
+  if (typeof payload !== "object" || payload === null) return null;
+
+  const candidate = payload as ContactsImportPayloadObject;
+  if (Array.isArray(candidate.contacts?.list)) return candidate.contacts.list;
+  if (Array.isArray(candidate.list)) return candidate.list;
+
+  return null;
+}
 
 function Notice({ msg, type }: { msg: string; type: "error" | "success" | "info" }) {
   return (
@@ -304,9 +322,10 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
     }
 
     try {
-      const contacts = JSON.parse(await fileInput.files[0].text()) as unknown;
-      if (!Array.isArray(contacts)) {
-        setError("JSON phải là array.");
+      const payload = JSON.parse(await fileInput.files[0].text()) as unknown;
+      const contacts = normalizeContactsPayload(payload);
+      if (!contacts) {
+        setError("JSON phải là mảng contact hoặc file Telegram export có contacts.list.");
         return;
       }
 
