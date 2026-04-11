@@ -34,7 +34,7 @@ export class RolesController {
 
   @Get()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('settings.manage')
+  @Permissions('workspace.manage')
   getRoles(@Req() request: AuthenticatedRequest) {
     return this.rolesService.findAll({
       userId: request.user.sub,
@@ -45,7 +45,7 @@ export class RolesController {
 
   @Get('catalog')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('settings.manage')
+  @Permissions('workspace.manage')
   getPermissionCatalog(@Req() request: AuthenticatedRequest) {
     return this.rolesService.findPermissionCatalog({
       userId: request.user.sub,
@@ -56,7 +56,7 @@ export class RolesController {
 
   @Patch(':roleId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('settings.manage')
+  @Permissions('workspace.manage')
   updateRole(
     @Req() request: AuthenticatedRequest,
     @Param('roleId') roleId: string,

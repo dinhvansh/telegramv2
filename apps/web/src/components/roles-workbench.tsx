@@ -36,6 +36,9 @@ type UserItem = {
 };
 
 type WorkspaceCatalogItem = { id: string; name: string; slug: string; organizationId: string };
+type SessionProfile = {
+  workspaces: WorkspaceCatalogItem[];
+};
 
 type CreateUserForm = {
   name: string;
@@ -86,6 +89,47 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   }
 
   return (await response.json()) as T;
+}
+
+function decodeLegacyString(value: string) {
+  const exactMap = new Map<string, string>([
+    ["Qu?n tr? workspace", "Quản trị workspace"],
+    ["Qu?n tr? h? th?ng", "Quản trị hệ thống"],
+    ["Ki?m duy?t vi?n", "Kiểm duyệt viên"],
+    ["V?n h?nh", "Vận hành"],
+    ["C?ng t?c vi?n", "Cộng tác viên"],
+    [
+      "To�n quy?n v?n h�nh trong workspace, g?m user, role, settings, campaign, moderation v� autopost.",
+      "Toàn quyền vận hành trong workspace, gồm user, role, settings, campaign, moderation và autopost.",
+    ],
+    [
+      "To�n quy?n v?n h�nh trong workspace, tr? qu?n l� user v� ph�n quy?n.",
+      "Toàn quyền vận hành trong workspace, trừ quản lý user và phân quyền.",
+    ],
+    [
+      "Ch? xem campaign ???c giao v? k?t qu? link m?i c? nh?n.",
+      "Chỉ xem campaign được giao và kết quả link mời cá nhân.",
+    ],
+    ["C?ng t?c vi?n", "Cộng tác viên"],
+    ["ChÆ°a gÃ¡n", "Chưa gán"],
+  ]);
+  const exactHit = exactMap.get(value);
+  if (exactHit) {
+    return exactHit;
+  }
+  try {
+    const bytes = Uint8Array.from(
+      Array.from(value).map((character) => character.charCodeAt(0)),
+    );
+    const decoded = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+    return decoded.includes("�") ? value : decoded;
+  } catch {
+    return value;
+  }
+}
+
+function text(value?: string | null) {
+  return decodeLegacyString(String(value ?? ""));
 }
 
 function getToneClass(tone: UserItem["statusTone"]) {
@@ -148,11 +192,11 @@ export function RolesWorkbench({
     async function load(currentToken: string) {
       try {
         const headers = { Authorization: `Bearer ${currentToken}` };
-        const [rolesResponse, usersResponse, permissionResponse, workspaceResponse] = await Promise.all([
+        const [rolesResponse, usersResponse, permissionResponse, profileResponse] = await Promise.all([
           fetchJson<RoleItem[]>(`${apiBaseUrl}/roles`, { headers }),
           fetchJson<UserItem[]>(`${apiBaseUrl}/users`, { headers }),
           fetchJson<PermissionItem[]>(`${apiBaseUrl}/roles/catalog`, { headers }),
-          fetchJson<{ workspaces: WorkspaceCatalogItem[] }>(`${apiBaseUrl}/workspaces/catalog`, { headers }),
+          fetchJson<SessionProfile>(`${apiBaseUrl}/auth/me`, { headers }),
         ]);
 
         if (!active) {
@@ -162,11 +206,11 @@ export function RolesWorkbench({
         setRoles(rolesResponse);
         setUsers(usersResponse);
         setPermissionCatalog(permissionResponse);
-        setWorkspaceCatalog(workspaceResponse.workspaces);
+        setWorkspaceCatalog(profileResponse.workspaces ?? []);
         setForm((current) => ({
           ...current,
           roleId: current.roleId || rolesResponse[0]?.id || "",
-          workspaceId: current.workspaceId || workspaceResponse.workspaces[0]?.id || "",
+          workspaceId: current.workspaceId || profileResponse.workspaces?.[0]?.id || "",
         }));
         setError(null);
       } catch (loadError) {
@@ -205,17 +249,17 @@ export function RolesWorkbench({
     }
 
     const headers = { Authorization: `Bearer ${token}` };
-    const [rolesResponse, usersResponse, permissionResponse, workspaceResponse] = await Promise.all([
+    const [rolesResponse, usersResponse, permissionResponse, profileResponse] = await Promise.all([
       fetchJson<RoleItem[]>(`${apiBaseUrl}/roles`, { headers }),
       fetchJson<UserItem[]>(`${apiBaseUrl}/users`, { headers }),
       fetchJson<PermissionItem[]>(`${apiBaseUrl}/roles/catalog`, { headers }),
-      fetchJson<{ workspaces: WorkspaceCatalogItem[] }>(`${apiBaseUrl}/workspaces/catalog`, { headers }),
+      fetchJson<SessionProfile>(`${apiBaseUrl}/auth/me`, { headers }),
     ]);
 
     setRoles(rolesResponse);
     setUsers(usersResponse);
     setPermissionCatalog(permissionResponse);
-    setWorkspaceCatalog(workspaceResponse.workspaces);
+    setWorkspaceCatalog(profileResponse.workspaces ?? []);
   }
 
   async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
@@ -385,7 +429,7 @@ export function RolesWorkbench({
         }),
       });
       await refreshData();
-      setNotice(`Đã cập nhật quyền cho role ${editingRole.name}.`);
+      setNotice(`Đã cập nhật quyền cho role ${text(editingRole.name)}.`);
       setEditingRole(null);
     } catch (saveError) {
       setError(
@@ -453,7 +497,7 @@ export function RolesWorkbench({
                 className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <p className="text-sm font-bold">{role.name}</p>
+                  <p className="text-sm font-bold">{text(role.name)}</p>
                   <button
                     type="button"
                     onClick={() =>
@@ -470,7 +514,7 @@ export function RolesWorkbench({
                   </button>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">
-                  {role.description}
+                  {text(role.description)}
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {role.permissions.map((permission) => (
@@ -492,12 +536,12 @@ export function RolesWorkbench({
             Phiên hiện tại
           </p>
           <div className="mt-5 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4 text-sm leading-7">
-            <p className="font-bold">{currentUser?.name ?? "Chưa có session"}</p>
+            <p className="font-bold">{text(currentUser?.name ?? "Chưa có session")}</p>
             <p className="text-[color:var(--on-surface-variant)]">
               {currentUser?.email ?? "-"}
             </p>
             <p className="mt-3 font-semibold">
-              Roles: {currentUser?.roles.join(", ") ?? "-"}
+              Roles: {currentUser?.roles.map((role) => text(role)).join(", ") ?? "-"}
             </p>
             <p className="text-[color:var(--on-surface-variant)]">
               Permissions: {currentUser?.permissions?.join(", ") ?? "-"}
@@ -577,7 +621,7 @@ export function RolesWorkbench({
               >
                 {roles.map((role) => (
                   <option key={role.id} value={role.id}>
-                    {role.name}
+                    {text(role.name)}
                   </option>
                 ))}
               </select>
@@ -631,19 +675,19 @@ export function RolesWorkbench({
               {users.map((user, index) => (
                 <tr key={user.id} className={index % 2 === 1 ? "bg-white/70" : ""}>
                   <td className="px-5 py-4 align-top">
-                    <p className="text-sm font-bold">{user.name}</p>
+                    <p className="text-sm font-bold">{text(user.name)}</p>
                     <p className="mt-1 text-sm text-[color:var(--on-surface-variant)]">
                       {user.email}
                     </p>
                     <p className="mt-1 text-xs text-[color:var(--on-surface-variant)]">
-                      @{user.username ?? "chưa gán username"}
+                      @{text(user.username ?? "chưa gán username")}
                     </p>
                   </td>
                   <td className="px-5 py-4 align-top text-sm text-[color:var(--on-surface-variant)]">
-                    {user.department}
+                    {text(user.department)}
                   </td>
                   <td className="px-5 py-4 align-top">
-                    <p className="text-sm font-semibold">{user.primaryRole}</p>
+                    <p className="text-sm font-semibold">{text(user.primaryRole)}</p>
                     <p className="mt-1 text-xs text-[color:var(--on-surface-variant)]">
                       {user.permissionCount} permission
                     </p>
@@ -740,7 +784,7 @@ export function RolesWorkbench({
                   Role editor
                 </p>
                 <h2 className="mt-2 text-2xl font-black tracking-tight">
-                  Sửa quyền role {editingRole.name}
+                  Sửa quyền role {text(editingRole.name)}
                 </h2>
               </div>
               <button
@@ -894,7 +938,7 @@ export function RolesWorkbench({
                 >
                   {roles.map((role) => (
                     <option key={role.id} value={role.id}>
-                      {role.name}
+                      {text(role.name)}
                     </option>
                   ))}
                 </select>

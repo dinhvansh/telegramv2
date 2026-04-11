@@ -83,6 +83,15 @@ function injectBridgeScript(html: string, page: StitchPageKey) {
     verified_user: '/roles',
     settings: '/settings',
   };
+  const pagePermissionMap = {
+    dashboard: [],
+    campaigns: ['campaign.manage', 'campaign.view'],
+    moderation: ['moderation.review', 'settings.manage'],
+    spam: ['moderation.review', 'settings.manage'],
+    autopost: ['autopost.execute'],
+    roles: ['workspace.manage'],
+    settings: ['settings.manage'],
+  };
   const eventIconMap = {
     primary: 'notifications_active',
     success: 'check_circle',
@@ -122,6 +131,8 @@ function injectBridgeScript(html: string, page: StitchPageKey) {
     },
   };
   const knownPermissionCatalog = [
+    { code: 'workspace.manage', label: 'Quản lý nhân sự và phân quyền trong workspace' },
+    { code: 'campaign.view', label: 'Xem campaign được giao và kết quả cá nhân' },
     { code: 'campaign.manage', label: 'Quản lý campaign và invite link' },
     { code: 'moderation.review', label: 'Review spam và moderation' },
     { code: 'settings.manage', label: 'Quản lý cấu hình và bảo mật' },
@@ -418,7 +429,45 @@ function injectBridgeScript(html: string, page: StitchPageKey) {
     return normalizePayload(body);
   }
 
-  function patchNavigation() {
+  function getPageKeyByRoute(route) {
+    switch (route) {
+      case '/dashboard':
+        return 'dashboard';
+      case '/campaigns':
+        return 'campaigns';
+      case '/moderation':
+        return 'moderation';
+      case '/spam':
+        return 'spam';
+      case '/autopost':
+        return 'autopost';
+      case '/roles':
+        return 'roles';
+      case '/settings':
+        return 'settings';
+      default:
+        return null;
+    }
+  }
+
+  function canAccessRoute(route, permissions) {
+    const pageKey = getPageKeyByRoute(route);
+    if (!pageKey) {
+      return true;
+    }
+
+    const requiredPermissions = pagePermissionMap[pageKey] || [];
+    if (!requiredPermissions.length) {
+      return true;
+    }
+
+    const userPermissions = Array.isArray(permissions) ? permissions : [];
+    return requiredPermissions.some(function(permission) {
+      return userPermissions.includes(permission);
+    });
+  }
+
+  function patchNavigation(userPermissions) {
     const currentPath = (window.top && window.top.location ? window.top.location.pathname : window.location.pathname) || '';
 
     document.querySelectorAll('a[href="#"]').forEach(function(anchor) {
@@ -465,12 +514,28 @@ function injectBridgeScript(html: string, page: StitchPageKey) {
     if (sidebarNav) {
       Array.from(sidebarNav.querySelectorAll('a')).forEach(function(anchor) {
         const href = anchor.getAttribute('href') || '';
+        if (!canAccessRoute(href, userPermissions)) {
+          anchor.remove();
+          return;
+        }
+
         const isActive = href === currentPath;
         anchor.className = isActive
           ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-sm rounded-lg mx-2 px-4 py-3 flex items-center gap-3 transition-all duration-200 ease-in-out text-sm font-semibold'
           : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-4 py-3 mx-2 flex items-center gap-3 transition-all duration-200 ease-in-out hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg text-sm font-medium';
       });
     }
+
+    Array.from(document.querySelectorAll('header a[href], nav a[href]')).forEach(function(anchor) {
+      const href = anchor.getAttribute('href') || '';
+      if (!href || href === '#' || anchor.closest('aside nav')) {
+        return;
+      }
+
+      if (!canAccessRoute(href, userPermissions)) {
+        anchor.remove();
+      }
+    });
 
     Array.from(document.querySelectorAll('button')).forEach(function(button) {
       if (/Tạo chiến dịch mới/i.test(String(button.textContent || ''))) {
@@ -555,17 +620,22 @@ function injectBridgeScript(html: string, page: StitchPageKey) {
   document.addEventListener('DOMContentLoaded', function() {
     observeTextNormalization();
     patchBranding();
-    patchNavigation();
     bindLogout();
-    hydratePage().catch(function(error) {
-      if (error && error.status === 403) {
-        showBanner('Tài khoản hiện tại không có quyền truy cập dữ liệu live của trang này.', 'warning');
-        return;
-      }
+    fetchJson('/auth/me')
+      .then(function(profile) {
+        patchNavigation(profile && Array.isArray(profile.permissions) ? profile.permissions : []);
+        return hydratePage();
+      })
+      .catch(function(error) {
+        patchNavigation([]);
+        if (error && error.status === 403) {
+          showBanner('Tài khoản hiện tại không có quyền truy cập dữ liệu live của trang này.', 'warning');
+          return;
+        }
 
-      console.error(error);
-      showBanner('Không tải được dữ liệu live. Layout stitch vẫn được giữ nguyên để tiếp tục kiểm tra UI.', 'danger');
-    });
+        console.error(error);
+        showBanner('Không tải được dữ liệu live. Layout stitch vẫn được giữ nguyên để tiếp tục kiểm tra UI.', 'danger');
+      });
   });
   window.addEventListener('load', function() {
     observeTextNormalization();

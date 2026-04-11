@@ -200,15 +200,15 @@ export class WorkspacesService {
         users: [
           {
             id: 'fallback-user-admin',
-            name: 'Nexus Admin',
+            name: 'Quản trị workspace',
             email: 'admin@nexus.local',
             status: 'ACTIVE',
           },
         ],
         roles: [
-          { id: 'fallback-role-admin', name: 'Admin' },
-          { id: 'fallback-role-operator', name: 'Operator' },
-          { id: 'fallback-role-viewer', name: 'Viewer' },
+          { id: 'fallback-role-admin', name: 'Quản trị workspace' },
+          { id: 'fallback-role-operator', name: 'Vận hành' },
+          { id: 'fallback-role-viewer', name: 'Cộng tác viên' },
         ],
       };
     }
@@ -258,7 +258,10 @@ export class WorkspacesService {
         organizationId: workspace.organizationId,
       })),
       users,
-      roles: roles.filter((role) => role.name !== 'SuperAdmin'),
+      roles: roles.filter(
+        (role) =>
+          role.name !== 'SuperAdmin' && role.name !== 'Quản trị hệ thống',
+      ),
     };
   }
 

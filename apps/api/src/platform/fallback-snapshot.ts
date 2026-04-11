@@ -197,15 +197,15 @@ export const fallbackSnapshot = {
   ],
   roles: [
     {
-      title: 'Admin',
+      title: 'Quản trị workspace',
       detail: 'Toàn quyền cấu hình bot, policy, queue và analytics.',
     },
     {
-      title: 'Moderator',
+      title: 'Kiểm duyệt viên',
       detail: 'Review spam, mute, ban và xử lý manual review.',
     },
     {
-      title: 'Operator',
+      title: 'Vận hành',
       detail: 'Quản lý campaign, autopost và theo dõi tăng trưởng.',
     },
   ],

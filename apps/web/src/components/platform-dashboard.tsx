@@ -135,6 +135,8 @@ export function PlatformDashboard({
   });
 
   const canCreateCampaign = user?.permissions.includes("campaign.manage") ?? false;
+  const canManageOrganizations =
+    user?.permissions.includes("organization.manage") ?? false;
   const canViewCampaignData =
     user?.permissions.includes("campaign.manage") ||
     user?.permissions.includes("campaign.view") ||
@@ -272,7 +274,7 @@ export function PlatformDashboard({
     return () => {
       active = false;
     };
-  }, [buildScopedHeaders, selectedWorkspaceId, token]);
+  }, [buildScopedHeaders, canManageOrganizations, selectedWorkspaceId, token]);
 
   useEffect(() => {
     let isMounted = true;

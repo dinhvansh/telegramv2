@@ -122,6 +122,16 @@ export class AutopostService {
       take: 20,
     })) as any[];
 
+    const workspaces = (await this.prisma.workspace.findMany({
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        organizationId: true,
+      },
+      orderBy: { name: 'asc' },
+    })) as any[];
+
     return {
       targets: targets.map((target: any) => ({
         id: target.id,
@@ -190,6 +200,12 @@ export class AutopostService {
             schedule.status === AutopostScheduleStatus.DRAFT,
         ).length,
       },
+      workspaces: workspaces.map((workspace: any) => ({
+        id: workspace.id,
+        name: workspace.name,
+        slug: workspace.slug,
+        organizationId: workspace.organizationId,
+      })),
     };
   }
 

@@ -106,17 +106,24 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
     if (!headers) return;
     setIsRefreshing(true);
     try {
-      const [items, me, ov, cat] = await Promise.all([
+      const [items, me] = await Promise.all([
         fetchJson<SettingItem[]>(`${apiBaseUrl}/settings`, { headers }),
         fetchJson<SessionProfile>(`${apiBaseUrl}/auth/me`, { headers }),
-        fetchJson<WorkspaceOverview>(`${apiBaseUrl}/workspaces/overview`, { headers }),
-        fetchJson<WorkspaceCatalog>(`${apiBaseUrl}/workspaces/catalog`, { headers }),
       ]);
+      let ov: WorkspaceOverview | null = null;
+      let cat: WorkspaceCatalog | null = null;
+
+      if (me.permissions.includes("organization.manage")) {
+        [ov, cat] = await Promise.all([
+          fetchJson<WorkspaceOverview>(`${apiBaseUrl}/workspaces/overview`, { headers }),
+          fetchJson<WorkspaceCatalog>(`${apiBaseUrl}/workspaces/catalog`, { headers }),
+        ]);
+      }
       const m = mapSettings(items);
       setProfile(me); setOverview(ov); setCatalog(cat);
       setForm({ systemName: m.get("system.name") || "Telegram Ops", twoFaRequired: String(m.get("security.2fa") || "").includes("required"), websocketStrategy: m.get("websocket.strategy") || "", aiBaseUrl: m.get("ai.base_url") || "", aiApiToken: m.get("ai.api_token") || "", aiModel: m.get("ai.model") || "gpt-5-mini", aiPrompt: m.get("ai.prompt") || "" });
-      setCreateWsForm((c) => ({ ...c, orgId: c.orgId || cat.organizations[0]?.id || "" }));
-      setCreateBotForm((c) => ({ ...c, wsId: c.wsId || cat.workspaces[0]?.id || "" }));
+      setCreateWsForm((c) => ({ ...c, orgId: c.orgId || cat?.organizations[0]?.id || "" }));
+      setCreateBotForm((c) => ({ ...c, wsId: c.wsId || cat?.workspaces[0]?.id || "" }));
     } catch (e) { setError(e instanceof Error ? e.message : "Lỗi khi tải."); }
     setIsRefreshing(false); setIsLoading(false);
   }, [headers]);

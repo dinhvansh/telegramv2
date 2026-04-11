@@ -8,6 +8,7 @@ import * as bcrypt from 'bcryptjs';
 import { UserStatus } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { normalizeVietnameseText } from '../common/vietnamese-normalizer';
 
 type FallbackUserRecord = {
   id: string;
@@ -29,7 +30,7 @@ type UserViewer = {
 const fallbackRoleCatalog = [
   {
     id: 'fallback-role-superadmin',
-    name: 'SuperAdmin',
+    name: 'Quản trị hệ thống',
     permissions: [
       'organization.manage',
       'workspace.manage',
@@ -42,14 +43,15 @@ const fallbackRoleCatalog = [
   },
   {
     id: 'fallback-role-viewer',
-    name: 'Viewer',
+    name: 'Cộng tác viên',
     permissions: ['campaign.view'],
   },
   {
     id: 'fallback-role-admin',
-    name: 'Admin',
+    name: 'Quản trị workspace',
     permissions: [
       'workspace.manage',
+      'campaign.view',
       'campaign.manage',
       'moderation.review',
       'settings.manage',
@@ -58,13 +60,18 @@ const fallbackRoleCatalog = [
   },
   {
     id: 'fallback-role-moderator',
-    name: 'Moderator',
+    name: 'Kiểm duyệt viên',
     permissions: ['moderation.review'],
   },
   {
     id: 'fallback-role-operator',
-    name: 'Operator',
-    permissions: ['campaign.manage', 'autopost.execute'],
+    name: 'Vận hành',
+    permissions: [
+      'campaign.manage',
+      'moderation.review',
+      'settings.manage',
+      'autopost.execute',
+    ],
   },
 ] as const;
 
@@ -97,7 +104,7 @@ export class UsersService {
       id: 'fallback-user-superadmin',
       email: 'superadmin@nexus.local',
       username: 'system_superadmin',
-      name: 'System Super Admin',
+      name: 'Quản trị hệ thống',
       department: 'Nền tảng',
       status: 'ACTIVE',
       passwordHash: bcrypt.hashSync('superadmin123', 10),
@@ -113,7 +120,7 @@ export class UsersService {
       id: 'fallback-user-admin',
       email: 'admin@nexus.local',
       username: 'nexus_admin',
-      name: 'Nexus Admin',
+      name: 'Quản trị workspace',
       department: 'Hạ tầng',
       status: 'ACTIVE',
       passwordHash: bcrypt.hashSync('admin123', 10),
@@ -129,7 +136,7 @@ export class UsersService {
       id: 'fallback-user-operator',
       email: 'operator@nexus.local',
       username: 'campaign_operator',
-      name: 'Campaign Operator',
+      name: 'Vận hành',
       department: 'Tăng trưởng',
       status: 'ACTIVE',
       passwordHash: bcrypt.hashSync('operator123', 10),
@@ -145,7 +152,7 @@ export class UsersService {
       id: 'fallback-user-viewer',
       email: 'viewer@nexus.local',
       username: 'campaign_viewer',
-      name: 'Campaign Viewer',
+      name: 'Cộng tác viên',
       department: 'Quan sát',
       status: 'ACTIVE',
       passwordHash: bcrypt.hashSync('viewer123', 10),
@@ -161,7 +168,7 @@ export class UsersService {
       id: 'fallback-user-moderator',
       email: 'moderator@nexus.local',
       username: 'mod_guard',
-      name: 'Trust Moderator',
+      name: 'Kiểm duyệt viên',
       department: 'Cộng đồng',
       status: 'ACTIVE',
       passwordHash: bcrypt.hashSync('moderator123', 10),
@@ -187,9 +194,13 @@ export class UsersService {
         .filter(
           (user) =>
             this.isOrganizationManager(viewer) ||
-            !user.roles.some((role) => role.name === 'SuperAdmin'),
+            !user.roles.some(
+              (role) =>
+                role.name === 'SuperAdmin' ||
+                role.name === 'Quản trị hệ thống',
+            ),
         )
-        .map((user) => this.serializeFallbackUser(user));
+        .map((user) => this.normalizeUserRecord(this.serializeFallbackUser(user)));
     }
 
     const users = await this.prisma.user.findMany({
@@ -199,7 +210,9 @@ export class UsersService {
             userRoles: {
               none: {
                 role: {
-                  name: 'SuperAdmin',
+                  name: {
+                    in: ['SuperAdmin', 'Quản trị hệ thống'],
+                  },
                 },
               },
             },
@@ -222,7 +235,9 @@ export class UsersService {
       },
     });
 
-    return users.map((user) => this.serializeDatabaseUser(user));
+    return users.map((user) =>
+      this.normalizeUserRecord(this.serializeDatabaseUser(user)),
+    );
   }
 
   async create(
@@ -245,6 +260,7 @@ export class UsersService {
     const workspaceId = input.workspaceId?.trim();
     const department = input.department?.trim() || 'Chưa gán';
     const username = input.username?.trim() || email?.split('@')[0] || null;
+    const normalizedDepartment = normalizeVietnameseText(department);
     const status = (input.status?.trim().toUpperCase() ||
       'ACTIVE') as keyof typeof UserStatus;
 
@@ -260,10 +276,12 @@ export class UsersService {
         throw new UnauthorizedException('Role not found');
       }
       if (
-        fallbackRole.name === 'SuperAdmin' &&
+        fallbackRole.name === 'Quản trị hệ thống' &&
         !this.isOrganizationManager(viewer)
       ) {
-        throw new ForbiddenException('Only superadmin can assign SuperAdmin');
+        throw new ForbiddenException(
+          'Only superadmin can assign Quản trị hệ thống',
+        );
       }
 
       const created: FallbackUserRecord = {
@@ -271,7 +289,7 @@ export class UsersService {
         name,
         email,
         username,
-        department,
+        department: normalizedDepartment,
         status: status === 'AWAY' || status === 'DISABLED' ? status : 'ACTIVE',
         passwordHash: await bcrypt.hash(password, 10),
         roles: [
@@ -283,7 +301,7 @@ export class UsersService {
         ],
       };
       this.fallbackUsers.push(created);
-      return this.serializeFallbackUser(created);
+      return this.normalizeUserRecord(this.serializeFallbackUser(created));
     }
 
     const existingRole = await this.prisma.role.findUnique({
@@ -293,10 +311,13 @@ export class UsersService {
       throw new UnauthorizedException('Role not found');
     }
     if (
-      existingRole.name === 'SuperAdmin' &&
+      (existingRole.name === 'SuperAdmin' ||
+        existingRole.name === 'Quản trị hệ thống') &&
       !this.isOrganizationManager(viewer)
     ) {
-      throw new ForbiddenException('Only superadmin can assign SuperAdmin');
+      throw new ForbiddenException(
+        'Only superadmin can assign Quản trị hệ thống',
+      );
     }
 
     const created = await this.prisma.user.create({
@@ -304,7 +325,7 @@ export class UsersService {
         name,
         email,
         username,
-        department,
+        department: normalizedDepartment,
         status: UserStatus[status] || UserStatus.ACTIVE,
         passwordHash: await bcrypt.hash(password, 10),
         userRoles: {
@@ -341,7 +362,7 @@ export class UsersService {
       },
     });
 
-    return this.serializeDatabaseUser(created);
+    return this.normalizeUserRecord(this.serializeDatabaseUser(created));
   }
 
   async update(
@@ -391,10 +412,12 @@ export class UsersService {
           throw new UnauthorizedException('Role not found');
         }
         if (
-          fallbackRole.name === 'SuperAdmin' &&
+          fallbackRole.name === 'Quản trị hệ thống' &&
           !this.isOrganizationManager(viewer)
         ) {
-          throw new ForbiddenException('Only superadmin can assign SuperAdmin');
+          throw new ForbiddenException(
+            'Only superadmin can assign Quản trị hệ thống',
+          );
         }
         target.roles = [
           {
@@ -405,7 +428,7 @@ export class UsersService {
         ];
       }
 
-      return this.serializeFallbackUser(target);
+      return this.normalizeUserRecord(this.serializeFallbackUser(target));
     }
 
     if (normalizedRoleId) {
@@ -416,10 +439,13 @@ export class UsersService {
         throw new UnauthorizedException('Role not found');
       }
       if (
-        existingRole.name === 'SuperAdmin' &&
+        (existingRole.name === 'SuperAdmin' ||
+          existingRole.name === 'Quản trị hệ thống') &&
         !this.isOrganizationManager(viewer)
       ) {
-        throw new ForbiddenException('Only superadmin can assign SuperAdmin');
+        throw new ForbiddenException(
+          'Only superadmin can assign Quản trị hệ thống',
+        );
       }
     }
 
@@ -487,7 +513,7 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    return this.serializeDatabaseUser(updated);
+    return this.normalizeUserRecord(this.serializeDatabaseUser(updated));
   }
 
   async resetPassword(userId: string, nextPassword?: string) {
@@ -601,6 +627,28 @@ export class UsersService {
       })),
       primaryRole: user.roles[0]?.name || 'Chưa gán',
       permissionCount: permissions.length,
+    };
+  }
+
+  private normalizeUserRecord<
+    T extends {
+      name: string;
+      department: string | null;
+      statusLabel: string;
+      primaryRole: string;
+      roles: Array<{ id: string; name: string; permissions: string[] }>;
+    },
+  >(user: T): T {
+    return {
+      ...user,
+      name: normalizeVietnameseText(user.name),
+      department: normalizeVietnameseText(user.department),
+      statusLabel: normalizeVietnameseText(user.statusLabel),
+      primaryRole: normalizeVietnameseText(user.primaryRole),
+      roles: user.roles.map((role) => ({
+        ...role,
+        name: normalizeVietnameseText(role.name),
+      })),
     };
   }
 }

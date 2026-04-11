@@ -64,16 +64,43 @@ export class MatchWebhookService {
   private async getActiveTelegramGroups(
     workspaceId?: string,
   ): Promise<ActiveTelegramGroup[]> {
+    const select = {
+      id: true,
+      title: true,
+      externalId: true,
+    } as const;
+
+    if (!workspaceId) {
+      return this.prisma.telegramGroup.findMany({
+        where: {
+          isActive: true,
+        },
+        select,
+        orderBy: { title: 'asc' },
+      });
+    }
+
+    const scopedGroups = await this.prisma.telegramGroup.findMany({
+      where: {
+        isActive: true,
+        workspaceId,
+      },
+      select,
+      orderBy: { title: 'asc' },
+    });
+
+    if (scopedGroups.length > 0) {
+      return scopedGroups;
+    }
+
+    // Backward-compatible fallback for legacy groups created before workspace
+    // ownership was enforced.
     return this.prisma.telegramGroup.findMany({
       where: {
         isActive: true,
-        ...(workspaceId ? { workspaceId } : {}),
+        OR: [{ workspaceId: null }, { workspaceId: '' }],
       },
-      select: {
-        id: true,
-        title: true,
-        externalId: true,
-      },
+      select,
       orderBy: { title: 'asc' },
     });
   }
@@ -220,6 +247,18 @@ export class MatchWebhookService {
       } catch (error) {
         results.errors.push(`${match.match_id}: ${(error as Error).message}`);
       }
+    }
+
+    if (workspaceId && groups.length > 0) {
+      await this.systemLogsService.log({
+        scope: 'match-webhook',
+        action: 'workspace_group_resolution',
+        message: `Resolved ${groups.length} active Telegram group(s) for workspace webhook import.`,
+        payload: {
+          workspaceId,
+          groupIds: groups.map((group) => group.id),
+        },
+      });
     }
 
     return results;

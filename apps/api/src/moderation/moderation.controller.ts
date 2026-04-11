@@ -92,7 +92,7 @@ export class ModerationController {
     const allowed =
       permissions.includes('moderation.review') ||
       permissions.includes('campaign.manage') ||
-      permissions.includes('campaign.view');
+      permissions.includes('settings.manage');
 
     if (!allowed) {
       throw new ForbiddenException('Missing required permission');

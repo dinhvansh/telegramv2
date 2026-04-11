@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { fallbackSnapshot } from '../platform/fallback-snapshot';
 import { PrismaService } from '../prisma/prisma.service';
+import { normalizeVietnameseText } from '../common/vietnamese-normalizer';
 
 const fallbackPermissionCatalog = [
   {
@@ -57,39 +58,49 @@ export class RolesService {
       return fallbackSnapshot.roles
         .filter(
           (role) =>
-            this.isOrganizationManager(viewer) || role.title !== 'SuperAdmin',
+            this.isOrganizationManager(viewer) ||
+            (role.title !== 'Quản trị hệ thống' &&
+              role.title !== 'SuperAdmin'),
         )
         .map((role) => ({
           id:
-            role.title === 'SuperAdmin'
+            role.title === 'Quản trị hệ thống' || role.title === 'SuperAdmin'
               ? 'fallback-role-superadmin'
-              : role.title === 'Admin'
+              : role.title === 'Quản trị workspace' || role.title === 'Admin'
                 ? 'fallback-role-admin'
-                : role.title === 'Moderator'
+                : role.title === 'Kiểm duyệt viên' || role.title === 'Moderator'
                   ? 'fallback-role-moderator'
-                  : role.title === 'Viewer'
+                  : role.title === 'Cộng tác viên' || role.title === 'Viewer'
                     ? 'fallback-role-viewer'
                     : 'fallback-role-operator',
-          name: role.title,
-          description: role.detail,
+          name: normalizeVietnameseText(role.title),
+          description: normalizeVietnameseText(role.detail),
           permissions:
-            role.title === 'SuperAdmin'
+            role.title === 'Quản trị hệ thống' || role.title === 'SuperAdmin'
               ? [
                   ...fallbackPermissionCatalog.map(
                     (permission) => permission.code,
                   ),
                 ]
-              : role.title === 'Admin'
+              : role.title === 'Quản trị workspace' || role.title === 'Admin'
                 ? [
-                    ...fallbackPermissionCatalog
-                      .map((permission) => permission.code)
-                      .filter((code) => code !== 'organization.manage'),
+                    'workspace.manage',
+                    'campaign.view',
+                    'campaign.manage',
+                    'moderation.review',
+                    'settings.manage',
+                    'autopost.execute',
                   ]
-                : role.title === 'Moderator'
+                : role.title === 'Kiểm duyệt viên' || role.title === 'Moderator'
                   ? ['moderation.review']
-                  : role.title === 'Viewer'
+                  : role.title === 'Cộng tác viên' || role.title === 'Viewer'
                     ? ['campaign.view']
-                    : ['campaign.manage', 'autopost.execute'],
+                    : [
+                        'campaign.manage',
+                        'moderation.review',
+                        'settings.manage',
+                        'autopost.execute',
+                      ],
         }));
     }
 
@@ -98,7 +109,7 @@ export class RolesService {
         ? undefined
         : {
             name: {
-              not: 'SuperAdmin',
+              notIn: ['Quản trị hệ thống', 'SuperAdmin'],
             },
           },
       orderBy: { createdAt: 'asc' },
@@ -113,8 +124,8 @@ export class RolesService {
 
     return roles.map((role) => ({
       id: role.id,
-      name: role.name,
-      description: role.description,
+      name: normalizeVietnameseText(role.name),
+      description: normalizeVietnameseText(role.description),
       permissions: role.rolePermissions.map((item) => item.permission.code),
     }));
   }
@@ -177,10 +188,13 @@ export class RolesService {
       throw new NotFoundException('Role not found');
     }
     if (
-      existingRole.name === 'SuperAdmin' &&
+      (existingRole.name === 'SuperAdmin' ||
+        existingRole.name === 'Quản trị hệ thống') &&
       !this.isOrganizationManager(viewer)
     ) {
-      throw new ForbiddenException('Only superadmin can edit SuperAdmin role');
+      throw new ForbiddenException(
+        'Only superadmin can edit Quản trị hệ thống role',
+      );
     }
     if (
       !this.isOrganizationManager(viewer) &&
@@ -246,8 +260,8 @@ export class RolesService {
 
     return {
       id: updatedRole.id,
-      name: updatedRole.name,
-      description: updatedRole.description,
+      name: normalizeVietnameseText(updatedRole.name),
+      description: normalizeVietnameseText(updatedRole.description),
       permissions: updatedRole.rolePermissions.map(
         (item) => item.permission.code,
       ),

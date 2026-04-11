@@ -14,6 +14,34 @@ import { WorkspacesWorkbench } from "@/components/workspaces-workbench";
 import { canAccessPage, type DashboardPage } from "@/lib/page-access";
 import type { PlatformSnapshot } from "@/lib/platform-data";
 
+function decodeLegacyString(value: string) {
+  const exactMap = new Map<string, string>([
+    ["Qu?n tr? workspace", "Quản trị workspace"],
+    ["Qu?n tr? h? th?ng", "Quản trị hệ thống"],
+    ["Ki?m duy?t vi?n", "Kiểm duyệt viên"],
+    ["V?n h?nh", "Vận hành"],
+    ["C?ng t?c vi?n", "Cộng tác viên"],
+    ["ChÆ°a gÃ¡n", "Chưa gán"],
+  ]);
+  const exactHit = exactMap.get(value);
+  if (exactHit) {
+    return exactHit;
+  }
+  try {
+    const bytes = Uint8Array.from(
+      Array.from(value).map((character) => character.charCodeAt(0)),
+    );
+    const decoded = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+    return decoded.includes("�") ? value : decoded;
+  } catch {
+    return value;
+  }
+}
+
+function text(value?: string | null) {
+  return decodeLegacyString(String(value ?? ""));
+}
+
 function MenuIcon({
   path,
   active = false,
@@ -370,7 +398,7 @@ export function DashboardShell({
                   >
                     {availableWorkspaces.map((workspace) => (
                       <option key={workspace.id} value={workspace.id}>
-                        {workspace.name}
+                        {text(workspace.name)}
                       </option>
                     ))}
                   </select>
@@ -383,7 +411,7 @@ export function DashboardShell({
                   >
                     {availableBots.map((bot) => (
                       <option key={bot.id} value={bot.id}>
-                        [{bot.name}]
+                        [{text(bot.name)}]
                         {bot.isPrimary ? " ★" : ""}
                         {!bot.isActive ? " (Đã tắt)" : ""}
                       </option>
@@ -392,7 +420,7 @@ export function DashboardShell({
                 ) : null}
                 {user ? (
                   <div className="max-w-[160px] truncate rounded-full bg-[color:var(--surface-low)] px-3 py-2 text-xs text-[color:var(--on-surface-variant)]">
-                    {user.name}
+                    {text(user.name)}
                   </div>
                 ) : null}
                 {onLogout ? (
@@ -456,7 +484,7 @@ export function DashboardShell({
                   >
                     {availableWorkspaces.map((workspace) => (
                       <option key={workspace.id} value={workspace.id}>
-                        {workspace.name}
+                        {text(workspace.name)}
                       </option>
                     ))}
                   </select>
@@ -469,7 +497,7 @@ export function DashboardShell({
                   >
                     {availableBots.map((bot) => (
                       <option key={bot.id} value={bot.id}>
-                        [{bot.name}]
+                        [{text(bot.name)}]
                         {bot.isPrimary ? " ★" : ""}
                         {!bot.isActive ? " (Đã tắt)" : ""}
                       </option>
@@ -478,7 +506,7 @@ export function DashboardShell({
                 ) : null}
                 {user ? (
                   <div className="max-w-[140px] truncate rounded-full bg-[color:var(--surface-low)] px-3 py-2 text-xs text-[color:var(--on-surface-variant)]">
-                    {user.name}
+                    {text(user.name)}
                   </div>
                 ) : null}
                 {onLogout ? (

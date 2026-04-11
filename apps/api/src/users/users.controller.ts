@@ -53,7 +53,7 @@ export class UsersController {
 
   @Get()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('settings.manage')
+  @Permissions('workspace.manage')
   getUsers(@Req() request: AuthenticatedRequest) {
     return this.usersService.findAll({
       userId: request.user.sub,
@@ -64,7 +64,7 @@ export class UsersController {
 
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('settings.manage')
+  @Permissions('workspace.manage')
   createUser(
     @Req() request: AuthenticatedRequest,
     @Body() body: CreateUserBody,
@@ -78,7 +78,7 @@ export class UsersController {
 
   @Patch(':userId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('settings.manage')
+  @Permissions('workspace.manage')
   updateUser(
     @Req() request: AuthenticatedRequest,
     @Param('userId') userId: string,
@@ -93,7 +93,7 @@ export class UsersController {
 
   @Post(':userId/reset-password')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('settings.manage')
+  @Permissions('workspace.manage')
   resetPassword(
     @Param('userId') userId: string,
     @Body() body: ResetPasswordBody,

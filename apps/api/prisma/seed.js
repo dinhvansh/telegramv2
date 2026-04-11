@@ -921,31 +921,31 @@ async function main() {
 
   const superAdminRole = await prisma.role.create({
     data: {
-      name: 'SuperAdmin',
+      name: 'Quản trị hệ thống',
       description: 'Toàn quyền tenant, workspace, bot và cấu hình toàn hệ thống.',
     },
   });
   const adminRole = await prisma.role.create({
     data: {
-      name: 'Admin',
+      name: 'Quản trị workspace',
       description: 'Toàn quyền cấu hình bot, policy, queue và analytics.',
     },
   });
   const moderatorRole = await prisma.role.create({
     data: {
-      name: 'Moderator',
+      name: 'Kiểm duyệt viên',
       description: 'Review spam, mute, ban và xử lý manual review.',
     },
   });
   const operatorRole = await prisma.role.create({
     data: {
-      name: 'Operator',
+      name: 'Vận hành',
       description: 'Quản lý campaign, autopost và theo dõi tăng trưởng.',
     },
   });
   const viewerRole = await prisma.role.create({
     data: {
-      name: 'Viewer',
+      name: 'Cộng tác viên',
       description: 'Read-only view of assigned campaigns and customers.',
     },
   });
@@ -1000,6 +1000,14 @@ async function main() {
       },
       {
         roleId: operatorRole.id,
+        permissionId: permissions[4].id,
+      },
+      {
+        roleId: operatorRole.id,
+        permissionId: permissions[5].id,
+      },
+      {
+        roleId: operatorRole.id,
         permissionId: permissions[6].id,
       },
     ],
@@ -1015,7 +1023,7 @@ async function main() {
       data: {
         email: 'superadmin@nexus.local',
         username: 'system_superadmin',
-        name: 'System Super Admin',
+        name: 'Quản trị hệ thống',
         department: 'Nen tang',
         status: UserStatus.ACTIVE,
         passwordHash: superAdminPasswordHash,
@@ -1025,7 +1033,7 @@ async function main() {
       data: {
         email: 'admin@nexus.local',
         username: 'nexus_admin',
-        name: 'Nexus Admin',
+        name: 'Quản trị workspace',
         department: 'Hạ tầng',
         status: UserStatus.ACTIVE,
         passwordHash: adminPasswordHash,
@@ -1035,7 +1043,7 @@ async function main() {
       data: {
         email: 'operator@nexus.local',
         username: 'campaign_operator',
-        name: 'Campaign Operator',
+        name: 'Vận hành',
         department: 'Tăng trưởng',
         status: UserStatus.ACTIVE,
         passwordHash: operatorPasswordHash,
@@ -1045,7 +1053,7 @@ async function main() {
       data: {
         email: 'viewer@nexus.local',
         username: 'campaign_viewer',
-        name: 'Campaign Viewer',
+        name: 'Cộng tác viên',
         department: 'Quan sÃ¡t',
         status: UserStatus.ACTIVE,
         passwordHash: viewerPasswordHash,
@@ -1061,7 +1069,7 @@ async function main() {
       data: {
         email: 'moderator@nexus.local',
         username: 'mod_guard',
-        name: 'Trust Moderator',
+        name: 'Kiểm duyệt viên',
         department: 'Cộng đồng',
         status: UserStatus.ACTIVE,
         passwordHash: moderatorPasswordHash,

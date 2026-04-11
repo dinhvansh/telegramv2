@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { fallbackSnapshot } from '../platform/fallback-snapshot';
 import { PrismaService } from '../prisma/prisma.service';
+import { normalizeVietnameseText } from '../common/vietnamese-normalizer';
 
 type LoginInput = {
   email: string;
@@ -15,8 +16,8 @@ const fallbackUsers = [
     id: 'fallback-superadmin',
     email: 'superadmin@nexus.local',
     password: 'superadmin123',
-    name: 'System Super Admin',
-    roles: ['SuperAdmin'],
+    name: 'Quản trị hệ thống',
+    roles: ['Quản trị hệ thống'],
     permissions: [
       'campaign.view',
       'campaign.manage',
@@ -31,18 +32,19 @@ const fallbackUsers = [
     id: 'fallback-viewer',
     email: 'viewer@nexus.local',
     password: 'viewer123',
-    name: 'Campaign Viewer',
-    roles: ['Viewer'],
+    name: 'Cộng tác viên',
+    roles: ['Cộng tác viên'],
     permissions: ['campaign.view'],
   },
   {
     id: 'fallback-admin',
     email: 'admin@nexus.local',
     password: 'admin123',
-    name: 'Nexus Admin',
-    roles: ['Admin'],
+    name: 'Quản trị workspace',
+    roles: ['Quản trị workspace'],
     permissions: [
       'workspace.manage',
+      'campaign.view',
       'campaign.manage',
       'moderation.review',
       'settings.manage',
@@ -53,9 +55,14 @@ const fallbackUsers = [
     id: 'fallback-operator',
     email: 'operator@nexus.local',
     password: 'operator123',
-    name: 'Campaign Operator',
-    roles: ['Operator'],
-    permissions: ['campaign.manage', 'autopost.execute'],
+    name: 'Vận hành',
+    roles: ['Vận hành'],
+    permissions: [
+      'campaign.manage',
+      'moderation.review',
+      'settings.manage',
+      'autopost.execute',
+    ],
   },
 ] as const;
 
@@ -91,8 +98,8 @@ export class AuthService {
         user: {
           id: fallbackUser.id,
           email: fallbackUser.email,
-          name: fallbackUser.name,
-          roles: [...fallbackUser.roles],
+          name: normalizeVietnameseText(fallbackUser.name),
+          roles: fallbackUser.roles.map((role) => normalizeVietnameseText(role)),
           permissions: [...fallbackUser.permissions],
           defaultWorkspaceId: 'fallback-default-workspace',
           defaultOrganizationId: 'fallback-default-organization',
@@ -103,7 +110,7 @@ export class AuthService {
               slug: 'default-workspace',
               organizationId: 'fallback-default-organization',
               organizationName: 'Default Organization',
-              roles: [...fallbackUser.roles],
+              roles: fallbackUser.roles.map((role) => normalizeVietnameseText(role)),
             },
           ],
         },
@@ -193,7 +200,7 @@ export class AuthService {
       slug: membership.workspace.slug,
       organizationId: membership.workspace.organizationId,
       organizationName: membership.workspace.organization.name,
-      roles: [membership.role.name],
+      roles: [normalizeVietnameseText(membership.role.name)],
     }));
 
     const token = await this.jwtService.signAsync({
@@ -210,8 +217,8 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
-        name: user.name,
-        roles,
+        name: normalizeVietnameseText(user.name),
+        roles: roles.map((role) => normalizeVietnameseText(role)),
         permissions: uniquePermissions,
         defaultWorkspaceId: workspaceIds[0] ?? null,
         defaultOrganizationId: organizationIds[0] ?? null,
@@ -228,8 +235,8 @@ export class AuthService {
       return {
         id: fallbackUser.id,
         email: fallbackUser.email,
-        name: fallbackUser.name,
-        roles: [...fallbackUser.roles],
+        name: normalizeVietnameseText(fallbackUser.name),
+        roles: fallbackUser.roles.map((role) => normalizeVietnameseText(role)),
         permissions: [...fallbackUser.permissions],
         defaultWorkspaceId: 'fallback-default-workspace',
         defaultOrganizationId: 'fallback-default-organization',
@@ -240,7 +247,7 @@ export class AuthService {
             slug: 'default-workspace',
             organizationId: 'fallback-default-organization',
             organizationName: 'Default Organization',
-            roles: [...fallbackUser.roles],
+            roles: fallbackUser.roles.map((role) => normalizeVietnameseText(role)),
           },
         ],
         settings: fallbackSnapshot.settings,
@@ -320,14 +327,14 @@ export class AuthService {
       slug: membership.workspace.slug,
       organizationId: membership.workspace.organizationId,
       organizationName: membership.workspace.organization.name,
-      roles: [membership.role.name],
+      roles: [normalizeVietnameseText(membership.role.name)],
     }));
 
     return {
       id: user.id,
       email: user.email,
-      name: user.name,
-      roles,
+      name: normalizeVietnameseText(user.name),
+      roles: roles.map((role) => normalizeVietnameseText(role)),
       permissions: uniquePermissions,
       defaultWorkspaceId: workspaceIds[0] ?? null,
       defaultOrganizationId: organizationIds[0] ?? null,
