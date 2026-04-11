@@ -1,8 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  AutopostScheduleStatus,
-  AutopostTargetPlatform,
-} from '@prisma/client';
+import { AutopostScheduleStatus, AutopostTargetPlatform } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemLogsService } from '../system-logs/system-logs.service';
 import { MatchAiService } from './match-ai.service';

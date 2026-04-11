@@ -267,6 +267,7 @@ export function AutopostWorkbench({
   const [isTriggeringWebhook, setIsTriggeringWebhook] = useState(false);
   const [matchResult, setMatchResult] = useState<MatchSchedulerResult | null>(null);
   const [matchError, setMatchError] = useState<string | null>(null);
+  const [matchCopyNotice, setMatchCopyNotice] = useState<string | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
     title: "Bản tin tự động",
     message: "Nội dung autopost được tạo từ CRM.",
@@ -288,6 +289,43 @@ export function AutopostWorkbench({
     ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
     ...(telegramBotId ? { "X-Telegram-Bot-Id": telegramBotId } : {}),
   }), [telegramBotId, workspaceId]);
+
+  const selectedMatchWorkspace = useMemo(
+    () => snapshot?.workspaces?.find((item) => item.id === matchWorkspaceId) ?? null,
+    [matchWorkspaceId, snapshot?.workspaces],
+  );
+  const matchWebhookUrl = useMemo(() => {
+    if (typeof window === "undefined") {
+      return "/api/webhook/matches";
+    }
+    return `${window.location.origin}/api/webhook/matches`;
+  }, []);
+  const matchWebhookPayload = useMemo(
+    () =>
+      JSON.stringify(
+        {
+          success: true,
+          from_date: matchFromDate || "2026-04-11",
+          to_date: matchToDate || matchFromDate || "2026-04-11",
+          count: 1,
+          data: [
+            {
+              match_id: "m001",
+              home_team: "Arsenal",
+              away_team: "Chelsea",
+              start_date: matchToDate || matchFromDate || "2026-04-12",
+              start_time: "18:30:00",
+              slug: "arsenal-vs-chelsea",
+              league_name: "Premier League",
+              commentator_name: "BLV A",
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    [matchFromDate, matchToDate],
+  );
 
   useEffect(() => {
     let active = true;
@@ -465,6 +503,17 @@ export function AutopostWorkbench({
       setMatchError(err instanceof Error ? err.message : "Gọi webhook thất bại");
     } finally {
       setIsTriggeringWebhook(false);
+    }
+  }
+
+  async function copyText(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setMatchCopyNotice(`Đã copy ${label}.`);
+      window.setTimeout(() => setMatchCopyNotice(null), 2000);
+    } catch {
+      setMatchCopyNotice(`Không copy được ${label}.`);
+      window.setTimeout(() => setMatchCopyNotice(null), 2000);
     }
   }
 
@@ -862,6 +911,74 @@ export function AutopostWorkbench({
                     className="w-full rounded-[14px] bg-[color:var(--surface-low)] px-4 py-3 text-sm outline-none"
                   />
                 </div>
+              </div>
+            </div>
+
+            <div className="rounded-[18px] border border-[color:var(--outline-soft)] bg-[color:var(--surface-low)] p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-[color:var(--on-surface)]">Webhook để cấu hình trong n8n</p>
+                  <p className="mt-1 text-xs text-[color:var(--on-surface-variant)]">
+                    Dùng URL này ở node HTTP Request của n8n. Hệ thống nhận danh sách trận và tự tạo lịch đăng.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void copyText(matchWebhookUrl, "webhook URL")}
+                  className="rounded-[12px] bg-white px-3 py-2 text-xs font-bold text-[color:var(--primary)]"
+                >
+                  Copy URL
+                </button>
+              </div>
+              <div className="mt-4 space-y-3 text-sm">
+                <div>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--on-surface-variant)]">
+                    POST URL
+                  </p>
+                  <div className="rounded-[14px] bg-white px-4 py-3 font-mono text-[13px] text-[color:var(--on-surface)]">
+                    {matchWebhookUrl}
+                  </div>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--on-surface-variant)]">
+                      Header bắt buộc
+                    </p>
+                    <div className="rounded-[14px] bg-white px-4 py-3 text-[13px] leading-6 text-[color:var(--on-surface)]">
+                      <p><span className="font-mono">Authorization</span>: Bearer token đăng nhập</p>
+                      <p><span className="font-mono">x-workspace-id</span>: {selectedMatchWorkspace?.id || "chọn workspace để lấy id"}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--on-surface-variant)]">
+                      Header tùy chọn
+                    </p>
+                    <div className="rounded-[14px] bg-white px-4 py-3 text-[13px] leading-6 text-[color:var(--on-surface)]">
+                      <p><span className="font-mono">x-use-ai</span>: {matchUseAi ? "true" : "false"}</p>
+                      <p><span className="font-mono">Content-Type</span>: application/json</p>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--on-surface-variant)]">
+                      Payload mẫu
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void copyText(matchWebhookPayload, "payload mẫu")}
+                      className="rounded-[12px] bg-white px-3 py-2 text-xs font-bold text-[color:var(--primary)]"
+                    >
+                      Copy payload
+                    </button>
+                  </div>
+                  <pre className="overflow-x-auto rounded-[14px] bg-[#0f172a] px-4 py-3 text-[12px] leading-6 text-slate-100">
+                    {matchWebhookPayload}
+                  </pre>
+                </div>
+                {matchCopyNotice ? (
+                  <p className="text-xs font-semibold text-[color:var(--success)]">{matchCopyNotice}</p>
+                ) : null}
               </div>
             </div>
 

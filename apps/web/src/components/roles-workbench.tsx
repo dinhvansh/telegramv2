@@ -23,6 +23,11 @@ type UserItem = {
   email: string;
   username: string | null;
   department: string;
+  workspaces?: Array<{
+    id: string;
+    name: string;
+    roleName: string;
+  }>;
   status: "ACTIVE" | "AWAY" | "DISABLED";
   statusLabel: string;
   statusTone: "success" | "warning" | "danger";
@@ -130,6 +135,14 @@ function decodeLegacyString(value: string) {
 
 function text(value?: string | null) {
   return decodeLegacyString(String(value ?? ""));
+}
+
+function workspaceLabel(user: UserItem) {
+  if (!user.workspaces?.length) {
+    return "Chưa gán";
+  }
+
+  return user.workspaces.map((workspace) => text(workspace.name)).join(", ");
 }
 
 function getToneClass(tone: UserItem["statusTone"]) {
@@ -661,9 +674,10 @@ export function RolesWorkbench({
         </h3>
 
         <div className="mt-6 overflow-x-auto rounded-[24px] bg-[color:var(--surface-low)]">
-          <table className="min-w-[1040px] w-full border-collapse text-left">
+          <table className="min-w-[1180px] w-full border-collapse text-left">
             <thead>
               <tr className="text-xs uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
+                <th className="px-5 py-4 font-semibold">Workspace</th>
                 <th className="px-5 py-4 font-semibold">Người dùng</th>
                 <th className="px-5 py-4 font-semibold">Phòng ban</th>
                 <th className="px-5 py-4 font-semibold">Vai trò</th>
@@ -674,6 +688,16 @@ export function RolesWorkbench({
             <tbody>
               {users.map((user, index) => (
                 <tr key={user.id} className={index % 2 === 1 ? "bg-white/70" : ""}>
+                  <td className="px-5 py-4 align-top">
+                    <p className="text-sm font-semibold text-[color:var(--on-surface)]">
+                      {workspaceLabel(user)}
+                    </p>
+                    {user.workspaces?.length ? (
+                      <p className="mt-1 text-xs text-[color:var(--on-surface-variant)]">
+                        {user.workspaces.length} workspace
+                      </p>
+                    ) : null}
+                  </td>
                   <td className="px-5 py-4 align-top">
                     <p className="text-sm font-bold">{text(user.name)}</p>
                     <p className="mt-1 text-sm text-[color:var(--on-surface-variant)]">

@@ -18,6 +18,7 @@ type FallbackUserRecord = {
   department: string;
   status: 'ACTIVE' | 'AWAY' | 'DISABLED';
   passwordHash: string;
+  workspaces?: Array<{ id: string; name: string; roleName: string }>;
   roles: Array<{ id: string; name: string; permissions: string[] }>;
 };
 
@@ -115,6 +116,13 @@ export class UsersService {
           permissions: [...fallbackRoleCatalog[0].permissions],
         },
       ],
+      workspaces: [
+        {
+          id: 'fallback-default-workspace',
+          name: 'Default Workspace',
+          roleName: fallbackRoleCatalog[0].name,
+        },
+      ],
     },
     {
       id: 'fallback-user-admin',
@@ -129,6 +137,13 @@ export class UsersService {
           id: fallbackRoleCatalog[2].id,
           name: fallbackRoleCatalog[2].name,
           permissions: [...fallbackRoleCatalog[2].permissions],
+        },
+      ],
+      workspaces: [
+        {
+          id: 'fallback-default-workspace',
+          name: 'Default Workspace',
+          roleName: fallbackRoleCatalog[2].name,
         },
       ],
     },
@@ -147,6 +162,13 @@ export class UsersService {
           permissions: [...fallbackRoleCatalog[4].permissions],
         },
       ],
+      workspaces: [
+        {
+          id: 'fallback-default-workspace',
+          name: 'Default Workspace',
+          roleName: fallbackRoleCatalog[4].name,
+        },
+      ],
     },
     {
       id: 'fallback-user-viewer',
@@ -163,6 +185,13 @@ export class UsersService {
           permissions: [...fallbackRoleCatalog[1].permissions],
         },
       ],
+      workspaces: [
+        {
+          id: 'fallback-default-workspace',
+          name: 'Default Workspace',
+          roleName: fallbackRoleCatalog[1].name,
+        },
+      ],
     },
     {
       id: 'fallback-user-moderator',
@@ -177,6 +206,13 @@ export class UsersService {
           id: fallbackRoleCatalog[3].id,
           name: fallbackRoleCatalog[3].name,
           permissions: [...fallbackRoleCatalog[3].permissions],
+        },
+      ],
+      workspaces: [
+        {
+          id: 'fallback-default-workspace',
+          name: 'Default Workspace',
+          roleName: fallbackRoleCatalog[3].name,
         },
       ],
     },
@@ -196,11 +232,12 @@ export class UsersService {
             this.isOrganizationManager(viewer) ||
             !user.roles.some(
               (role) =>
-                role.name === 'SuperAdmin' ||
-                role.name === 'Quản trị hệ thống',
+                role.name === 'SuperAdmin' || role.name === 'Quản trị hệ thống',
             ),
         )
-        .map((user) => this.normalizeUserRecord(this.serializeFallbackUser(user)));
+        .map((user) =>
+          this.normalizeUserRecord(this.serializeFallbackUser(user)),
+        );
     }
 
     const users = await this.prisma.user.findMany({
@@ -230,6 +267,18 @@ export class UsersService {
                 },
               },
             },
+          },
+        },
+        workspaceMemberships: {
+          where: {
+            isActive: true,
+          },
+          include: {
+            workspace: true,
+            role: true,
+          },
+          orderBy: {
+            assignedAt: 'asc',
           },
         },
       },
@@ -299,6 +348,15 @@ export class UsersService {
             permissions: [...fallbackRole.permissions],
           },
         ],
+        workspaces: workspaceId
+          ? [
+              {
+                id: workspaceId,
+                name: 'Workspace đã chọn',
+                roleName: fallbackRole.name,
+              },
+            ]
+          : [],
       };
       this.fallbackUsers.push(created);
       return this.normalizeUserRecord(this.serializeFallbackUser(created));
@@ -357,6 +415,18 @@ export class UsersService {
                 },
               },
             },
+          },
+        },
+        workspaceMemberships: {
+          where: {
+            isActive: true,
+          },
+          include: {
+            workspace: true,
+            role: true,
+          },
+          orderBy: {
+            assignedAt: 'asc',
           },
         },
       },
@@ -506,6 +576,18 @@ export class UsersService {
             },
           },
         },
+        workspaceMemberships: {
+          where: {
+            isActive: true,
+          },
+          include: {
+            workspace: true,
+            role: true,
+          },
+          orderBy: {
+            assignedAt: 'asc',
+          },
+        },
       },
     });
 
@@ -565,6 +647,17 @@ export class UsersService {
     username: string | null;
     department: string | null;
     status: string;
+    workspaceMemberships?: Array<{
+      workspaceId: string;
+      workspace: {
+        id: string;
+        name: string;
+      };
+      role: {
+        id: string;
+        name: string;
+      };
+    }>;
     userRoles: Array<{
       role: {
         id: string;
@@ -577,6 +670,56 @@ export class UsersService {
       };
     }>;
   }) {
+    const roleMap = new Map<
+      string,
+      { id: string; name: string; permissions: string[] }
+    >();
+
+    for (const item of user.userRoles) {
+      const normalizedRoleName = normalizeVietnameseText(item.role.name);
+      const permissionCodes = [
+        ...new Set(
+          item.role.rolePermissions.map(
+            (permissionItem) => permissionItem.permission.code,
+          ),
+        ),
+      ];
+      const existingRole = roleMap.get(normalizedRoleName);
+
+      if (!existingRole) {
+        roleMap.set(normalizedRoleName, {
+          id: item.role.id,
+          name: normalizedRoleName,
+          permissions: permissionCodes,
+        });
+        continue;
+      }
+
+      existingRole.permissions = [
+        ...new Set([...existingRole.permissions, ...permissionCodes]),
+      ];
+    }
+
+    const workspaceMap = new Map<
+      string,
+      { id: string; name: string; roleName: string }
+    >();
+
+    for (const membership of user.workspaceMemberships ?? []) {
+      const normalizedRoleName = normalizeVietnameseText(membership.role.name);
+      const key = `${membership.workspace.id}:${normalizedRoleName}`;
+
+      if (!workspaceMap.has(key)) {
+        workspaceMap.set(key, {
+          id: membership.workspace.id,
+          name: membership.workspace.name,
+          roleName: normalizedRoleName,
+        });
+      }
+    }
+
+    const roles = [...roleMap.values()];
+
     return {
       id: user.id,
       name: user.name,
@@ -586,14 +729,13 @@ export class UsersService {
       status: user.status,
       statusLabel: getStatusLabel(user.status),
       statusTone: getStatusTone(user.status),
-      roles: user.userRoles.map((item) => ({
-        id: item.role.id,
-        name: item.role.name,
-        permissions: item.role.rolePermissions.map(
-          (permissionItem) => permissionItem.permission.code,
-        ),
-      })),
+      roles,
       primaryRole: user.userRoles[0]?.role.name || 'Chưa gán',
+      workspaces: (user.workspaceMemberships ?? []).map((membership) => ({
+        id: membership.workspace.id,
+        name: membership.workspace.name,
+        roleName: membership.role.name,
+      })),
       permissionCount: [
         ...new Set(
           user.userRoles.flatMap((item) =>
@@ -626,6 +768,11 @@ export class UsersService {
         permissions: [...role.permissions],
       })),
       primaryRole: user.roles[0]?.name || 'Chưa gán',
+      workspaces: (user.workspaces ?? []).map((workspace) => ({
+        id: workspace.id,
+        name: workspace.name,
+        roleName: workspace.roleName,
+      })),
       permissionCount: permissions.length,
     };
   }
@@ -637,18 +784,52 @@ export class UsersService {
       statusLabel: string;
       primaryRole: string;
       roles: Array<{ id: string; name: string; permissions: string[] }>;
+      workspaces?: Array<{ id: string; name: string; roleName: string }>;
     },
   >(user: T): T {
+    const normalizedRoles = [
+      ...new Map(
+        user.roles.map((role) => {
+          const normalizedName = normalizeVietnameseText(role.name);
+          return [
+            normalizedName,
+            {
+              ...role,
+              name: normalizedName,
+              permissions: [...new Set(role.permissions)],
+            },
+          ];
+        }),
+      ).values(),
+    ];
+
+    const normalizedWorkspaces = [
+      ...new Map(
+        (user.workspaces ?? []).map((workspace) => {
+          const normalizedRoleName = normalizeVietnameseText(
+            workspace.roleName,
+          );
+          return [
+            `${workspace.id}:${normalizedRoleName}`,
+            {
+              ...workspace,
+              name: normalizeVietnameseText(workspace.name),
+              roleName: normalizedRoleName,
+            },
+          ];
+        }),
+      ).values(),
+    ];
+
     return {
       ...user,
       name: normalizeVietnameseText(user.name),
       department: normalizeVietnameseText(user.department),
       statusLabel: normalizeVietnameseText(user.statusLabel),
-      primaryRole: normalizeVietnameseText(user.primaryRole),
-      roles: user.roles.map((role) => ({
-        ...role,
-        name: normalizeVietnameseText(role.name),
-      })),
+      primaryRole:
+        normalizedRoles[0]?.name ?? normalizeVietnameseText(user.primaryRole),
+      roles: normalizedRoles,
+      workspaces: normalizedWorkspaces,
     };
   }
 }

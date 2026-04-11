@@ -73,6 +73,59 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
+  private normalizeRoleList(roles: string[]) {
+    return [...new Set(roles.map((role) => normalizeVietnameseText(role)))];
+  }
+
+  private buildWorkspaceView(
+    memberships: Array<{
+      workspaceId: string;
+      workspace: {
+        id: string;
+        name: string;
+        slug: string;
+        organizationId: string;
+        organization: { name: string };
+      };
+      role: { name: string };
+    }>,
+  ) {
+    const workspaceMap = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        slug: string;
+        organizationId: string;
+        organizationName: string;
+        roles: string[];
+      }
+    >();
+
+    for (const membership of memberships) {
+      const roleName = normalizeVietnameseText(membership.role.name);
+      const existing = workspaceMap.get(membership.workspaceId);
+
+      if (!existing) {
+        workspaceMap.set(membership.workspaceId, {
+          id: membership.workspace.id,
+          name: membership.workspace.name,
+          slug: membership.workspace.slug,
+          organizationId: membership.workspace.organizationId,
+          organizationName: membership.workspace.organization.name,
+          roles: [roleName],
+        });
+        continue;
+      }
+
+      if (!existing.roles.includes(roleName)) {
+        existing.roles.push(roleName);
+      }
+    }
+
+    return [...workspaceMap.values()];
+  }
+
   async login(input: LoginInput) {
     if (!process.env.DATABASE_URL) {
       const fallbackUser = fallbackUsers.find(
@@ -99,7 +152,9 @@ export class AuthService {
           id: fallbackUser.id,
           email: fallbackUser.email,
           name: normalizeVietnameseText(fallbackUser.name),
-          roles: fallbackUser.roles.map((role) => normalizeVietnameseText(role)),
+          roles: fallbackUser.roles.map((role) =>
+            normalizeVietnameseText(role),
+          ),
           permissions: [...fallbackUser.permissions],
           defaultWorkspaceId: 'fallback-default-workspace',
           defaultOrganizationId: 'fallback-default-organization',
@@ -110,7 +165,9 @@ export class AuthService {
               slug: 'default-workspace',
               organizationId: 'fallback-default-organization',
               organizationName: 'Default Organization',
-              roles: fallbackUser.roles.map((role) => normalizeVietnameseText(role)),
+              roles: fallbackUser.roles.map((role) =>
+                normalizeVietnameseText(role),
+              ),
             },
           ],
         },
@@ -174,7 +231,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const roles = user.userRoles.map((item) => item.role.name);
+    const roles = this.normalizeRoleList(
+      user.userRoles.map((item) => item.role.name),
+    );
     const permissions = user.userRoles.flatMap((item) =>
       item.role.rolePermissions.map(
         (permissionItem) => permissionItem.permission.code,
@@ -194,14 +253,7 @@ export class AuthService {
         ),
       ),
     ];
-    const workspaces = scopedMemberships.map((membership) => ({
-      id: membership.workspace.id,
-      name: membership.workspace.name,
-      slug: membership.workspace.slug,
-      organizationId: membership.workspace.organizationId,
-      organizationName: membership.workspace.organization.name,
-      roles: [normalizeVietnameseText(membership.role.name)],
-    }));
+    const workspaces = this.buildWorkspaceView(scopedMemberships);
 
     const token = await this.jwtService.signAsync({
       sub: user.id,
@@ -218,7 +270,7 @@ export class AuthService {
         id: user.id,
         email: user.email,
         name: normalizeVietnameseText(user.name),
-        roles: roles.map((role) => normalizeVietnameseText(role)),
+        roles,
         permissions: uniquePermissions,
         defaultWorkspaceId: workspaceIds[0] ?? null,
         defaultOrganizationId: organizationIds[0] ?? null,
@@ -247,7 +299,9 @@ export class AuthService {
             slug: 'default-workspace',
             organizationId: 'fallback-default-organization',
             organizationName: 'Default Organization',
-            roles: fallbackUser.roles.map((role) => normalizeVietnameseText(role)),
+            roles: fallbackUser.roles.map((role) =>
+              normalizeVietnameseText(role),
+            ),
           },
         ],
         settings: fallbackSnapshot.settings,
@@ -301,7 +355,9 @@ export class AuthService {
       throw new UnauthorizedException('User is disabled');
     }
 
-    const roles = user.userRoles.map((item) => item.role.name);
+    const roles = this.normalizeRoleList(
+      user.userRoles.map((item) => item.role.name),
+    );
     const permissions = user.userRoles.flatMap((item) =>
       item.role.rolePermissions.map(
         (permissionItem) => permissionItem.permission.code,
@@ -321,20 +377,13 @@ export class AuthService {
         ),
       ),
     ];
-    const workspaces = scopedMemberships.map((membership) => ({
-      id: membership.workspace.id,
-      name: membership.workspace.name,
-      slug: membership.workspace.slug,
-      organizationId: membership.workspace.organizationId,
-      organizationName: membership.workspace.organization.name,
-      roles: [normalizeVietnameseText(membership.role.name)],
-    }));
+    const workspaces = this.buildWorkspaceView(scopedMemberships);
 
     return {
       id: user.id,
       email: user.email,
       name: normalizeVietnameseText(user.name),
-      roles: roles.map((role) => normalizeVietnameseText(role)),
+      roles,
       permissions: uniquePermissions,
       defaultWorkspaceId: workspaceIds[0] ?? null,
       defaultOrganizationId: organizationIds[0] ?? null,

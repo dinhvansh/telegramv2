@@ -73,7 +73,11 @@ Yeu cau:
           model: aiConfig.model,
           temperature: 0.7,
           messages: [
-            { role: 'system', content: 'Ban la mot chuyen gia social media, viet cac bai post thể thao hấp dẫn cho Telegram.' },
+            {
+              role: 'system',
+              content:
+                'Ban la mot chuyen gia social media, viet cac bai post thể thao hấp dẫn cho Telegram.',
+            },
             { role: 'user', content: prompt },
           ],
           max_tokens: 350,

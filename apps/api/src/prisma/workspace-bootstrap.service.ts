@@ -13,6 +13,13 @@ export const DEFAULT_TELEGRAM_BOT_LEGACY_KEY = 'default';
 const SUPERADMIN_EMAIL = 'superadmin@nexus.local';
 const SUPERADMIN_PASSWORD = 'superadmin123';
 
+type CanonicalRoleSpec = {
+  name: string;
+  description: string;
+  aliases: string[];
+  permissionCodes: string[];
+};
+
 type SyncDefaultTelegramBotInput = {
   externalId?: string | null;
   username?: string | null;
@@ -57,6 +64,165 @@ export class WorkspaceBootstrapService implements OnApplicationBootstrap {
     }
 
     await this.ensureSuperAdminFoundation();
+  }
+
+  private buildCanonicalRoleSpecs() {
+    const sharedWorkspacePermissions = [
+      'workspace.manage',
+      'campaign.view',
+      'campaign.manage',
+      'moderation.review',
+      'settings.manage',
+      'autopost.execute',
+    ];
+
+    return [
+      {
+        name: 'Quản trị hệ thống',
+        description:
+          'Toàn quyền tenant, workspace, bot và cấu hình toàn hệ thống.',
+        aliases: ['Quản trị hệ thống', 'SuperAdmin'],
+        permissionCodes: ['organization.manage', ...sharedWorkspacePermissions],
+      },
+      {
+        name: 'Quản trị workspace',
+        description:
+          'Toàn quyền vận hành trong workspace, gồm user, role, settings, campaign, moderation và autopost.',
+        aliases: ['Quản trị workspace', 'Admin'],
+        permissionCodes: [...sharedWorkspacePermissions],
+      },
+      {
+        name: 'Kiểm duyệt viên',
+        description: 'Review spam, mute, ban và xử lý manual review.',
+        aliases: ['Kiểm duyệt viên', 'Moderator'],
+        permissionCodes: ['moderation.review'],
+      },
+      {
+        name: 'Vận hành',
+        description:
+          'Toàn quyền vận hành trong workspace, trừ quản lý user và phân quyền.',
+        aliases: ['Vận hành', 'Operator'],
+        permissionCodes: [
+          'campaign.manage',
+          'moderation.review',
+          'settings.manage',
+          'autopost.execute',
+        ],
+      },
+      {
+        name: 'Cộng tác viên',
+        description: 'Chỉ xem campaign được giao và kết quả link mời cá nhân.',
+        aliases: ['Cộng tác viên', 'Viewer'],
+        permissionCodes: ['campaign.view'],
+      },
+    ] satisfies CanonicalRoleSpec[];
+  }
+
+  private async normalizeLegacyRolesAndMemberships(
+    permissionMap: Map<string, { id: string }>,
+  ) {
+    const canonicalRoleByName = new Map<string, { id: string; name: string }>();
+
+    for (const spec of this.buildCanonicalRoleSpecs()) {
+      let canonicalRole = await this.prisma.role.findUnique({
+        where: { name: spec.name },
+        select: { id: true, name: true },
+      });
+
+      if (!canonicalRole) {
+        canonicalRole = await this.prisma.role.create({
+          data: {
+            name: spec.name,
+            description: spec.description,
+          },
+          select: { id: true, name: true },
+        });
+      } else {
+        await this.prisma.role.update({
+          where: { id: canonicalRole.id },
+          data: { description: spec.description },
+        });
+      }
+
+      const legacyRoles = await this.prisma.role.findMany({
+        where: {
+          name: {
+            in: spec.aliases.filter((alias) => alias !== spec.name),
+          },
+        },
+        select: { id: true, name: true },
+      });
+
+      for (const legacyRole of legacyRoles) {
+        const [legacyUserRoles, legacyMemberships] = await Promise.all([
+          this.prisma.userRole.findMany({
+            where: { roleId: legacyRole.id },
+            select: { userId: true, assignedAt: true },
+          }),
+          this.prisma.workspaceMembership.findMany({
+            where: { roleId: legacyRole.id },
+            select: {
+              userId: true,
+              workspaceId: true,
+              isActive: true,
+              assignedAt: true,
+            },
+          }),
+        ]);
+
+        if (legacyUserRoles.length > 0) {
+          await this.prisma.userRole.createMany({
+            data: legacyUserRoles.map((item) => ({
+              userId: item.userId,
+              roleId: canonicalRole.id,
+              assignedAt: item.assignedAt,
+            })),
+            skipDuplicates: true,
+          });
+        }
+
+        if (legacyMemberships.length > 0) {
+          await this.prisma.workspaceMembership.createMany({
+            data: legacyMemberships.map((item) => ({
+              userId: item.userId,
+              workspaceId: item.workspaceId,
+              roleId: canonicalRole.id,
+              isActive: item.isActive,
+              assignedAt: item.assignedAt,
+            })),
+            skipDuplicates: true,
+          });
+        }
+
+        await this.prisma.rolePermission.deleteMany({
+          where: { roleId: legacyRole.id },
+        });
+        await this.prisma.userRole.deleteMany({
+          where: { roleId: legacyRole.id },
+        });
+        await this.prisma.workspaceMembership.deleteMany({
+          where: { roleId: legacyRole.id },
+        });
+        await this.prisma.role.delete({
+          where: { id: legacyRole.id },
+        });
+      }
+
+      await this.prisma.rolePermission.deleteMany({
+        where: { roleId: canonicalRole.id },
+      });
+      await this.prisma.rolePermission.createMany({
+        data: spec.permissionCodes.map((code) => ({
+          roleId: canonicalRole.id,
+          permissionId: permissionMap.get(code)!.id,
+        })),
+        skipDuplicates: true,
+      });
+
+      canonicalRoleByName.set(spec.name, canonicalRole);
+    }
+
+    return canonicalRoleByName;
   }
 
   async ensureDefaultScope() {
@@ -282,11 +448,19 @@ export class WorkspaceBootstrapService implements OnApplicationBootstrap {
       skipDuplicates: true,
     });
 
+    const permissionMap = new Map(
+      permissions.map((permission) => [permission.code, { id: permission.id }]),
+    );
+    const canonicalRoles =
+      await this.normalizeLegacyRolesAndMemberships(permissionMap);
+    const activeSuperAdminRole =
+      canonicalRoles.get('Quản trị hệ thống') ?? superAdminRole;
+
     const passwordHash = await bcrypt.hash(SUPERADMIN_PASSWORD, 10);
     const superAdminUser = await this.prisma.user.upsert({
       where: { email: SUPERADMIN_EMAIL },
       update: {
-        name: 'System Super Admin',
+        name: 'Quản trị hệ thống',
         username: 'system_superadmin',
         department: 'Nền tảng',
         status: UserStatus.ACTIVE,
@@ -295,7 +469,7 @@ export class WorkspaceBootstrapService implements OnApplicationBootstrap {
       create: {
         email: SUPERADMIN_EMAIL,
         username: 'system_superadmin',
-        name: 'System Super Admin',
+        name: 'Quản trị hệ thống',
         department: 'Nền tảng',
         status: UserStatus.ACTIVE,
         passwordHash,
@@ -306,13 +480,13 @@ export class WorkspaceBootstrapService implements OnApplicationBootstrap {
       where: {
         userId_roleId: {
           userId: superAdminUser.id,
-          roleId: superAdminRole.id,
+          roleId: activeSuperAdminRole.id,
         },
       },
       update: {},
       create: {
         userId: superAdminUser.id,
-        roleId: superAdminRole.id,
+        roleId: activeSuperAdminRole.id,
       },
     });
 
@@ -325,10 +499,29 @@ export class WorkspaceBootstrapService implements OnApplicationBootstrap {
         data: workspaces.map((workspace) => ({
           userId: superAdminUser.id,
           workspaceId: workspace.id,
-          roleId: superAdminRole.id,
+          roleId: activeSuperAdminRole.id,
         })),
         skipDuplicates: true,
       });
     }
+
+    await Promise.all([
+      this.prisma.user.updateMany({
+        where: { email: 'admin@nexus.local' },
+        data: { name: 'Quản trị workspace', department: 'Hạ tầng' },
+      }),
+      this.prisma.user.updateMany({
+        where: { email: 'operator@nexus.local' },
+        data: { name: 'Vận hành', department: 'Tăng trưởng' },
+      }),
+      this.prisma.user.updateMany({
+        where: { email: 'moderator@nexus.local' },
+        data: { name: 'Kiểm duyệt viên', department: 'Cộng đồng' },
+      }),
+      this.prisma.user.updateMany({
+        where: { email: 'viewer@nexus.local' },
+        data: { name: 'Cộng tác viên', department: 'Cộng tác viên' },
+      }),
+    ]);
   }
 }

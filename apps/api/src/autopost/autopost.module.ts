@@ -12,6 +12,11 @@ import { MatchAiService } from './match-ai.service';
 @Module({
   imports: [PrismaModule, SystemLogsModule, SettingsModule],
   controllers: [AutopostController, MatchWebhookController],
-  providers: [AutopostService, AutopostSchedulerService, MatchWebhookService, MatchAiService],
+  providers: [
+    AutopostService,
+    AutopostSchedulerService,
+    MatchWebhookService,
+    MatchAiService,
+  ],
 })
 export class AutopostModule {}

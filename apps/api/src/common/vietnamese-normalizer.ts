@@ -1,4 +1,13 @@
 const exactTextMap = new Map<string, string>([
+  ['SuperAdmin', 'Quản trị hệ thống'],
+  ['Admin', 'Quản trị workspace'],
+  ['Moderator', 'Kiểm duyệt viên'],
+  ['Operator', 'Vận hành'],
+  ['Viewer', 'Cộng tác viên'],
+  ['System Super Admin', 'Quản trị hệ thống'],
+  ['Nexus Admin', 'Quản trị workspace'],
+  ['Campaign Operator', 'Vận hành'],
+  ['Trust Moderator', 'Kiểm duyệt viên'],
   ['Qu?n tr? workspace', 'Quản trị workspace'],
   ['Qu?n tr? h? th?ng', 'Quản trị hệ thống'],
   ['Ki?m duy?t vi?n', 'Kiểm duyệt viên'],

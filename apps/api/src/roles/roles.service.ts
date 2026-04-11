@@ -59,8 +59,7 @@ export class RolesService {
         .filter(
           (role) =>
             this.isOrganizationManager(viewer) ||
-            (role.title !== 'Quản trị hệ thống' &&
-              role.title !== 'SuperAdmin'),
+            (role.title !== 'Quản trị hệ thống' && role.title !== 'SuperAdmin'),
         )
         .map((role) => ({
           id:
@@ -122,12 +121,35 @@ export class RolesService {
       },
     });
 
-    return roles.map((role) => ({
-      id: role.id,
-      name: normalizeVietnameseText(role.name),
-      description: normalizeVietnameseText(role.description),
-      permissions: role.rolePermissions.map((item) => item.permission.code),
-    }));
+    const normalizedRoleMap = new Map<
+      string,
+      { id: string; name: string; description: string; permissions: string[] }
+    >();
+
+    for (const role of roles) {
+      const normalizedName = normalizeVietnameseText(role.name);
+      const normalizedDescription = normalizeVietnameseText(role.description);
+      const permissions = role.rolePermissions.map(
+        (item) => item.permission.code,
+      );
+      const existingRole = normalizedRoleMap.get(normalizedName);
+
+      if (!existingRole) {
+        normalizedRoleMap.set(normalizedName, {
+          id: role.id,
+          name: normalizedName,
+          description: normalizedDescription,
+          permissions: [...new Set(permissions)],
+        });
+        continue;
+      }
+
+      existingRole.permissions = [
+        ...new Set([...existingRole.permissions, ...permissions]),
+      ];
+    }
+
+    return [...normalizedRoleMap.values()];
   }
 
   async findPermissionCatalog(viewer?: RolesViewer) {
