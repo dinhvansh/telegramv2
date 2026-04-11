@@ -111,6 +111,7 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
   useEffect(() => { setToken(window.localStorage.getItem(authStorageKey)); }, []);
   const headers = useMemo(() => token ? { Authorization: `Bearer ${token}` } : undefined, [token]);
   const isSuperAdmin = Boolean(profile?.permissions.includes("organization.manage"));
+  const canManageContacts = Boolean(profile?.permissions.includes("contacts.manage"));
 
   const loadAll = useCallback(async () => {
     if (!headers) return;
@@ -408,6 +409,7 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
       </section>
 
       {/* ===== TELEGRAM QR LOGIN ===== */}
+      {canManageContacts ? (
       <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
         <div className="flex items-center justify-between">
           <div>
@@ -482,8 +484,10 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
           )}
         </div>
       </section>
+      ) : null}
 
       {/* ===== CONTACTS IMPORT ===== */}
+      {canManageContacts ? (
       <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
         <div className="flex items-center justify-between">
           <div>
@@ -523,6 +527,7 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
           </button>
         </form>
       </section>
+      ) : null}
 
       {/* ===== WORKSPACE ADMIN ===== */}
       {isSuperAdmin ? (

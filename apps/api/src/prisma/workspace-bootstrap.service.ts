@@ -74,6 +74,7 @@ export class WorkspaceBootstrapService implements OnApplicationBootstrap {
       'moderation.review',
       'settings.manage',
       'autopost.execute',
+      'contacts.manage',
     ];
 
     return [
@@ -107,6 +108,7 @@ export class WorkspaceBootstrapService implements OnApplicationBootstrap {
           'moderation.review',
           'settings.manage',
           'autopost.execute',
+          'contacts.manage',
         ],
       },
       {
