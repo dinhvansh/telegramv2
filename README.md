@@ -1,162 +1,93 @@
 # Telegram Operations Platform
 
-CRM-first platform để vận hành Telegram group, campaign, moderation, autopost và quản trị nội bộ.
+Nền tảng CRM-first để vận hành Telegram theo mô hình nhiều workspace, gồm:
 
-## Mục tiêu hệ thống
-
-Hệ thống này đi theo hướng:
-
-- Toàn bộ cấu hình nằm trên web CRM.
-- Bot Telegram chỉ là execution layer.
-- Khi bot được add vào group, CRM ghi nhận group đó.
-- Moderation engine đọc config từ CRM để quyết định xử lý.
-- Telegram Bot API chỉ được gọi ở bước thực thi cuối cùng.
-
-Domain production đã chốt:
-
-- `https://tele.blogthethao.org`
+- Campaign và invite link
+- Thành viên và Member 360
+- Moderation và anti-spam
+- Autopost
+- RBAC theo workspace
+- Settings, bot config, AI config
+- Contacts import và Telegram MTProto resolve
 
 ## Trạng thái hiện tại
 
-Repository hiện đã có các phần chạy thật:
+Repo này đang ở giai đoạn `beta nội bộ`, đã có các phần chạy được:
 
-- Đăng nhập JWT và phân quyền RBAC.
-- Quản lý user và role.
-- Telegram bot config, verify bot, register webhook, discover groups.
-- Sync group Telegram vào CRM.
-- Campaign gắn với group Telegram thật.
-- Tạo invite link Telegram thật khi tạo campaign.
-- Tracking members theo campaign.
-- Moderation engine với lock rules, antiflood, warning ladder.
-- Telegram execution cho `warn`, `mute`, `tmute`, `kick`, `ban`, `tban`.
-- Announcement lên group sau khi xử lý.
-- Autopost targets, schedules, dispatch và logs.
-- Docker local stack.
-- GitHub Actions chạy CI trước khi deploy VPS.
+- Web admin bằng Next.js
+- API bằng NestJS
+- PostgreSQL + Redis + Docker Compose
+- Đăng nhập JWT và RBAC cơ bản
+- Workspace, role, user, membership
+- Campaign, invite link, member tracking cơ bản
+- Moderation rule engine + manual action
+- Telegram bot config, webhook, discover groups
+- MTProto QR login để resolve contacts
+- Contacts import từ:
+  - mảng JSON phẳng
+  - Telegram export object có `contacts.list`
+- Deploy VPS bằng Docker + GitHub Actions
 
-## Cấu trúc monorepo
+Các phần còn thiếu hoặc chưa production-ready hoàn toàn:
+
+- Contacts import nền theo batch/queue
+- Customer mapping hoàn chỉnh sau khi resolve
+- Realtime/WebSocket đồng bộ toàn hệ thống
+- Hardening đầy đủ cho batch lớn
+- Dọn sạch toàn bộ lỗi UTF-8 còn sót ở mọi màn hình và seed
+
+## Cấu trúc repo
 
 ```text
 .
-|-- apps/
-|   |-- api/        NestJS API, Prisma schema, Telegram integration, moderation logic
-|   `-- web/        Next.js admin CRM UI
-|-- docs/           Tài liệu phân tích, kế hoạch triển khai, handover
-|-- infra/          Nginx, deploy script, VPS setup
-|-- stitch/         Nguồn tham chiếu UI cũ
-|-- docker-compose.yml
-`-- docker-compose.prod.yml
+├─ apps/
+│  ├─ api/
+│  └─ web/
+├─ docs/
+├─ infra/
+├─ stitch/
+├─ docker-compose.yml
+├─ docker-compose.prod.yml
+└─ README.md
 ```
 
-## Các module chính
+## Apps
 
 ### `apps/api`
 
-Backend hiện được tổ chức theo domain:
+Các module chính:
 
-- `auth`: đăng nhập, JWT, profile
-- `campaigns`: campaign, invite link, member stats
-- `telegram`: bot config, webhook, group sync, invite links
-- `telegram-actions`: lớp gọi Telegram Bot API
-- `moderation`: rule engine, warning ladder, antiflood, manual actions
-- `autopost`: target, schedule, dispatch, logs
-- `roles`, `users`: RBAC và user administration
-- `settings`: system settings, encrypted secrets
-- `system-logs`: audit/execution logs
-- `platform`: dashboard snapshot và dữ liệu tổng hợp
+- `auth`
+- `users`
+- `roles`
+- `workspaces`
+- `campaigns`
+- `telegram`
+- `telegram-actions`
+- `telegram-mtproto`
+- `moderation`
+- `contacts`
+- `autopost`
+- `settings`
+- `system-logs`
+- `platform`
 
 ### `apps/web`
 
-Frontend hiện có các màn chính:
+Các route chính:
 
-- đăng nhập
-- tổng quan
-- campaign
-- thành viên
-- chống spam
-- autopost
-- phân quyền
-- Telegram
-- cài đặt
-
-## Luồng chính đang chạy
-
-### 1. Telegram CRM-first
-
-- User nhập bot token và cấu hình Telegram trên web.
-- CRM lưu token đã mã hóa trong settings.
-- Có thể verify bot bằng `getMe`.
-- Có thể register webhook.
-- Khi bot được add vào group hoặc đổi quyền, CRM sync group qua webhook `my_chat_member` và `chat_member`.
-
-### 2. Campaign
-
-Luồng tạo campaign hiện tại:
-
-1. User tạo campaign từ web.
-2. Không nhập tay channel.
-3. Bắt buộc chọn từ danh sách `TelegramGroup` đã sync.
-4. Backend tạo record campaign.
-5. Backend gọi Telegram `createChatInviteLink` thật.
-6. Nếu Telegram thành công:
-   - cập nhật `inviteCode`
-   - lưu mapping invite link theo campaign/group
-7. Nếu Telegram lỗi:
-   - rollback campaign
-   - không để lại record rác
-
-### 3. Members
-
-- Thành viên được ghi nhận theo campaign/group.
-- Có thống kê:
-  - đã tham gia
-  - đang ở lại
-  - đã rời đi
-- Có thể gán `owner` và `note` cho từng member trong CRM.
-
-### 4. Moderation
-
-Moderation hiện đã có:
-
-- lock `url`
-- lock `invitelink`
-- lock `forward`
-- lock `email`
-- lock `phone`
-- lock `bot`
-- lock `photo`
-- lock `video`
-- lock `document`
-- lock `sticker`
-- `antiflood`
-- `warning ladder`
-- exemption cho trusted user, owner, admin
-- manual action từ CRM
-- command workflow cơ bản
-
-Action matrix hiện có:
-
-- `warn`
-- `mute`
-- `tmute`
-- `kick`
-- `ban`
-- `tban`
-
-### 5. Execution layer
-
-Khi CRM quyết định xử lý:
-
-- Bot sẽ gọi Telegram Bot API để xóa tin, mute, ban, decline join request, approve request.
-- Nếu thiếu quyền admin, hệ thống sẽ map lỗi Telegram sang quyền cần cấp cho bot.
-- Nếu action chạy được, hệ thống có thể gửi announcement vào group.
-
-### 6. Autopost
-
-- Tạo target.
-- Tạo schedule.
-- Dispatch thủ công hoặc dispatch lịch đến hạn.
-- Ghi log gửi bài.
+- `/dashboard`
+- `/campaigns`
+- `/members`
+- `/member360`
+- `/moderation`
+- `/spam`
+- `/autopost`
+- `/contacts`
+- `/roles`
+- `/settings`
+- `/telegram`
+- `/workspaces`
 
 ## Local development
 
@@ -166,155 +97,56 @@ Khi CRM quyết định xử lý:
 - npm 11+
 - Docker Desktop
 
-### Biến môi trường
+### Chạy local bằng Docker
 
-Tạo `.env` từ `.env.example`.
-
-Các biến quan trọng:
-
-```env
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/telegram_ops?schema=public
-REDIS_URL=redis://localhost:6379
-API_PORT=4000
-WEB_PORT=3000
-JWT_SECRET=local-dev-secret
-SETTINGS_ENCRYPTION_KEY=change-me-to-a-long-random-secret
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_BOT_USERNAME=
-TELEGRAM_WEBHOOK_SECRET=
-TELEGRAM_PUBLIC_BASE_URL=
+```powershell
+cd e:\2.CODE\telegram
+docker compose up -d --build
 ```
 
-Lưu ý:
-
-- `SETTINGS_ENCRYPTION_KEY` nên khác `JWT_SECRET`.
-- Token Telegram hiện hỗ trợ 1 bot active.
-
-### Chạy bằng Docker
-
-Từ root repo:
-
-```bash
-docker compose up --build
-```
-
-Services:
+Endpoints:
 
 - Web: `http://localhost:3000`
-- API: `http://localhost:4000/api`
+- API health: `http://localhost:4000/api/health`
 - PostgreSQL: `localhost:5432`
 - Redis: `localhost:6379`
 
-### Chạy thủ công
+### Tài khoản local mặc định
 
-API:
-
-```bash
-cd apps/api
-npm ci
-npm run prisma:generate
-npm run start:dev
-```
-
-Web:
-
-```bash
-cd apps/web
-npm ci
-npm run dev
-```
-
-## Tài khoản local
-
+- `superadmin@nexus.local / superadmin123`
 - `admin@nexus.local / admin123`
 - `operator@nexus.local / operator123`
-
-## Các endpoint quan trọng
-
-### Auth
-
-- `POST /api/auth/login`
-- `GET /api/auth/me`
-
-### Campaigns
-
-- `GET /api/campaigns`
-- `POST /api/campaigns`
-- `GET /api/campaigns/:campaignId/invite-links`
-
-### Telegram
-
-- `GET /api/telegram/status`
-- `POST /api/telegram/config`
-- `POST /api/telegram/verify-bot`
-- `POST /api/telegram/register-webhook`
-- `GET /api/telegram/groups`
-- `POST /api/telegram/discover-groups`
-- `POST /api/telegram/mock`
-- `POST /api/telegram/webhook`
-- `POST /api/telegram/commands/execute`
-
-### Moderation
-
-- `GET /api/moderation/config`
-- `PUT /api/moderation/config`
-- `GET /api/moderation/events`
-- `POST /api/moderation/analyze`
-- `POST /api/moderation/events/:eventId/action`
-- `GET /api/moderation/debug`
-
-### Autopost
-
-- `GET /api/autopost/targets`
-- `POST /api/autopost/targets`
-- `GET /api/autopost/schedules`
-- `POST /api/autopost/schedules`
-- `POST /api/autopost/dispatch`
-
-## Kiểm tra chất lượng đã chạy
-
-Ở trạng thái repo hiện tại, các bước sau đã pass trong các vòng làm việc gần nhất:
-
-- `apps/api`: `npm run prisma:generate`
-- `apps/api`: `npm run lint`
-- `apps/api`: `npm run build`
-- `apps/web`: `npm run lint`
-- `apps/web`: `npm run build`
-- `docker compose up -d --build`
-
-Ghi chú:
-
-- `apps/api` hiện không có unit test kiểu `npm test` chuẩn, nên lệnh đó có thể báo `No tests found`.
+- `moderator@nexus.local / moderator123`
+- `viewer@nexus.local / viewer123`
 
 ## Production
 
-Production đang đi theo:
+Production hiện chốt:
 
-- web qua Nginx tại `https://tele.blogthethao.org/`
-- API qua `https://tele.blogthethao.org/api/`
-- webhook Telegram dự kiến:
-  - `https://tele.blogthethao.org/api/telegram/webhook`
+- Domain: `https://tele.blogthethao.org`
+- VPS: `206.189.152.115`
+- Env chuẩn:
+  - `/opt/telegramv2/shared/.env.production`
 
-File liên quan:
+Deploy/restart:
 
-- `infra/nginx/tele.blogthethao.org.conf`
-- `docker-compose.prod.yml`
-- `.github/workflows/deploy-vps.yml`
+```bash
+cd /opt/telegramv2/app
+git pull origin main
+cp /opt/telegramv2/shared/.env.production .env.production
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build api web
+```
 
-## Phần còn cần hoàn thiện thêm
+## Tài liệu chuẩn nên đọc trước
 
-Những gap còn lại chủ yếu là live validation và polish:
+Từ thời điểm này, các file dưới đây là bộ tài liệu chính:
 
-- verify live `CampaignInviteLink` end-to-end với bot token thật
-- test moderation thật trên group Telegram thật
-- test announcement thật trong group
-- test autopost thật trên production
-- dọn thêm text tiếng Việt lỗi mã hóa ở vài màn cũ
-- làm UX lỗi rõ hơn ở một số form như tạo campaign
+- [docs/README.md](e:/2.CODE/telegram/docs/README.md)
+- [telegram_operations_platform_architecture_business_flow.md](e:/2.CODE/telegram/telegram_operations_platform_architecture_business_flow.md)
+- [telegram_operations_platform_ai_build_spec.md](e:/2.CODE/telegram/telegram_operations_platform_ai_build_spec.md)
+- [telegram_operations_platform_ai_execution_workflow.md](e:/2.CODE/telegram/telegram_operations_platform_ai_execution_workflow.md)
+- [docs/implementation_master_plan.md](e:/2.CODE/telegram/docs/implementation_master_plan.md)
+- [docs/master_checklist.md](e:/2.CODE/telegram/docs/master_checklist.md)
+- [docs/live_debug_runbook.md](e:/2.CODE/telegram/docs/live_debug_runbook.md)
 
-## Tài liệu liên quan
-
-- [docs/crm_first_moderation_architecture.md](docs/crm_first_moderation_architecture.md)
-- [docs/telegram_moderation_implementation_plan.md](docs/telegram_moderation_implementation_plan.md)
-- [docs/telegram_moderation_dev_spec_full.md](docs/telegram_moderation_dev_spec_full.md)
-- [docs/handover_2026-03-30.md](docs/handover_2026-03-30.md)
+Các file handover hoặc draft cũ trong `docs/` vẫn được giữ lại để tra cứu lịch sử, nhưng không còn là nguồn chân lý chính.

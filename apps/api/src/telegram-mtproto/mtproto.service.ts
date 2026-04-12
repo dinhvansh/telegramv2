@@ -79,7 +79,9 @@ export class MtprotoService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
   ) {
-    this.apiId = this.configService.get<number>('TELEGRAM_API_ID')!;
+    this.apiId = Number(
+      this.configService.get<string>('TELEGRAM_API_ID') ?? '0',
+    );
     this.apiHash = this.configService.get<string>('TELEGRAM_API_HASH')!;
   }
 
@@ -118,13 +120,19 @@ export class MtprotoService {
       { apiId: this.apiId, apiHash: this.apiHash },
       {
         qrCode: ({ token, expires }) => {
+          const expiresAt = expires * 1000;
+          const expiresIn = Math.max(
+            0,
+            Math.floor((expiresAt - Date.now()) / 1000),
+          );
+
           this.qrToken = token.toString('base64url');
-          this.qrExpiresAt = Date.now() + expires * 1000;
+          this.qrExpiresAt = expiresAt;
           this.client = client;
-          this.logger.log(`QR code ready, expires in ${expires}s`);
+          this.logger.log(`QR code ready, expires in ${expiresIn}s`);
           resolveStart({
             token: this.qrToken,
-            expiresIn: expires,
+            expiresIn,
           });
           return Promise.resolve();
         },
@@ -236,10 +244,9 @@ export class MtprotoService {
         phone: user.phone || undefined,
       };
     } catch (error: unknown) {
-      this.logger.error(
-        `resolvePhone failed for ${phone}: ${getTelegramErrorMessage(error)}`,
-      );
-      return null;
+      const message = getTelegramErrorMessage(error);
+      this.logger.error(`resolvePhone failed for ${phone}: ${message}`);
+      throw new Error(message);
     }
   }
 

@@ -1,28 +1,56 @@
 # VPS CI/CD Setup
 
-Production target:
+## Production target
+
 - Domain: `https://tele.blogthethao.org`
 - VPS: `206.189.152.115`
-- Reverse proxy: `nginx`
-- App runtime:
-  - web -> `127.0.0.1:3001`
-  - api -> `127.0.0.1:4000`
 
-Deployment layout on VPS:
-- `/opt/telegramv2/app`
-- `/opt/telegramv2/shared/.env.production`
+## Thư mục trên VPS
 
-GitHub Actions secrets to create:
+- Code: `/opt/telegramv2/app`
+- Env chuẩn: `/opt/telegramv2/shared/.env.production`
+
+## Nguyên tắc env
+
+- File chuẩn phải sửa ở `shared/.env.production`
+- File trong `app/.env.production` chỉ là bản copy runtime
+- Mỗi lần deploy script sẽ copy lại từ `shared` sang `app`
+
+## Build/redeploy
+
+```bash
+cd /opt/telegramv2/app
+git pull origin main
+cp /opt/telegramv2/shared/.env.production .env.production
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build api web
+```
+
+## Restart nhanh
+
+```bash
+cd /opt/telegramv2/app
+cp /opt/telegramv2/shared/.env.production .env.production
+docker compose --env-file .env.production -f docker-compose.prod.yml restart api web
+```
+
+## Kiểm tra
+
+```bash
+curl http://127.0.0.1:4000/api/health
+```
+
+## GitHub Actions secrets
+
 - `TELEGRAM_VPS_HOST`
 - `TELEGRAM_VPS_USER`
 - `TELEGRAM_VPS_SSH_KEY`
 
-App secrets stay on VPS inside `.env.production`, not in GitHub Actions.
+## Lưu ý env quan trọng cho contacts/MTProto
 
-First-time bootstrap checklist:
-1. Create deploy user and install SSH public key.
-2. Create `/opt/telegramv2/shared/.env.production`.
-3. Install nginx config for `tele.blogthethao.org`.
-4. Issue Let's Encrypt certificate.
-5. Let server clone `https://github.com/dinhvansh/telegramv2.git`.
-6. Push to `main` or trigger `Deploy VPS`.
+- `TELEGRAM_API_ID`
+- `TELEGRAM_API_HASH`
+
+Nếu thiếu 2 biến này:
+
+- QR login MTProto sẽ lỗi
+- contacts import sẽ không chạy đúng

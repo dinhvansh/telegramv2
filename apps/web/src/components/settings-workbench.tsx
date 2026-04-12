@@ -62,9 +62,13 @@ function normalizeContactsPayload(payload: unknown) {
   if (Array.isArray(payload)) return payload;
   if (typeof payload !== "object" || payload === null) return null;
 
-  const candidate = payload as ContactsImportPayloadObject;
-  if (Array.isArray(candidate.contacts?.list)) return candidate.contacts.list;
-  if (Array.isArray(candidate.list)) return candidate.list;
+  const candidate = payload as ContactsImportPayloadObject & {
+    frequent_contacts?: { list?: unknown[] };
+  };
+
+  if (Array.isArray(candidate.contacts?.list)) return payload;
+  if (Array.isArray(candidate.frequent_contacts?.list)) return payload;
+  if (Array.isArray(candidate.list)) return payload;
 
   return null;
 }
@@ -323,17 +327,24 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
 
     try {
       const payload = JSON.parse(await fileInput.files[0].text()) as unknown;
-      const contacts = normalizeContactsPayload(payload);
-      if (!contacts) {
-        setError("JSON phải là mảng contact hoặc file Telegram export có contacts.list.");
+      const importPayload = normalizeContactsPayload(payload);
+      if (!importPayload) {
+        setError("JSON phải là mảng contact hoặc file Telegram export có contacts.list hoặc frequent_contacts.list.");
         return;
       }
 
-      setNotice("Đang import... vui lòng chờ.");
-      const res = await fetch(`${apiBaseUrl}/contacts/import`, { method: "POST", headers, body: JSON.stringify(contacts) });
-      const data = await res.json() as { total: number; resolved: number; failed: number; error?: string };
+      setNotice("Đang tạo batch import...");
+      const res = await fetch(`${apiBaseUrl}/contacts/import`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          fileName: fileInput.files[0].name,
+          payload: importPayload,
+        }),
+      });
+      const data = await res.json() as { batch?: { id: string; totalCount: number }; error?: string };
       if (data.error) throw new Error(data.error);
-      setNotice(`Xong! ${data.resolved}/${data.total} đã resolve.`);
+      setNotice(`Đã tạo batch ${data.batch?.id ?? ""}. Vào màn /contacts để theo dõi tiến độ.`);
     } catch (e) { setError(e instanceof Error ? e.message : "Import thất bại."); }
     finally { setImportLoading(false); }
   }
@@ -521,7 +532,7 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
         </div>
 
         <p className="mt-2 text-sm text-[color:var(--on-surface-variant)]">
-          Upload file JSON chứa danh sách contacts từ Telegram export. Hệ thống sẽ resolve user ID cho từng số điện thoại.
+          Upload file JSON chứa danh sách contacts từ Telegram export. Hệ thống sẽ tạo batch nền để resolve user ID và import frequent contacts nếu có.
         </p>
 
         <form onSubmit={handleImportContacts} className="mt-6 space-y-4">
@@ -534,7 +545,7 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
               className="block w-full text-sm text-[color:var(--on-surface-variant)] file:mr-4 file:py-2 file:px-4 file:rounded-[14px] file:border-0 file:text-sm file:font-semibold file:bg-[color:var(--primary)] file:text-white hover:file:bg-[color:var(--primary-dim)] file:cursor-pointer cursor-pointer disabled:opacity-40"
             />
             <p className="mt-2 text-xs text-[color:var(--on-surface-variant)]">
-              JSON format: <code className="bg-[color:var(--surface-low)] px-1.5 py-0.5 rounded text-xs">{'[{"phone_number":"+84...","first_name":"Tên","last_name":"..."}]'}</code>
+              JSON format: <code className="bg-[color:var(--surface-low)] px-1.5 py-0.5 rounded text-xs">{'[{"phone_number":"+84...","first_name":"Tên","last_name":"..."}]'}</code> hoặc Telegram export có <code className="bg-[color:var(--surface-low)] px-1.5 py-0.5 rounded text-xs">contacts.list</code> / <code className="bg-[color:var(--surface-low)] px-1.5 py-0.5 rounded text-xs">frequent_contacts.list</code>
             </p>
           </div>
           <button
@@ -542,7 +553,7 @@ export function SettingsWorkbench({ telegramBotId = null }: { telegramBotId?: st
             disabled={!tgAuthStatus?.authenticated || importLoading}
             className="rounded-[16px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-6 py-3 text-sm font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:opacity-40"
           >
-            {importLoading ? "Đang import..." : "Import & Resolve"}
+            {importLoading ? "Đang tạo batch..." : "Tạo batch import"}
           </button>
         </form>
       </section>

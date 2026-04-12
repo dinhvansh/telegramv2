@@ -3,9 +3,14 @@ import {
   Controller,
   Get,
   HttpCode,
+  NotFoundException,
+  Param,
   Post,
+  Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -14,47 +19,62 @@ import {
   QrCodeResult,
 } from '../telegram-mtproto/mtproto.service';
 import type { QrPollResult } from '../telegram-mtproto/mtproto.service';
-import { TelegramResolverService } from './telegram-resolver.service';
-import type { ContactInput } from './contacts.service';
+import { ContactsService } from './contacts.service';
+import {
+  normalizeContactsImportPayload,
+  type NormalizedImportPayload,
+} from './import-payload';
 
-type ContactsImportObject = {
-  contacts?: {
-    list?: ContactInput[];
-  };
-  list?: ContactInput[];
+type ImportBatchRequestBody = {
+  fileName?: string;
+  workspaceId?: string;
+  payload?: unknown;
 };
 
-function normalizeContactsPayload(body: unknown): ContactInput[] | null {
-  if (Array.isArray(body)) {
-    return body as ContactInput[];
+type AuthenticatedRequest = Request & {
+  user: {
+    sub: string;
+    email: string;
+    roles: string[];
+    permissions: string[];
+    workspaceIds?: string[];
+  };
+};
+
+function extractNormalizedPayload(body: unknown): {
+  fileName?: string;
+  workspaceId?: string;
+  payload: NormalizedImportPayload;
+} | null {
+  if (typeof body === 'object' && body !== null && 'payload' in body) {
+    const requestBody = body as ImportBatchRequestBody;
+    const payload = normalizeContactsImportPayload(requestBody.payload);
+    if (!payload) {
+      return null;
+    }
+
+    return {
+      fileName: requestBody.fileName,
+      workspaceId: requestBody.workspaceId,
+      payload,
+    };
   }
 
-  if (typeof body !== 'object' || body === null) {
+  const payload = normalizeContactsImportPayload(body);
+  if (!payload) {
     return null;
   }
 
-  const payload = body as ContactsImportObject;
-  if (Array.isArray(payload.contacts?.list)) {
-    return payload.contacts.list;
-  }
-
-  if (Array.isArray(payload.list)) {
-    return payload.list;
-  }
-
-  return null;
+  return { payload };
 }
 
 @Controller('contacts')
 export class ContactsController {
   constructor(
     private readonly mtprotoService: MtprotoService,
-    private readonly telegramResolverService: TelegramResolverService,
+    private readonly contactsService: ContactsService,
   ) {}
 
-  // POST /contacts/auth/qr/start
-  // Initiates QR code login. Returns the QR token.
-  // Frontend should render this as a QR code image.
   @Post('auth/qr/start')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -63,10 +83,6 @@ export class ContactsController {
     return this.mtprotoService.startQrLogin();
   }
 
-  // GET /contacts/auth/qr/poll
-  // Poll this endpoint every 2-3s to check if QR was scanned.
-  // Returns { ready: false, token, expiresIn } until scanned.
-  // After scan, returns { ready: true }.
   @Get('auth/qr/poll')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('contacts.manage')
@@ -74,8 +90,6 @@ export class ContactsController {
     return this.mtprotoService.pollQrCode();
   }
 
-  // GET /contacts/auth/qr/confirm
-  // Call this after ready=true to save the session.
   @Get('auth/qr/confirm')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('contacts.manage')
@@ -88,7 +102,6 @@ export class ContactsController {
     return { success: true, userId: result.userId, username: result.username };
   }
 
-  // GET /contacts/auth/status
   @Get('auth/status')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('contacts.manage')
@@ -97,22 +110,160 @@ export class ContactsController {
     return { authenticated };
   }
 
-  // POST /contacts/import
-  // Body: ContactInput[]
   @Post('import')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('contacts.manage')
-  async importContacts(@Body() body: unknown) {
-    const contacts = normalizeContactsPayload(body);
+  async createImportBatch(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ) {
+    const extracted = extractNormalizedPayload(body);
 
-    if (!contacts) {
+    if (!extracted) {
       return {
         error:
-          'Body must be a JSON array of contacts or a Telegram export object with contacts.list',
+          'Body must be a JSON array of contacts or a Telegram export object with contacts.list/frequent_contacts.list',
       };
     }
 
-    return this.telegramResolverService.resolveContacts(contacts);
+    const canManageOrganization = request.user.permissions.includes(
+      'organization.manage',
+    );
+    const requestedWorkspaceId = extracted.workspaceId;
+    const allowedWorkspaceId = requestedWorkspaceId
+      ? canManageOrganization ||
+        (request.user.workspaceIds ?? []).includes(requestedWorkspaceId)
+        ? requestedWorkspaceId
+        : null
+      : ((request.user.workspaceIds ?? [])[0] ?? null);
+
+    const batch = await this.contactsService.createImportBatch({
+      workspaceId: allowedWorkspaceId ?? undefined,
+      createdByUserId: request.user.sub,
+      sourceFileName: extracted.fileName,
+      contacts: extracted.payload.contacts,
+      frequentContacts: extracted.payload.frequentContacts,
+    });
+
+    return {
+      batch,
+      message: 'Import batch created. Processing will continue in background.',
+    };
+  }
+
+  @Get('import-batches')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('contacts.manage')
+  getImportBatches(@Req() request: AuthenticatedRequest) {
+    return this.contactsService.listImportBatches({
+      workspaceIds: request.user.workspaceIds ?? [],
+      canManageOrganization: request.user.permissions.includes(
+        'organization.manage',
+      ),
+    });
+  }
+
+  @Get('import-batches/:batchId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('contacts.manage')
+  getImportBatch(
+    @Req() request: AuthenticatedRequest,
+    @Param('batchId') batchId: string,
+  ) {
+    return this.contactsService.getImportBatch(batchId, {
+      workspaceIds: request.user.workspaceIds ?? [],
+      canManageOrganization: request.user.permissions.includes(
+        'organization.manage',
+      ),
+    });
+  }
+
+  @Post('import-batches/:batchId/retry')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('contacts.manage')
+  async retryFailedBatchItems(
+    @Req() request: AuthenticatedRequest,
+    @Param('batchId') batchId: string,
+  ) {
+    const result = await this.contactsService.retryFailedItems(batchId, {
+      workspaceIds: request.user.workspaceIds ?? [],
+      canManageOrganization: request.user.permissions.includes(
+        'organization.manage',
+      ),
+    });
+
+    if (!result) {
+      throw new NotFoundException('Contact import batch not found');
+    }
+
+    return {
+      batch: result,
+      message: 'Failed items moved back to queue',
+    };
+  }
+
+  @Post('import-batches/:batchId/cancel')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('contacts.manage')
+  async cancelImportBatch(
+    @Req() request: AuthenticatedRequest,
+    @Param('batchId') batchId: string,
+  ) {
+    const result = await this.contactsService.cancelImportBatch(batchId, {
+      workspaceIds: request.user.workspaceIds ?? [],
+      canManageOrganization: request.user.permissions.includes(
+        'organization.manage',
+      ),
+    });
+
+    if (!result) {
+      throw new NotFoundException('Contact import batch not found');
+    }
+
+    return {
+      batch: result,
+      message: 'Batch cancelled',
+    };
+  }
+
+  @Get('import-batches/:batchId/items')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('contacts.manage')
+  getImportBatchItems(
+    @Req() request: AuthenticatedRequest,
+    @Param('batchId') batchId: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.contactsService.getImportBatchItems(batchId, {
+      workspaceIds: request.user.workspaceIds ?? [],
+      canManageOrganization: request.user.permissions.includes(
+        'organization.manage',
+      ),
+      page: Number.parseInt(page ?? '1', 10),
+      pageSize: Number.parseInt(pageSize ?? '25', 10),
+    });
+  }
+
+  @Get('import-batches/:batchId/export')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('contacts.manage')
+  async exportImportBatch(
+    @Req() request: AuthenticatedRequest,
+    @Param('batchId') batchId: string,
+  ) {
+    const result = await this.contactsService.exportImportBatch(batchId, {
+      workspaceIds: request.user.workspaceIds ?? [],
+      canManageOrganization: request.user.permissions.includes(
+        'organization.manage',
+      ),
+    });
+
+    if (!result) {
+      throw new NotFoundException('Contact import batch not found');
+    }
+
+    return result;
   }
 }

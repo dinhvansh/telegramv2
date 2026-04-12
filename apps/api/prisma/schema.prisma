@@ -77,6 +77,27 @@ enum SystemLogLevel {
   ERROR
 }
 
+enum ContactImportBatchStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ContactImportItemStatus {
+  PENDING
+  PROCESSING
+  RESOLVED
+  SKIPPED
+  FAILED
+}
+
+enum ContactImportItemKind {
+  CONTACT
+  FREQUENT
+}
+
 model User {
   id           String     @id @default(cuid())
   email        String     @unique
@@ -89,6 +110,7 @@ model User {
   userRoles    UserRole[]
   workspaceMemberships WorkspaceMembership[]
   campaigns    Campaign[] @relation("CampaignAssignee")
+  contactImportBatches ContactImportBatch[] @relation("ContactImportCreatedBy")
 }
 
 model Role {
@@ -156,8 +178,62 @@ model Workspace {
   telegramBots   TelegramBot[]
   telegramGroups TelegramGroup[]
   campaigns      Campaign[]
+  contactImportBatches ContactImportBatch[]
 
   @@unique([organizationId, slug])
+}
+
+model ContactImportBatch {
+  id             String                   @id @default(cuid())
+  workspaceId    String?
+  createdByUserId String?
+  sourceType     String                   @default("telegram_export")
+  sourceFileName String?
+  status         ContactImportBatchStatus @default(QUEUED)
+  totalCount     Int
+  contactsCount  Int                      @default(0)
+  frequentCount  Int                      @default(0)
+  processedCount Int                      @default(0)
+  resolvedCount  Int                      @default(0)
+  skippedCount   Int                      @default(0)
+  failedCount    Int                      @default(0)
+  errorMessage   String?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  workspace      Workspace?               @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  createdByUser  User?                    @relation("ContactImportCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  items          ContactImportItem[]
+
+  @@index([status, createdAt])
+  @@index([workspaceId, createdAt])
+}
+
+model ContactImportItem {
+  id                String                  @id @default(cuid())
+  batchId           String
+  kind              ContactImportItemKind
+  status            ContactImportItemStatus @default(PENDING)
+  phoneNumber       String?
+  firstName         String?
+  lastName          String?
+  displayName       String?
+  telegramExternalId String?
+  telegramUsername  String?
+  telegramType      String?
+  rating            Float?
+  errorMessage      String?
+  attemptCount      Int                     @default(0)
+  processedAt       DateTime?
+  rawPayload        Json?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  batch             ContactImportBatch      @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId, status, createdAt])
+  @@index([phoneNumber])
+  @@index([telegramExternalId])
 }
 
 model WorkspaceMembership {
