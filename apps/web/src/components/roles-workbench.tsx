@@ -28,7 +28,7 @@ type UserItem = {
     name: string;
     roleName: string;
   }>;
-  status: "ACTIVE" | "AWAY" | "DISABLED";
+  status: "ACTIVE" | "DISABLED";
   statusLabel: string;
   statusTone: "success" | "warning" | "danger";
   roles: Array<{
@@ -53,22 +53,18 @@ type CreateUserForm = {
   department: string;
   workspaceId: string;
   roleId: string;
-  status: "ACTIVE" | "AWAY" | "DISABLED";
+  status: "ACTIVE" | "DISABLED";
 };
 
 type EditUserForm = {
   id: string;
   name: string;
+  email: string;
   username: string;
   department: string;
   roleId: string;
-  status: "ACTIVE" | "AWAY" | "DISABLED";
-};
-
-type ResetPasswordForm = {
-  id: string;
-  email: string;
-  password: string;
+  status: "ACTIVE" | "DISABLED";
+  resetPassword?: string;
 };
 
 type EditRoleForm = {
@@ -177,13 +173,11 @@ export function RolesWorkbench({
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [isSavingUser, setIsSavingUser] = useState(false);
-  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
-  const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [filterWorkspaceId, setFilterWorkspaceId] = useState<string>("");
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<EditUserForm | null>(null);
   const [editingRole, setEditingRole] = useState<EditRoleForm | null>(null);
-  const [resetPasswordUser, setResetPasswordUser] =
-    useState<ResetPasswordForm | null>(null);
   const [form, setForm] = useState<CreateUserForm>({
     name: "Người dùng mới",
     email: "new.user@nexus.local",
@@ -194,6 +188,33 @@ export function RolesWorkbench({
     roleId: "",
     status: "ACTIVE",
   });
+
+  const canManageUsers = Boolean(
+    currentUser?.permissions?.includes("workspace.manage"),
+  );
+  const canEditRolePermissions = Boolean(
+    currentUser?.permissions?.includes("organization.manage"),
+  );
+
+  const filteredUsers = filterWorkspaceId
+    ? users.filter((u) => u.workspaces?.some((ws) => ws.id === filterWorkspaceId))
+    : users;
+
+  function canDeleteUser(user: UserItem) {
+    if (!canManageUsers) {
+      return false;
+    }
+
+    if (currentUser?.email === user.email) {
+      return false;
+    }
+
+    const targetIsSuperadmin = user.roles.some((role) =>
+      role.permissions.includes("organization.manage"),
+    );
+
+    return canEditRolePermissions || !targetIsSuperadmin;
+  }
 
   useEffect(() => {
     setToken(window.localStorage.getItem(authStorageKey));
@@ -315,74 +336,44 @@ export function RolesWorkbench({
     }
   }
 
-  async function handleToggleUser(user: UserItem) {
-    if (!token) {
+  
+
+  async function handleDeleteUser(user: UserItem) {
+    if (!token || !canDeleteUser(user)) {
       return;
     }
 
-    const nextStatus = user.status === "DISABLED" ? "ACTIVE" : "DISABLED";
+    const confirmed = window.confirm(
+      `Xóa user ${user.email}? Hành động này không thể hoàn tác.`,
+    );
 
-    setUpdatingUserId(user.id);
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingUserId(user.id);
     setError(null);
     setNotice(null);
     setTemporaryPassword(null);
 
     try {
       await fetchJson(`${apiBaseUrl}/users/${user.id}`, {
-        method: "PATCH",
+        method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status: nextStatus }),
       });
       await refreshData();
-      setNotice(
-        nextStatus === "DISABLED"
-          ? `Đã khóa user ${user.email}.`
-          : `Đã mở lại user ${user.email}.`,
-      );
-    } catch (updateError) {
+      setNotice(`Đã xóa user ${user.email}.`);
+      if (editingUser?.id === user.id) {
+        setEditingUser(null);
+      }
+    } catch (deleteError) {
       setError(
-        updateError instanceof Error
-          ? updateError.message
-          : "Không thể cập nhật trạng thái user.",
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Không thể xóa user.",
       );
     } finally {
-      setUpdatingUserId(null);
-    }
-  }
-
-  async function handleResetPassword() {
-    if (!token || !resetPasswordUser) {
-      return;
-    }
-
-    setResettingUserId(resetPasswordUser.id);
-    setError(null);
-    setNotice(null);
-
-    try {
-      const result = await fetchJson<{
-        reset: boolean;
-        userId: string;
-        temporaryPassword: string;
-      }>(`${apiBaseUrl}/users/${resetPasswordUser.id}/reset-password`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          password: resetPasswordUser.password.trim() || undefined,
-        }),
-      });
-
-      setTemporaryPassword(result.temporaryPassword);
-      setNotice(`Đã reset mật khẩu cho ${resetPasswordUser.email}.`);
-      setResetPasswordUser(null);
-    } catch (resetError) {
-      setError(
-        resetError instanceof Error
-          ? resetError.message
-          : "Không thể reset mật khẩu.",
-      );
-    } finally {
-      setResettingUserId(null);
+      setDeletingUserId(null);
     }
   }
 
@@ -408,8 +399,28 @@ export function RolesWorkbench({
           status: editingUser.status,
         }),
       });
+
+      if (editingUser.resetPassword !== undefined) {
+        const result = await fetchJson<{
+          reset: boolean;
+          userId: string;
+          temporaryPassword: string;
+        }>(`${apiBaseUrl}/users/${editingUser.id}/reset-password`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            password: editingUser.resetPassword.trim() || undefined,
+          }),
+        });
+        setTemporaryPassword(result.temporaryPassword);
+        setNotice(
+          `Đã cập nhật và reset mật khẩu cho ${editingUser.name}.`,
+        );
+      } else {
+        setNotice(`Đã cập nhật user ${editingUser.name}.`);
+      }
+
       await refreshData();
-      setNotice(`Đã cập nhật user ${editingUser.name}.`);
       setEditingUser(null);
     } catch (saveError) {
       setError(
@@ -423,7 +434,7 @@ export function RolesWorkbench({
   }
 
   async function handleSaveRole() {
-    if (!token || !editingRole) {
+    if (!token || !editingRole || !canEditRolePermissions) {
       return;
     }
 
@@ -503,6 +514,12 @@ export function RolesWorkbench({
             Xem role thực tế và tập permission đang cấp trong CRM
           </h3>
 
+          {!canEditRolePermissions ? (
+            <p className="mt-3 text-sm font-semibold text-[color:var(--warning)]">
+              Chỉ superadmin mới được sửa quyền của role.
+            </p>
+          ) : null}
+
           <div className="mt-6 grid gap-4 md:grid-cols-3">
             {roles.map((role) => (
               <article
@@ -511,6 +528,7 @@ export function RolesWorkbench({
               >
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-sm font-bold">{text(role.name)}</p>
+                  {canEditRolePermissions ? (
                   <button
                     type="button"
                     onClick={() =>
@@ -525,6 +543,7 @@ export function RolesWorkbench({
                   >
                     Sửa quyền
                   </button>
+                  ) : null}
                 </div>
                 <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">
                   {text(role.description)}
@@ -649,7 +668,6 @@ export function RolesWorkbench({
                 className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
               >
                 <option value="ACTIVE">Hoạt động</option>
-                <option value="AWAY">Vắng mặt</option>
                 <option value="DISABLED">Tạm khóa</option>
               </select>
             </div>
@@ -666,12 +684,28 @@ export function RolesWorkbench({
       </div>
 
       <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-          Người dùng hệ thống
-        </p>
-        <h3 className="mt-2 text-2xl font-black tracking-tight">
-          Danh sách user, role chính và số permission đang có
-        </h3>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
+              Người dùng hệ thống
+            </p>
+            <h3 className="mt-2 text-2xl font-black tracking-tight">
+              Danh sách user, role chính và số permission đang có
+            </h3>
+          </div>
+          {canEditRolePermissions ? (
+            <select
+              value={filterWorkspaceId}
+              onChange={(event) => setFilterWorkspaceId(event.target.value)}
+              className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-3 text-sm outline-none"
+            >
+              <option value="">Tất cả workspace</option>
+              {workspaceCatalog.map((ws) => (
+                <option key={ws.id} value={ws.id}>{ws.name}</option>
+              ))}
+            </select>
+          ) : null}
+        </div>
 
         <div className="mt-6 overflow-x-auto rounded-[24px] bg-[color:var(--surface-low)]">
           <table className="min-w-[1180px] w-full border-collapse text-left">
@@ -682,11 +716,11 @@ export function RolesWorkbench({
                 <th className="px-5 py-4 font-semibold">Phòng ban</th>
                 <th className="px-5 py-4 font-semibold">Vai trò</th>
                 <th className="px-5 py-4 font-semibold">Trạng thái</th>
-                <th className="px-5 py-4 font-semibold">Quản lý</th>
+                <th className="px-5 py-4 font-semibold">Hành động</th>
               </tr>
             </thead>
             <tbody>
-              {users.map((user, index) => (
+              {filteredUsers.map((user, index) => (
                 <tr key={user.id} className={index % 2 === 1 ? "bg-white/70" : ""}>
                   <td className="px-5 py-4 align-top">
                     <p className="text-sm font-semibold text-[color:var(--on-surface)]">
@@ -731,65 +765,48 @@ export function RolesWorkbench({
                   </td>
                   <td className="px-5 py-4 align-top">
                     <span
-                      className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${getToneClass(
+                      className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-bold ${getToneClass(
                         user.statusTone,
                       )}`}
                     >
                       {user.statusLabel}
                     </span>
                   </td>
-                  <td className="px-5 py-4 align-top text-sm">
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        title="Sửa user"
-                        aria-label={`Sửa user ${user.email}`}
-                        onClick={() =>
-                          setEditingUser({
-                            id: user.id,
-                            name: user.name,
-                            username: user.username ?? "",
-                            department: user.department,
-                            roleId: user.roles[0]?.id || roles[0]?.id || "",
-                            status: user.status,
-                          })
-                        }
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-sm font-bold text-[color:var(--primary)] shadow-[0_4px_14px_rgba(42,52,57,0.08)]"
-                      >
-                        ✎
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleToggleUser(user)}
-                        disabled={updatingUserId === user.id}
-                        className={`inline-flex rounded-full px-4 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
-                          user.status === "DISABLED"
-                            ? "bg-[color:var(--success-soft)] text-[color:var(--success)]"
-                            : "bg-[color:var(--danger-soft)] text-[color:var(--danger)]"
-                        }`}
-                      >
-                        {updatingUserId === user.id
-                          ? "Đang cập nhật..."
-                          : user.status === "DISABLED"
-                            ? "Active"
-                            : "Inactive"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setResetPasswordUser({
-                            id: user.id,
-                            email: user.email,
-                            password: "",
-                          })
-                        }
-                        disabled={resettingUserId === user.id}
-                        className="inline-flex rounded-full bg-[color:var(--warning-soft)] px-4 py-2 font-semibold text-[color:var(--warning)] disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {resettingUserId === user.id
-                          ? "Đang reset..."
-                          : "Reset mật khẩu"}
-                      </button>
+                  <td className="px-5 py-4 align-top">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          title="Sửa user"
+                          aria-label={`Sửa user ${user.email}`}
+                          onClick={() =>
+                            setEditingUser({
+                              id: user.id,
+                              name: user.name,
+                              email: user.email,
+                              username: user.username ?? "",
+                              department: user.department,
+                              roleId: user.roles[0]?.id || roles[0]?.id || "",
+                              status: user.status,
+                            })
+                          }
+                          className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-1.5 text-xs font-bold text-[color:var(--primary)] shadow-[0_4px_14px_rgba(42,52,57,0.08)]"
+                        >
+                          <span>✎</span>
+                          <span>Sửa</span>
+                        </button>
+                        {canDeleteUser(user) ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteUser(user)}
+                            disabled={deletingUserId === user.id}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--danger-soft)] px-4 py-1.5 text-xs font-semibold text-[color:var(--danger)] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <span>✕</span>
+                            <span>Xóa</span>
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -799,7 +816,7 @@ export function RolesWorkbench({
         </div>
       </section>
 
-      {editingRole ? (
+      {editingRole && canEditRolePermissions ? (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/35 px-4">
           <div className="w-full max-w-2xl rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
             <div className="flex items-start justify-between gap-4">
@@ -917,6 +934,11 @@ export function RolesWorkbench({
             </div>
 
             <div className="mt-6 space-y-4">
+              <div className="rounded-[20px] bg-[color:var(--surface-low)] px-4 py-4 text-sm">
+                <p className="text-xs text-[color:var(--on-surface-variant)]">Email</p>
+                <p className="font-semibold">{editingUser.email}</p>
+              </div>
+
               <div className="grid gap-4 md:grid-cols-2">
                 <input
                   value={editingUser.name}
@@ -981,9 +1003,25 @@ export function RolesWorkbench({
                   className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
                 >
                   <option value="ACTIVE">Hoạt động</option>
-                  <option value="AWAY">Vắng mặt</option>
-                  <option value="DISABLED">Tạm khóa</option>
+                    <option value="DISABLED">Tạm khóa</option>
                 </select>
+              </div>
+
+              <div className="rounded-[20px] bg-[color:var(--surface-low)] px-4 py-4">
+                <p className="mb-3 text-xs font-semibold text-[color:var(--on-surface-variant)]">
+                  Reset mật khẩu
+                </p>
+                <input
+                  value={editingUser.resetPassword ?? ""}
+                  onChange={(event) =>
+                    setEditingUser((current) =>
+                      current ? { ...current, resetPassword: event.target.value } : current,
+                    )
+                  }
+                  className="w-full rounded-[18px] bg-white px-4 py-4 text-sm outline-none"
+                  placeholder="Để trống = tự sinh mật khẩu tạm, hoặc nhập mật khẩu mới"
+                  type="password"
+                />
               </div>
 
               <div className="flex justify-end gap-3">
@@ -1008,71 +1046,6 @@ export function RolesWorkbench({
         </div>
       ) : null}
 
-      {resetPasswordUser ? (
-        <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/35 px-4">
-          <div className="w-full max-w-lg rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">
-                  Password reset
-                </p>
-                <h2 className="mt-2 text-2xl font-black tracking-tight">
-                  Reset mật khẩu
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setResetPasswordUser(null)}
-                className="rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold"
-              >
-                Đóng
-              </button>
-            </div>
-
-            <div className="mt-6 space-y-4">
-              <div className="rounded-[20px] bg-[color:var(--surface-low)] px-4 py-4 text-sm">
-                <p className="font-semibold">{resetPasswordUser.email}</p>
-                <p className="mt-2 leading-6 text-[color:var(--on-surface-variant)]">
-                  Nhập mật khẩu mới nếu muốn đặt thủ công. Để trống nếu muốn hệ
-                  thống tự sinh mật khẩu tạm.
-                </p>
-              </div>
-
-              <input
-                value={resetPasswordUser.password}
-                onChange={(event) =>
-                  setResetPasswordUser((current) =>
-                    current ? { ...current, password: event.target.value } : current,
-                  )
-                }
-                className="w-full rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
-                placeholder="Nhập mật khẩu mới hoặc để trống"
-                type="password"
-              />
-
-              <div className="flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setResetPasswordUser(null)}
-                  className="rounded-full bg-[color:var(--surface-low)] px-5 py-3 text-sm font-semibold"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleResetPassword()}
-                  disabled={resettingUserId === resetPasswordUser.id}
-                  className="rounded-full bg-[color:var(--warning)] px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {resettingUserId === resetPasswordUser.id
-                    ? "Đang reset..."
-                    : "Lưu mật khẩu mới"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 }
