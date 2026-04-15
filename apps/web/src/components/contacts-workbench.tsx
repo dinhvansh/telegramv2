@@ -2,25 +2,16 @@
 
 import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useToast } from "@/context/toast-context";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
 
-type AuthStatus = {
-  authenticated: boolean;
-};
-
-type QrStartResult = {
-  token: string;
-  expiresIn: number;
-};
-
-type QrPollResult = {
-  ready: boolean;
-  token?: string;
-  expiresIn?: number;
-};
-
+type AuthStatus = { authenticated: boolean };
+type QrStartResult = { token: string; expiresIn: number };
+type QrPollResult = { ready: boolean; token?: string; expiresIn?: number; authenticated?: boolean };
+type PhoneLoginStartResult = { phoneNumber: string; sent: boolean; isCodeViaApp: boolean };
+type PhoneLoginVerifyResult = { success: boolean; requiresPassword: boolean; userId?: string; username?: string };
 type ContactImportBatch = {
   id: string;
   workspaceId: string | null;
@@ -43,7 +34,6 @@ type ContactImportBatch = {
   createdAt: string;
   updatedAt: string;
 };
-
 type ContactImportItem = {
   id: string;
   kind: "CONTACT" | "FREQUENT";
@@ -61,31 +51,15 @@ type ContactImportItem = {
   processedAt: string | null;
   createdAt: string;
 };
-
-type ContactImportItemsResponse = {
-  items: ContactImportItem[];
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-};
-
-type ErrorWithMessage = {
-  message?: string;
-};
+type ContactImportItemsResponse = { items: ContactImportItem[]; page: number; pageSize: number; total: number; totalPages: number };
+type ErrorWithMessage = { message?: string };
 
 function getErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
+  if (error instanceof Error) return error.message;
   if (typeof error === "object" && error !== null && "message" in error) {
-    const candidate = (error as ErrorWithMessage).message;
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate;
-    }
+    const message = (error as ErrorWithMessage).message;
+    if (typeof message === "string" && message.trim()) return message;
   }
-
   return fallback;
 }
 
@@ -96,24 +70,15 @@ function formatDateTime(value?: string | null) {
 
 function formatStatusLabel(status: ContactImportBatch["status"] | ContactImportItem["status"]) {
   switch (status) {
-    case "QUEUED":
-      return "Đang chờ";
-    case "PROCESSING":
-      return "Đang xử lý";
-    case "COMPLETED":
-      return "Hoàn tất";
-    case "FAILED":
-      return "Thất bại";
-    case "CANCELLED":
-      return "Đã hủy";
-    case "PENDING":
-      return "Chờ xử lý";
-    case "RESOLVED":
-      return "Đã resolve";
-    case "SKIPPED":
-      return "Bỏ qua";
-    default:
-      return status;
+    case "QUEUED": return "Đang chờ";
+    case "PROCESSING": return "Đang xử lý";
+    case "COMPLETED": return "Hoàn tất";
+    case "FAILED": return "Thất bại";
+    case "CANCELLED": return "Đã hủy";
+    case "PENDING": return "Chờ xử lý";
+    case "RESOLVED": return "Đã resolve";
+    case "SKIPPED": return "Bỏ qua";
+    default: return status;
   }
 }
 
@@ -137,104 +102,92 @@ function statusClasses(status: ContactImportBatch["status"] | ContactImportItem[
   }
 }
 
+function progressPercent(batch: ContactImportBatch) {
+  if (!batch.totalCount) return 0;
+  return Math.min(100, Math.round((batch.processedCount / batch.totalCount) * 100));
+}
+
 export function ContactsWorkbench() {
+  const { toast } = useToast();
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
+  const [tab, setTab] = useState<"auth" | "import">("auth");
+  const [loginMethod, setLoginMethod] = useState<"phone" | "qr">("phone");
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [qrToken, setQrToken] = useState<string | null>(null);
   const [qrExpires, setQrExpires] = useState(0);
   const [qrReady, setQrReady] = useState(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
+  const [phoneAuthStep, setPhoneAuthStep] = useState<"phone" | "code" | "password">("phone");
+  const [phoneAuthForm, setPhoneAuthForm] = useState({ phoneNumber: "", phoneCode: "", password: "" });
+  const [phoneAuthLoading, setPhoneAuthLoading] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
-  const [importNotice, setImportNotice] = useState<string | null>(null);
-  const [tab, setTab] = useState<"qr" | "import">("qr");
   const [batches, setBatches] = useState<ContactImportBatch[]>([]);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [selectedBatchItems, setSelectedBatchItems] = useState<ContactImportItemsResponse | null>(null);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsPage, setItemsPage] = useState(1);
   const [actionLoading, setActionLoading] = useState<"retry" | "cancel" | "export" | null>(null);
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const batchPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const getHeaders = useCallback(
-    () => ({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem(authStorageKey) || ""}`,
-    }),
+    () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem(authStorageKey) || ""}` }),
     [],
   );
 
-  const selectedBatch = useMemo(
-    () => batches.find((batch) => batch.id === selectedBatchId) ?? null,
-    [batches, selectedBatchId],
+  const selectedBatch = useMemo(() => batches.find((batch) => batch.id === selectedBatchId) ?? null, [batches, selectedBatchId]);
+  const hasRunningBatch = useMemo(() => batches.some((batch) => batch.status === "QUEUED" || batch.status === "PROCESSING"), [batches]);
+  const totals = useMemo(
+    () => ({
+      total: batches.length,
+      running: batches.filter((batch) => batch.status === "QUEUED" || batch.status === "PROCESSING").length,
+      resolved: batches.reduce((sum, batch) => sum + batch.resolvedCount, 0),
+      failed: batches.reduce((sum, batch) => sum + batch.failedCount, 0),
+    }),
+    [batches],
   );
 
-  const hasRunningBatch = batches.some((batch) => batch.status === "QUEUED" || batch.status === "PROCESSING");
+  const loadBatchItems = useCallback(async (batchId: string, page = 1) => {
+    setItemsLoading(true);
+    try {
+      const res = await fetch(`${apiBaseUrl}/contacts/import-batches/${batchId}/items?page=${page}&pageSize=20`, { headers: getHeaders() });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as ContactImportItemsResponse;
+      setSelectedBatchItems(data);
+      setItemsPage(page);
+    } catch (error) {
+      toast({ message: getErrorMessage(error, "Không tải được chi tiết batch"), type: "error" });
+    } finally {
+      setItemsLoading(false);
+    }
+  }, [getHeaders, toast]);
 
-  const loadBatchItems = useCallback(
-    async (batchId: string, page = 1) => {
-      setItemsLoading(true);
-      try {
-        const res = await fetch(`${apiBaseUrl}/contacts/import-batches/${batchId}/items?page=${page}&pageSize=20`, {
-          headers: getHeaders(),
-        });
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-        const data = (await res.json()) as ContactImportItemsResponse;
-        setSelectedBatchItems(data);
-        setItemsPage(page);
-      } catch (error) {
-        setImportNotice(getErrorMessage(error, "Không tải được chi tiết batch"));
-      } finally {
-        setItemsLoading(false);
-      }
-    },
-    [getHeaders],
-  );
-
-  const loadBatches = useCallback(
-    async (preserveSelected = true) => {
-      try {
-        const res = await fetch(`${apiBaseUrl}/contacts/import-batches`, {
-          headers: getHeaders(),
-        });
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-        const data = (await res.json()) as ContactImportBatch[];
-        setBatches(data);
-
-        const nextSelectedId =
-          preserveSelected && selectedBatchId && data.some((batch) => batch.id === selectedBatchId)
-            ? selectedBatchId
-            : data[0]?.id ?? null;
-
-        setSelectedBatchId(nextSelectedId);
-        if (nextSelectedId) {
-          void loadBatchItems(nextSelectedId, preserveSelected ? itemsPage : 1);
-        } else {
-          setSelectedBatchItems(null);
-        }
-      } catch (error) {
-        setImportNotice(getErrorMessage(error, "Không tải được lịch sử import"));
-      }
-    },
-    [getHeaders, itemsPage, loadBatchItems, selectedBatchId],
-  );
+  const loadBatches = useCallback(async (preserveSelected = true) => {
+    try {
+      const res = await fetch(`${apiBaseUrl}/contacts/import-batches`, { headers: getHeaders() });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as ContactImportBatch[];
+      setBatches(data);
+      const nextSelectedId =
+        preserveSelected && selectedBatchId && data.some((batch) => batch.id === selectedBatchId)
+          ? selectedBatchId
+          : data[0]?.id ?? null;
+      setSelectedBatchId(nextSelectedId);
+      if (nextSelectedId) void loadBatchItems(nextSelectedId, preserveSelected ? itemsPage : 1);
+      else setSelectedBatchItems(null);
+    } catch (error) {
+      toast({ message: getErrorMessage(error, "Không tải được lịch sử import"), type: "error" });
+    }
+  }, [getHeaders, itemsPage, loadBatchItems, selectedBatchId, toast]);
 
   const checkAuthStatus = useCallback(async () => {
     setAuthStatus({ authenticated: false });
     try {
-      const res = await fetch(`${apiBaseUrl}/contacts/auth/status`, {
-        headers: getHeaders(),
-      });
-      if (res.ok) {
-        const data = (await res.json()) as AuthStatus;
-        setAuthStatus(data);
-        if (data.authenticated) {
-          setTab("import");
-        }
-      }
+      const res = await fetch(`${apiBaseUrl}/contacts/auth/status`, { headers: getHeaders() });
+      if (!res.ok) return;
+      const data = (await res.json()) as AuthStatus;
+      setAuthStatus(data);
+      if (data.authenticated) setTab("import");
     } catch {
       setAuthStatus({ authenticated: false });
     }
@@ -244,63 +197,46 @@ export function ContactsWorkbench() {
     void checkAuthStatus();
     void loadBatches(false);
     return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (qrPollRef.current) clearInterval(qrPollRef.current);
+      if (batchPollRef.current) clearInterval(batchPollRef.current);
     };
   }, [checkAuthStatus, loadBatches]);
 
   useEffect(() => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
+    if (batchPollRef.current) {
+      clearInterval(batchPollRef.current);
+      batchPollRef.current = null;
     }
-
-    if (!hasRunningBatch) {
-      return;
-    }
-
-    pollIntervalRef.current = setInterval(() => {
+    if (!hasRunningBatch) return;
+    batchPollRef.current = setInterval(() => {
       void loadBatches(true);
     }, 5000);
-
     return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (batchPollRef.current) clearInterval(batchPollRef.current);
     };
   }, [hasRunningBatch, loadBatches]);
 
-  const startQrLogin = async () => {
-    setQrLoading(true);
-    setLoginError(null);
-    setQrToken(null);
-    setQrReady(false);
+  const confirmQrLogin = useCallback(async () => {
     try {
-      const res = await fetch(`${apiBaseUrl}/contacts/auth/qr/start`, {
-        method: "POST",
-        headers: getHeaders(),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || `HTTP ${res.status}`);
-      }
-      const data = (await res.json()) as QrStartResult;
-      setQrToken(data.token);
-      setQrExpires(data.expiresIn);
-      startPolling();
-    } catch (err: unknown) {
-      setLoginError(getErrorMessage(err, "Failed to generate QR code"));
-    } finally {
-      setQrLoading(false);
+      const res = await fetch(`${apiBaseUrl}/contacts/auth/qr/confirm`, { headers: getHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as ErrorWithMessage).message || `HTTP ${res.status}`);
+      setAuthStatus({ authenticated: true });
+      setLoginError(null);
+      setTab("import");
+      toast({ message: "Đăng nhập Telegram bằng QR thành công.", type: "success" });
+    } catch (error) {
+      setLoginError(getErrorMessage(error, "Không thể xác nhận phiên QR"));
     }
-  };
+  }, [getHeaders, toast]);
 
-  const startPolling = () => {
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    pollIntervalRef.current = setInterval(async () => {
+  const startQrPolling = useCallback(() => {
+    if (qrPollRef.current) clearInterval(qrPollRef.current);
+    qrPollRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`${apiBaseUrl}/contacts/auth/qr/poll`, {
-          headers: getHeaders(),
-        });
+        const res = await fetch(`${apiBaseUrl}/contacts/auth/qr/poll`, { headers: getHeaders() });
         if (!res.ok) {
-          clearInterval(pollIntervalRef.current!);
+          clearInterval(qrPollRef.current!);
           return;
         }
         const data = (await res.json()) as QrPollResult;
@@ -308,74 +244,144 @@ export function ContactsWorkbench() {
         setQrExpires(data.expiresIn || 0);
         if (data.ready) {
           setQrReady(true);
-          clearInterval(pollIntervalRef.current!);
+          clearInterval(qrPollRef.current!);
           await confirmQrLogin();
         }
       } catch {
-        clearInterval(pollIntervalRef.current!);
+        clearInterval(qrPollRef.current!);
       }
     }, 3000);
+  }, [confirmQrLogin, getHeaders]);
+
+  const startQrLogin = async () => {
+    setQrLoading(true);
+    setLoginError(null);
+    setQrToken(null);
+    setQrReady(false);
+    try {
+      const res = await fetch(`${apiBaseUrl}/contacts/auth/qr/start`, { method: "POST", headers: getHeaders() });
+      const data = (await res.json().catch(() => ({}))) as QrStartResult & { message?: string };
+      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+      setQrToken(data.token);
+      setQrExpires(data.expiresIn);
+      startQrPolling();
+    } catch (error) {
+      setLoginError(getErrorMessage(error, "Không thể tạo QR code"));
+    } finally {
+      setQrLoading(false);
+    }
   };
 
-  const confirmQrLogin = async () => {
+  const startPhoneLogin = async () => {
+    setPhoneAuthLoading(true);
+    setLoginError(null);
     try {
-      const res = await fetch(`${apiBaseUrl}/contacts/auth/qr/confirm`, {
+      const res = await fetch(`${apiBaseUrl}/contacts/auth/phone/start`, {
+        method: "POST",
         headers: getHeaders(),
+        body: JSON.stringify({ phoneNumber: phoneAuthForm.phoneNumber }),
       });
-      if (res.ok) {
-        setAuthStatus({ authenticated: true });
-        setTab("import");
+      const data = (await res.json().catch(() => ({}))) as PhoneLoginStartResult & { message?: string };
+      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+      setPhoneAuthStep("code");
+      toast({
+        message: data.isCodeViaApp ? "Mã xác thực đã được gửi trong app Telegram." : "Mã xác thực đã được gửi.",
+        type: "success",
+      });
+    } catch (error) {
+      setLoginError(getErrorMessage(error, "Không thể bắt đầu đăng nhập bằng số điện thoại"));
+    } finally {
+      setPhoneAuthLoading(false);
+    }
+  };
+
+  const verifyPhoneCode = async () => {
+    setPhoneAuthLoading(true);
+    setLoginError(null);
+    try {
+      const res = await fetch(`${apiBaseUrl}/contacts/auth/phone/verify`, {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({ phoneCode: phoneAuthForm.phoneCode }),
+      });
+      const data = (await res.json().catch(() => ({}))) as PhoneLoginVerifyResult & { message?: string };
+      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+      if (data.requiresPassword) {
+        setPhoneAuthStep("password");
+        toast({ message: "Tài khoản này đang bật 2FA. Nhập mật khẩu để hoàn tất.", type: "warning" });
+        return;
       }
-    } catch (err: unknown) {
-      setLoginError(getErrorMessage(err, "Failed to confirm QR login"));
+      setAuthStatus({ authenticated: true });
+      setLoginError(null);
+      setTab("import");
+      toast({ message: "Đăng nhập Telegram bằng số điện thoại thành công.", type: "success" });
+    } catch (error) {
+      setLoginError(getErrorMessage(error, "Mã xác thực không hợp lệ"));
+    } finally {
+      setPhoneAuthLoading(false);
+    }
+  };
+
+  const verifyPhonePassword = async () => {
+    setPhoneAuthLoading(true);
+    setLoginError(null);
+    try {
+      const res = await fetch(`${apiBaseUrl}/contacts/auth/phone/password`, {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({ password: phoneAuthForm.password }),
+      });
+      const data = (await res.json().catch(() => ({}))) as PhoneLoginVerifyResult & { message?: string };
+      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+      setAuthStatus({ authenticated: true });
+      setTab("import");
+      toast({ message: "Xác thực 2FA thành công.", type: "success" });
+    } catch (error) {
+      setLoginError(getErrorMessage(error, "Mật khẩu 2FA không hợp lệ"));
+    } finally {
+      setPhoneAuthLoading(false);
     }
   };
 
   const handleLogout = async () => {
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    if (qrPollRef.current) clearInterval(qrPollRef.current);
+    try {
+      await fetch(`${apiBaseUrl}/contacts/auth/session/reset`, { method: "POST", headers: getHeaders() });
+    } catch {
+      // ignore
+    }
     setAuthStatus({ authenticated: false });
     setQrToken(null);
     setQrReady(false);
-    setTab("qr");
+    setPhoneAuthStep("phone");
+    setPhoneAuthForm({ phoneNumber: "", phoneCode: "", password: "" });
+    setLoginError(null);
+    setTab("auth");
   };
 
-  const handleImport = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleImport = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setImportLoading(true);
-    setImportNotice(null);
     try {
-      const form = e.currentTarget;
+      const form = event.currentTarget;
       const fileInput = form.elements.namedItem("contactsFile") as HTMLInputElement;
       if (!fileInput.files?.[0]) return;
-
       const file = fileInput.files[0];
       const payload = JSON.parse(await file.text()) as unknown;
       const res = await fetch(`${apiBaseUrl}/contacts/import`, {
         method: "POST",
         headers: getHeaders(),
-        body: JSON.stringify({
-          fileName: file.name,
-          payload,
-        }),
+        body: JSON.stringify({ fileName: file.name, payload }),
       });
-
-      const data = (await res.json()) as {
-        error?: string;
-        message?: string;
-        batch?: ContactImportBatch;
-      };
-
-      if (!res.ok || data.error || !data.batch) {
-        throw new Error(data.error || `HTTP ${res.status}`);
-      }
-
-      setImportNotice("Đã tạo batch import. Hệ thống sẽ xử lý nền theo từng lô.");
+      const data = (await res.json()) as { error?: string; message?: string; batch?: ContactImportBatch };
+      if (!res.ok || data.error || !data.batch) throw new Error(data.error || `HTTP ${res.status}`);
+      toast({ message: "Đã tạo batch import. Hệ thống sẽ xử lý nền theo từng lô.", type: "success" });
       setSelectedBatchId(data.batch.id);
       setTab("import");
       form.reset();
       await loadBatches(false);
-    } catch (err: unknown) {
-      setImportNotice(`Import failed: ${getErrorMessage(err, "Unknown error")}`);
+    } catch (error) {
+      toast({ message: getErrorMessage(error, "Import thất bại"), type: "error" });
     } finally {
       setImportLoading(false);
     }
@@ -384,20 +390,17 @@ export function ContactsWorkbench() {
   const handleRetryFailed = async () => {
     if (!selectedBatchId) return;
     setActionLoading("retry");
-    setImportNotice(null);
     try {
       const res = await fetch(`${apiBaseUrl}/contacts/import-batches/${selectedBatchId}/retry`, {
         method: "POST",
         headers: getHeaders(),
       });
-      const data = (await res.json()) as { message?: string; batch?: ContactImportBatch; error?: string };
-      if (!res.ok || data.error) {
-        throw new Error(data.error || `HTTP ${res.status}`);
-      }
-      setImportNotice(data.message || "Đã đưa các item lỗi trở lại hàng chờ.");
+      const data = (await res.json()) as { message?: string; error?: string };
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      toast({ message: data.message || "Đã đưa các item lỗi về hàng chờ.", type: "success" });
       await loadBatches(false);
     } catch (error) {
-      setImportNotice(getErrorMessage(error, "Retry failed"));
+      toast({ message: getErrorMessage(error, "Retry thất bại"), type: "error" });
     } finally {
       setActionLoading(null);
     }
@@ -406,20 +409,17 @@ export function ContactsWorkbench() {
   const handleCancelBatch = async () => {
     if (!selectedBatchId) return;
     setActionLoading("cancel");
-    setImportNotice(null);
     try {
       const res = await fetch(`${apiBaseUrl}/contacts/import-batches/${selectedBatchId}/cancel`, {
         method: "POST",
         headers: getHeaders(),
       });
-      const data = (await res.json()) as { message?: string; batch?: ContactImportBatch; error?: string };
-      if (!res.ok || data.error) {
-        throw new Error(data.error || `HTTP ${res.status}`);
-      }
-      setImportNotice(data.message || "Đã hủy batch.");
+      const data = (await res.json()) as { message?: string; error?: string };
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      toast({ message: data.message || "Đã hủy batch.", type: "success" });
       await loadBatches(false);
     } catch (error) {
-      setImportNotice(getErrorMessage(error, "Cancel failed"));
+      toast({ message: getErrorMessage(error, "Hủy batch thất bại"), type: "error" });
     } finally {
       setActionLoading(null);
     }
@@ -428,404 +428,166 @@ export function ContactsWorkbench() {
   const handleExportBatch = async () => {
     if (!selectedBatchId) return;
     setActionLoading("export");
-    setImportNotice(null);
     try {
-      const res = await fetch(`${apiBaseUrl}/contacts/import-batches/${selectedBatchId}/export`, {
-        headers: getHeaders(),
-      });
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+      const res = await fetch(`${apiBaseUrl}/contacts/import-batches/${selectedBatchId}/export`, { headers: getHeaders() });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { batch: ContactImportBatch; items: ContactImportItem[] };
-      const blob = new Blob([JSON.stringify(data, null, 2)], {
-        type: "application/json;charset=utf-8",
-      });
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = `${data.batch.sourceFileName || "contact-import"}-${data.batch.id}.json`;
       anchor.click();
       URL.revokeObjectURL(url);
-      setImportNotice("Đã tải JSON kết quả batch.");
+      toast({ message: "Đã tải JSON kết quả batch.", type: "success" });
     } catch (error) {
-      setImportNotice(getErrorMessage(error, "Export failed"));
+      toast({ message: getErrorMessage(error, "Export thất bại"), type: "error" });
     } finally {
       setActionLoading(null);
     }
   };
 
   const renderQrImage = (token: string) => {
-    if (!token) return null;
     const loginUrl = `tg://login?token=${token}`;
-    const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(loginUrl)}`;
-    return (
-      <Image
-        src={qrApiUrl}
-        alt="Telegram QR Code"
-        width={200}
-        height={200}
-        unoptimized
-        style={{ imageRendering: "pixelated" }}
-      />
-    );
+    const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(loginUrl)}`;
+    return <Image src={qrApiUrl} alt="Telegram QR Code" width={220} height={220} unoptimized style={{ imageRendering: "pixelated" }} />;
   };
+
+  const authPanel = authStatus?.authenticated ? (
+    <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Telegram đã kết nối</h2>
+          <p className="mt-2 max-w-2xl text-sm text-gray-400">
+            Session MTProto hiện đã được lưu. Tất cả batch import trong màn Contacts này sẽ dùng session đó để resolve số điện thoại sang Telegram ID.
+          </p>
+        </div>
+        <div className="rounded-full bg-green-950 px-4 py-2 text-sm font-semibold text-green-300">Connected</div>
+      </div>
+      <div className="mt-6 grid gap-4 md:grid-cols-4">
+        <div className="rounded-xl border border-gray-800 bg-gray-950 p-4"><p className="text-xs uppercase tracking-[0.16em] text-gray-500">Batch gần đây</p><p className="mt-2 text-2xl font-bold text-white">{totals.total}</p></div>
+        <div className="rounded-xl border border-gray-800 bg-gray-950 p-4"><p className="text-xs uppercase tracking-[0.16em] text-gray-500">Đang chạy</p><p className="mt-2 text-2xl font-bold text-blue-300">{totals.running}</p></div>
+        <div className="rounded-xl border border-gray-800 bg-gray-950 p-4"><p className="text-xs uppercase tracking-[0.16em] text-gray-500">Resolved</p><p className="mt-2 text-2xl font-bold text-green-400">{totals.resolved}</p></div>
+        <div className="rounded-xl border border-gray-800 bg-gray-950 p-4"><p className="text-xs uppercase tracking-[0.16em] text-gray-500">Failed</p><p className="mt-2 text-2xl font-bold text-red-400">{totals.failed}</p></div>
+      </div>
+    </div>
+  ) : (
+    <div className="mx-auto max-w-4xl rounded-2xl border border-gray-800 bg-gray-900 p-8">
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-white">Kết nối Telegram ngay trong Contacts</h2>
+          <p className="mt-2 text-sm text-gray-400">Không cần qua settings. Toàn bộ luồng đăng nhập và import giờ nằm chung ở màn <code>/contacts</code>.</p>
+        </div>
+        <div className="rounded-full bg-gray-950 px-4 py-2 text-xs font-semibold text-gray-300">Resolver chưa sẵn sàng</div>
+      </div>
+      <div className="mb-6 flex gap-1 rounded-lg bg-gray-950 p-1">
+        <button type="button" onClick={() => setLoginMethod("phone")} className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${loginMethod === "phone" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"}`}>Số điện thoại</button>
+        <button type="button" onClick={() => setLoginMethod("qr")} className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${loginMethod === "qr" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"}`}>QR Code</button>
+      </div>
+      {loginError ? <div className="mb-5 rounded-lg border border-red-800 bg-red-950/30 px-4 py-3 text-sm text-red-300">{loginError}</div> : null}
+      {loginMethod === "phone" ? (
+        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="space-y-4">
+            <div className="rounded-xl border border-gray-800 bg-gray-950 p-5"><p className="text-sm font-semibold text-white">Đăng nhập bằng số điện thoại</p><p className="mt-2 text-sm text-gray-400">Flow này ổn định hơn khi QR bị lỗi. Hệ thống hỗ trợ đủ OTP và mật khẩu 2FA.</p></div>
+            <div><label className="mb-2 block text-sm text-gray-400">Số điện thoại Telegram</label><input type="text" value={phoneAuthForm.phoneNumber} onChange={(event) => setPhoneAuthForm((current) => ({ ...current, phoneNumber: event.target.value }))} placeholder="+84901234567" className="w-full rounded-lg border border-gray-700 bg-gray-950 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-500" /></div>
+            <button type="button" onClick={() => void startPhoneLogin()} disabled={phoneAuthLoading || !phoneAuthForm.phoneNumber.trim() || phoneAuthStep !== "phone"} className="w-full rounded-lg bg-blue-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50">{phoneAuthLoading && phoneAuthStep === "phone" ? "Đang gửi mã..." : "Gửi mã OTP"}</button>
+            {phoneAuthStep === "code" || phoneAuthStep === "password" ? <div className="rounded-xl border border-gray-800 bg-gray-950 p-5"><label className="mb-2 block text-sm text-gray-400">Mã xác thực</label><input type="text" value={phoneAuthForm.phoneCode} onChange={(event) => setPhoneAuthForm((current) => ({ ...current, phoneCode: event.target.value }))} placeholder="Nhập OTP" className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-500" /><button type="button" onClick={() => void verifyPhoneCode()} disabled={phoneAuthLoading || !phoneAuthForm.phoneCode.trim() || phoneAuthStep !== "code"} className="mt-3 w-full rounded-lg bg-white px-6 py-3 text-sm font-medium text-gray-950 transition-colors hover:bg-gray-200 disabled:opacity-50">{phoneAuthLoading && phoneAuthStep === "code" ? "Đang xác thực..." : "Xác nhận OTP"}</button></div> : null}
+            {phoneAuthStep === "password" ? <div className="rounded-xl border border-amber-800 bg-amber-950/20 p-5"><label className="mb-2 block text-sm text-amber-200">Mật khẩu 2FA</label><input type="password" value={phoneAuthForm.password} onChange={(event) => setPhoneAuthForm((current) => ({ ...current, password: event.target.value }))} placeholder="Nhập mật khẩu hai lớp" className="w-full rounded-lg border border-amber-900 bg-gray-950 px-4 py-3 text-sm text-white outline-none transition focus:border-amber-500" /><button type="button" onClick={() => void verifyPhonePassword()} disabled={phoneAuthLoading || !phoneAuthForm.password.trim()} className="mt-3 w-full rounded-lg bg-amber-500 px-6 py-3 text-sm font-medium text-gray-950 transition-colors hover:bg-amber-400 disabled:opacity-50">{phoneAuthLoading ? "Đang xác minh 2FA..." : "Hoàn tất đăng nhập"}</button></div> : null}
+          </div>
+          <div className="rounded-xl border border-gray-800 bg-gray-950 p-5"><p className="text-sm font-semibold text-white">Lưu ý</p><ul className="mt-3 space-y-3 text-sm text-gray-400"><li>OTP có thể được gửi trong app Telegram trước, không nhất thiết là SMS.</li><li>Nếu tài khoản bật xác thực hai lớp, bạn sẽ thấy bước nhập mật khẩu 2FA ngay trên màn này.</li><li>Sau khi đăng nhập xong, màn Contacts sẽ chuyển thẳng sang khu import batch.</li></ul></div>
+        </div>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
+          <div className="rounded-xl border border-gray-800 bg-gray-950 p-5"><p className="text-sm font-semibold text-white">Đăng nhập bằng QR</p><p className="mt-2 text-sm text-gray-400">Quét QR bằng app Telegram để lưu session nhanh. Nếu QR có vấn đề, bạn có thể chuyển sang login bằng số điện thoại ngay phía trên.</p></div>
+          {!qrToken ? <div className="text-center"><button onClick={startQrLogin} disabled={qrLoading} className="rounded-lg bg-blue-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50">{qrLoading ? "Generating QR..." : "Generate QR Code"}</button></div> : <div className="space-y-4 text-center"><div className="flex justify-center"><div className="rounded-xl bg-white p-4">{renderQrImage(qrToken)}</div></div><div className="text-sm text-gray-400">Expires in <span className="font-mono text-white">{qrExpires}s</span></div>{qrReady ? <div className="rounded-lg border border-green-800 bg-green-950/30 px-4 py-2 text-sm text-green-300">QR code scanned. Confirming session...</div> : null}<button onClick={() => { setQrToken(null); void startQrLogin(); }} className="text-sm text-gray-400 transition-colors hover:text-white">Regenerate QR Code</button></div>}
+        </div>
+      )}
+    </div>
+  );
+
+  const importPanel = (
+    <div className="grid gap-6 xl:grid-cols-[440px_minmax(0,1fr)]">
+      <div className="space-y-6">
+        <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+          <h2 className="text-lg font-semibold text-white">Tạo batch import mới</h2>
+          <p className="mt-2 text-sm text-gray-400">Hỗ trợ Telegram export chuẩn với <code>contacts.list</code>, <code>frequent_contacts.list</code> hoặc mảng contact JSON rút gọn.</p>
+          <form onSubmit={handleImport} className="mt-5 space-y-4">
+            <div>
+              <label className="mb-2 block text-sm text-gray-400">Upload file JSON</label>
+              <input type="file" name="contactsFile" accept=".json" className="block w-full cursor-pointer text-sm text-gray-400 file:mr-4 file:cursor-pointer file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-blue-700" />
+            </div>
+            <div className="rounded-lg bg-gray-950 p-4 text-xs text-gray-500">
+              <p>1. Parse file JSON và tách contacts / frequent contacts.</p>
+              <p className="mt-1">2. Worker nền resolve Telegram ID theo từng lô.</p>
+              <p className="mt-1">3. Ghi kết quả resolved / skipped / failed để export hoặc retry.</p>
+            </div>
+            <button type="submit" disabled={importLoading} className="w-full rounded-lg bg-blue-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50">{importLoading ? "Đang tạo batch..." : "Tạo batch import"}</button>
+          </form>
+        </div>
+
+        <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+          <div className="flex items-center justify-between gap-3">
+            <div><h2 className="text-lg font-semibold text-white">Recent Batches</h2><p className="text-sm text-gray-500">Chọn một batch để xem tiến độ và chi tiết item.</p></div>
+            <button type="button" onClick={() => void loadBatches(false)} className="rounded-lg bg-gray-800 px-3 py-2 text-xs font-semibold text-gray-200">Tải lại</button>
+          </div>
+          <div className="mt-5 max-h-[540px] space-y-3 overflow-y-auto">
+            {batches.length === 0 ? <p className="text-sm text-gray-500">Chưa có batch import nào.</p> : batches.map((batch) => (
+              <button key={batch.id} type="button" onClick={() => { setSelectedBatchId(batch.id); void loadBatchItems(batch.id, 1); }} className={`w-full rounded-xl border p-4 text-left transition-colors ${selectedBatchId === batch.id ? "border-blue-500 bg-blue-950/30" : "border-gray-800 bg-gray-950 hover:bg-gray-800/60"}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div><p className="text-sm font-semibold text-white">{batch.sourceFileName || "telegram_export.json"}</p><p className="mt-1 text-xs text-gray-500">#{batch.id.slice(0, 8)} · {formatDateTime(batch.createdAt)}</p></div>
+                  <span className={`rounded px-2 py-1 text-[11px] font-semibold ${statusClasses(batch.status)}`}>{formatStatusLabel(batch.status)}</span>
+                </div>
+                <div className="mt-4"><div className="mb-2 flex items-center justify-between text-xs text-gray-400"><span>{batch.processedCount}/{batch.totalCount} dòng</span><span>{progressPercent(batch)}%</span></div><div className="h-2 overflow-hidden rounded-full bg-gray-800"><div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400" style={{ width: `${progressPercent(batch)}%` }} /></div></div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-400"><div>Contacts: <span className="text-white">{batch.contactsCount}</span></div><div>Frequent: <span className="text-white">{batch.frequentCount}</span></div><div>Resolved: <span className="text-green-300">{batch.resolvedCount}</span></div><div>Failed: <span className="text-red-300">{batch.failedCount}</span></div></div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div><h2 className="text-lg font-semibold text-white">Chi tiết batch</h2><p className="text-sm text-gray-500">Tiến độ hiện tại, thông tin nguồn và thao tác retry/cancel/export.</p></div>
+            {selectedBatch ? <div className="flex flex-wrap items-center gap-2"><span className={`rounded px-2 py-1 text-xs font-semibold ${statusClasses(selectedBatch.status)}`}>{formatStatusLabel(selectedBatch.status)}</span><button type="button" onClick={() => void handleExportBatch()} disabled={actionLoading !== null} className="rounded-lg bg-gray-800 px-3 py-2 text-xs font-semibold text-gray-200 disabled:opacity-40">{actionLoading === "export" ? "Đang tải..." : "Tải JSON"}</button><button type="button" onClick={() => void handleRetryFailed()} disabled={actionLoading !== null || selectedBatch.failedCount === 0} className="rounded-lg bg-amber-900/70 px-3 py-2 text-xs font-semibold text-amber-200 disabled:opacity-40">{actionLoading === "retry" ? "Đang retry..." : "Retry lỗi"}</button><button type="button" onClick={() => void handleCancelBatch()} disabled={actionLoading !== null || !["QUEUED", "PROCESSING"].includes(selectedBatch.status)} className="rounded-lg bg-red-900/70 px-3 py-2 text-xs font-semibold text-red-200 disabled:opacity-40">{actionLoading === "cancel" ? "Đang hủy..." : "Hủy batch"}</button></div> : null}
+          </div>
+          {!selectedBatch ? <p className="mt-6 text-sm text-gray-500">Chọn một batch ở cột trái để xem chi tiết.</p> : <>
+            <div className="mt-5 grid gap-4 md:grid-cols-4">
+              <div className="rounded-lg bg-gray-800 p-4 text-center"><div className="text-2xl font-bold text-white">{selectedBatch.totalCount}</div><div className="text-sm text-gray-400">Tổng</div></div>
+              <div className="rounded-lg bg-gray-800 p-4 text-center"><div className="text-2xl font-bold text-blue-300">{selectedBatch.processedCount}</div><div className="text-sm text-gray-400">Đã xử lý</div></div>
+              <div className="rounded-lg bg-gray-800 p-4 text-center"><div className="text-2xl font-bold text-green-400">{selectedBatch.resolvedCount}</div><div className="text-sm text-gray-400">Resolved</div></div>
+              <div className="rounded-lg bg-gray-800 p-4 text-center"><div className="text-2xl font-bold text-red-400">{selectedBatch.failedCount}</div><div className="text-sm text-gray-400">Failed</div></div>
+            </div>
+            <div className="mt-5 grid gap-2 text-sm text-gray-400 md:grid-cols-2"><p>Workspace: <span className="text-white">{selectedBatch.workspaceName || "-"}</span></p><p>File: <span className="text-white">{selectedBatch.sourceFileName || "-"}</span></p><p>Bắt đầu: <span className="text-white">{formatDateTime(selectedBatch.startedAt)}</span></p><p>Kết thúc: <span className="text-white">{formatDateTime(selectedBatch.finishedAt)}</span></p></div>
+            {selectedBatch.errorMessage ? <div className="mt-4 rounded-lg border border-red-800 bg-red-950/30 px-4 py-3 text-sm text-red-300">Lỗi batch: {selectedBatch.errorMessage}</div> : null}
+          </>}
+        </div>
+
+        <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div><h2 className="text-lg font-semibold text-white">Items</h2><p className="text-sm text-gray-500">Danh sách contact / frequent contact trong batch được chọn.</p></div>
+            {selectedBatchItems ? <div className="flex items-center gap-2"><button type="button" disabled={itemsPage <= 1 || itemsLoading || !selectedBatchId} onClick={() => selectedBatchId && void loadBatchItems(selectedBatchId, itemsPage - 1)} className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-semibold disabled:opacity-40">Prev</button><span className="text-xs text-gray-400">Trang {selectedBatchItems.page}/{selectedBatchItems.totalPages}</span><button type="button" disabled={itemsPage >= selectedBatchItems.totalPages || itemsLoading || !selectedBatchId} onClick={() => selectedBatchId && void loadBatchItems(selectedBatchId, itemsPage + 1)} className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-semibold disabled:opacity-40">Next</button></div> : null}
+          </div>
+          {itemsLoading ? <p className="mt-6 text-sm text-gray-500">Đang tải items...</p> : !selectedBatchItems || selectedBatchItems.items.length === 0 ? <p className="mt-6 text-sm text-gray-500">Chưa có item để hiển thị.</p> : <div className="mt-5 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-gray-800 text-gray-400"><th className="px-3 py-2 text-left">Loại</th><th className="px-3 py-2 text-left">Phone / ID</th><th className="px-3 py-2 text-left">Tên</th><th className="px-3 py-2 text-left">Username</th><th className="px-3 py-2 text-left">Trạng thái</th><th className="px-3 py-2 text-left">Lỗi</th></tr></thead><tbody>{selectedBatchItems.items.map((item) => <tr key={item.id} className="border-b border-gray-800/50 hover:bg-gray-800/30"><td className="px-3 py-2"><span className="rounded bg-gray-800 px-2 py-0.5 text-xs font-semibold text-gray-200">{item.kind === "FREQUENT" ? "Frequent" : "Contact"}</span></td><td className="px-3 py-2 font-mono text-xs">{item.kind === "FREQUENT" ? item.telegramExternalId || "-" : item.phoneNumber || "-"}</td><td className="px-3 py-2">{item.displayName || "-"}</td><td className="px-3 py-2">{item.telegramUsername || item.telegramType || "-"}</td><td className="px-3 py-2"><span className={`rounded px-2 py-0.5 text-xs font-medium ${statusClasses(item.status)}`}>{formatStatusLabel(item.status)}</span></td><td className="px-3 py-2 text-xs text-red-400">{item.errorMessage || "-"}</td></tr>)}</tbody></table></div>}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
-      <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-white">Contacts Import</h1>
-          <p className="text-sm text-gray-400">Import Telegram contacts, frequent contacts và resolve user IDs theo batch nền.</p>
+      <div className="border-b border-gray-800 bg-gray-900 px-6 py-4">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+          <div><h1 className="text-xl font-bold text-white">Contacts Resolver</h1><p className="text-sm text-gray-400">Đăng nhập Telegram, import Telegram export JSON, theo dõi batch resolve và xem item chi tiết ngay trong một màn.</p></div>
+          {authStatus?.authenticated ? <button onClick={handleLogout} className="rounded-lg bg-gray-800 px-4 py-2 text-sm text-gray-300 transition-colors hover:bg-gray-700">Tạo session mới</button> : null}
         </div>
-        {authStatus?.authenticated && (
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors"
-          >
-            Logout Telegram Session
-          </button>
-        )}
       </div>
-
-      <div className="p-6 max-w-6xl mx-auto">
-        {authStatus?.authenticated ? (
-          <>
-            <div className="flex gap-1 mb-6 bg-gray-900 p-1 rounded-lg w-fit">
-              <button
-                onClick={() => setTab("import")}
-                className={`px-4 py-2 text-sm rounded-md transition-colors ${
-                  tab === "import" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"
-                }`}
-              >
-                Import Contacts
-              </button>
-              <button
-                onClick={() => setTab("qr")}
-                className={`px-4 py-2 text-sm rounded-md transition-colors ${
-                  tab === "qr" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"
-                }`}
-              >
-                QR Session
-              </button>
-            </div>
-
-            {tab === "qr" && (
-              <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
-                  <span className="text-green-400 font-medium">Telegram session active</span>
-                </div>
-                <p className="text-gray-400 text-sm">
-                  Session đang được lưu. Hệ thống sẽ dùng session này để resolve phone sang Telegram ID trong nền.
-                </p>
-              </div>
-            )}
-
-            {tab === "import" && (
-              <div className="space-y-6">
-                {importNotice ? (
-                  <div className="bg-sky-950 border border-sky-800 text-sky-200 px-4 py-3 rounded-lg text-sm">
-                    {importNotice}
-                  </div>
-                ) : null}
-
-                <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-                  <div className="space-y-6">
-                    <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-                      <h2 className="text-lg font-semibold text-white mb-4">Tạo batch import</h2>
-                      <form onSubmit={handleImport} className="space-y-4">
-                        <div>
-                          <label className="block text-sm text-gray-400 mb-2">Upload file JSON</label>
-                          <input
-                            type="file"
-                            name="contactsFile"
-                            accept=".json"
-                            className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer cursor-pointer"
-                          />
-                        </div>
-                        <div className="text-xs text-gray-500 space-y-1">
-                          <p>Hỗ trợ:</p>
-                          <p>- Array contacts phẳng</p>
-                          <p>- Telegram export có <code>contacts.list</code></p>
-                          <p>- Telegram export có <code>frequent_contacts.list</code></p>
-                        </div>
-                        <button
-                          type="submit"
-                          disabled={importLoading}
-                          className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
-                        >
-                          {importLoading ? "Đang tạo batch..." : "Bắt đầu import"}
-                        </button>
-                      </form>
-                    </div>
-
-                    <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-white">Lịch sử batch</h2>
-                        <button
-                          type="button"
-                          onClick={() => void loadBatches(false)}
-                          className="px-3 py-2 rounded-lg bg-gray-800 text-xs font-semibold text-gray-200"
-                        >
-                          Tải lại
-                        </button>
-                      </div>
-                      <div className="space-y-3 max-h-[520px] overflow-y-auto">
-                        {batches.length === 0 ? (
-                          <p className="text-sm text-gray-500">Chưa có batch import nào.</p>
-                        ) : (
-                          batches.map((batch) => (
-                            <button
-                              key={batch.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedBatchId(batch.id);
-                                void loadBatchItems(batch.id, 1);
-                              }}
-                              className={`w-full rounded-xl border p-4 text-left transition-colors ${
-                                selectedBatchId === batch.id
-                                  ? "border-blue-500 bg-blue-950/30"
-                                  : "border-gray-800 bg-gray-950 hover:bg-gray-800/60"
-                              }`}
-                            >
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <p className="text-sm font-semibold text-white">{batch.sourceFileName || "telegram_export.json"}</p>
-                                  <p className="text-xs text-gray-500">{formatDateTime(batch.createdAt)}</p>
-                                </div>
-                                <span className={`px-2 py-1 rounded text-[11px] font-semibold ${statusClasses(batch.status)}`}>
-                                  {formatStatusLabel(batch.status)}
-                                </span>
-                              </div>
-                              <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-400">
-                                <div>Tổng: <span className="text-white">{batch.totalCount}</span></div>
-                                <div>Đã xử lý: <span className="text-white">{batch.processedCount}</span></div>
-                                <div>Contacts: <span className="text-white">{batch.contactsCount}</span></div>
-                                <div>Frequent: <span className="text-white">{batch.frequentCount}</span></div>
-                              </div>
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-6">
-                    <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-                      <div className="flex items-center justify-between gap-4">
-                        <div>
-                          <h2 className="text-lg font-semibold text-white">Chi tiết batch</h2>
-                          <p className="text-sm text-gray-500">Tiến độ hiện tại và kết quả xử lý từng item.</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {selectedBatch ? (
-                            <span className={`px-2 py-1 rounded text-xs font-semibold ${statusClasses(selectedBatch.status)}`}>
-                              {formatStatusLabel(selectedBatch.status)}
-                            </span>
-                          ) : null}
-                          {selectedBatch ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => void handleExportBatch()}
-                                disabled={actionLoading !== null}
-                                className="px-3 py-2 rounded-lg bg-gray-800 text-xs font-semibold text-gray-200 disabled:opacity-40"
-                              >
-                                {actionLoading === "export" ? "Đang tải..." : "Tải JSON"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleRetryFailed()}
-                                disabled={actionLoading !== null || selectedBatch.failedCount === 0}
-                                className="px-3 py-2 rounded-lg bg-amber-900/70 text-xs font-semibold text-amber-200 disabled:opacity-40"
-                              >
-                                {actionLoading === "retry" ? "Đang retry..." : "Retry lỗi"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleCancelBatch()}
-                                disabled={actionLoading !== null || !["QUEUED", "PROCESSING"].includes(selectedBatch.status)}
-                                className="px-3 py-2 rounded-lg bg-red-900/70 text-xs font-semibold text-red-200 disabled:opacity-40"
-                              >
-                                {actionLoading === "cancel" ? "Đang hủy..." : "Hủy batch"}
-                              </button>
-                            </>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      {!selectedBatch ? (
-                        <p className="mt-6 text-sm text-gray-500">Chọn một batch ở cột trái để xem chi tiết.</p>
-                      ) : (
-                        <>
-                          <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div className="bg-gray-800 rounded-lg p-4 text-center">
-                              <div className="text-2xl font-bold text-white">{selectedBatch.totalCount}</div>
-                              <div className="text-sm text-gray-400">Tổng</div>
-                            </div>
-                            <div className="bg-gray-800 rounded-lg p-4 text-center">
-                              <div className="text-2xl font-bold text-blue-300">{selectedBatch.processedCount}</div>
-                              <div className="text-sm text-gray-400">Đã xử lý</div>
-                            </div>
-                            <div className="bg-gray-800 rounded-lg p-4 text-center">
-                              <div className="text-2xl font-bold text-green-400">{selectedBatch.resolvedCount}</div>
-                              <div className="text-sm text-gray-400">Resolved</div>
-                            </div>
-                            <div className="bg-gray-800 rounded-lg p-4 text-center">
-                              <div className="text-2xl font-bold text-red-400">{selectedBatch.failedCount}</div>
-                              <div className="text-sm text-gray-400">Failed</div>
-                            </div>
-                          </div>
-
-                          <div className="mt-5 space-y-2 text-sm text-gray-400">
-                            <p>Workspace: <span className="text-white">{selectedBatch.workspaceName || "-"}</span></p>
-                            <p>File: <span className="text-white">{selectedBatch.sourceFileName || "-"}</span></p>
-                            <p>Bắt đầu: <span className="text-white">{formatDateTime(selectedBatch.startedAt)}</span></p>
-                            <p>Kết thúc: <span className="text-white">{formatDateTime(selectedBatch.finishedAt)}</span></p>
-                            {selectedBatch.errorMessage ? (
-                              <p className="text-red-300">Lỗi batch: {selectedBatch.errorMessage}</p>
-                            ) : null}
-                          </div>
-                        </>
-                      )}
-                    </div>
-
-                    <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-white">Items</h2>
-                        {selectedBatchItems ? (
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              disabled={itemsPage <= 1 || itemsLoading || !selectedBatchId}
-                              onClick={() => selectedBatchId && void loadBatchItems(selectedBatchId, itemsPage - 1)}
-                              className="px-3 py-1.5 rounded-lg bg-gray-800 text-xs font-semibold disabled:opacity-40"
-                            >
-                              Prev
-                            </button>
-                            <span className="text-xs text-gray-400">
-                              Trang {selectedBatchItems.page}/{selectedBatchItems.totalPages}
-                            </span>
-                            <button
-                              type="button"
-                              disabled={itemsPage >= selectedBatchItems.totalPages || itemsLoading || !selectedBatchId}
-                              onClick={() => selectedBatchId && void loadBatchItems(selectedBatchId, itemsPage + 1)}
-                              className="px-3 py-1.5 rounded-lg bg-gray-800 text-xs font-semibold disabled:opacity-40"
-                            >
-                              Next
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {itemsLoading ? (
-                        <p className="text-sm text-gray-500">Đang tải items...</p>
-                      ) : !selectedBatchItems || selectedBatchItems.items.length === 0 ? (
-                        <p className="text-sm text-gray-500">Chưa có item để hiển thị.</p>
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="text-gray-400 border-b border-gray-800">
-                                <th className="text-left py-2 px-3">Loại</th>
-                                <th className="text-left py-2 px-3">Phone / ID</th>
-                                <th className="text-left py-2 px-3">Tên</th>
-                                <th className="text-left py-2 px-3">Username</th>
-                                <th className="text-left py-2 px-3">Trạng thái</th>
-                                <th className="text-left py-2 px-3">Lỗi</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {selectedBatchItems.items.map((item) => (
-                                <tr key={item.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                                  <td className="py-2 px-3">
-                                    <span className="px-2 py-0.5 rounded bg-gray-800 text-xs font-semibold text-gray-200">
-                                      {item.kind === "FREQUENT" ? "Frequent" : "Contact"}
-                                    </span>
-                                  </td>
-                                  <td className="py-2 px-3 font-mono text-xs">
-                                    {item.kind === "FREQUENT" ? item.telegramExternalId || "-" : item.phoneNumber || "-"}
-                                  </td>
-                                  <td className="py-2 px-3">{item.displayName || "-"}</td>
-                                  <td className="py-2 px-3">{item.telegramUsername || item.telegramType || "-"}</td>
-                                  <td className="py-2 px-3">
-                                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusClasses(item.status)}`}>
-                                      {formatStatusLabel(item.status)}
-                                    </span>
-                                  </td>
-                                  <td className="py-2 px-3 text-red-400 text-xs">{item.errorMessage || "-"}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="space-y-6">
-            <div className="flex gap-1 mb-6 bg-gray-900 p-1 rounded-lg w-fit">
-              <button className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md">QR Login</button>
-              <button
-                onClick={() => setTab("import")}
-                className="px-4 py-2 text-sm text-gray-400 hover:text-white rounded-md transition-colors"
-              >
-                Import Contacts
-              </button>
-            </div>
-
-            <div className="bg-gray-900 rounded-xl p-8 border border-gray-800 max-w-md mx-auto text-center">
-              <h2 className="text-xl font-bold text-white mb-2">Connect Telegram Account</h2>
-              <p className="text-gray-400 text-sm mb-6">
-                Scan QR bằng app Telegram để lưu session MTProto. Batch import sẽ dùng session này để resolve phone sang Telegram ID.
-              </p>
-
-              {!qrToken ? (
-                <div className="space-y-4">
-                  {loginError ? (
-                    <div className="bg-red-900/30 border border-red-800 text-red-300 text-sm px-4 py-2 rounded-lg">
-                      {loginError}
-                    </div>
-                  ) : null}
-                  <button
-                    onClick={startQrLogin}
-                    disabled={qrLoading}
-                    className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
-                  >
-                    {qrLoading ? "Generating QR..." : "Generate QR Code"}
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex justify-center">
-                    <div className="bg-white p-4 rounded-xl">{renderQrImage(qrToken)}</div>
-                  </div>
-                  <div className="text-gray-400 text-sm">
-                    Expires in <span className="font-mono text-white">{qrExpires}s</span>
-                  </div>
-                  {qrReady ? (
-                    <div className="bg-green-900/30 border border-green-800 text-green-300 text-sm px-4 py-2 rounded-lg">
-                      QR code scanned. Confirming session...
-                    </div>
-                  ) : null}
-                  <button
-                    onClick={() => {
-                      setQrToken(null);
-                      void startQrLogin();
-                    }}
-                    className="text-sm text-gray-400 hover:text-white transition-colors"
-                  >
-                    Regenerate QR Code
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+      <div className="mx-auto max-w-7xl px-6 py-6">
+        {hasRunningBatch ? <div className="mb-6 flex items-center justify-between rounded-lg border border-blue-800 bg-blue-950 px-4 py-3 text-sm text-blue-200"><span>Đang có batch xử lý nền. Bạn có thể rời trang, hệ thống vẫn tiếp tục chạy.</span><span className="rounded-full bg-blue-900 px-3 py-1 text-xs font-semibold">PROCESSING</span></div> : null}
+        {authStatus?.authenticated ? <>
+          <div className="mb-6 flex gap-1 rounded-lg bg-gray-900 p-1 w-fit"><button onClick={() => setTab("import")} className={`rounded-md px-4 py-2 text-sm transition-colors ${tab === "import" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"}`}>Import & Batches</button><button onClick={() => setTab("auth")} className={`rounded-md px-4 py-2 text-sm transition-colors ${tab === "auth" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"}`}>Telegram Session</button></div>
+          {tab === "auth" ? authPanel : importPanel}
+        </> : authPanel}
       </div>
     </div>
   );

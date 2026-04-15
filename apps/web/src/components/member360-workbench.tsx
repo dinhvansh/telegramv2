@@ -239,7 +239,7 @@ export function Member360Workbench({
     return () => {
       active = false;
     };
-  }, [loadSummary, token]);
+  }, [loadSummary, toast, token]);
 
   useEffect(() => {
     let active = true;
@@ -265,7 +265,7 @@ export function Member360Workbench({
     return () => {
       active = false;
     };
-  }, [loadProfile, selectedExternalId, token]);
+  }, [loadProfile, selectedExternalId, toast, token]);
 
   useEffect(() => {
     const primary = getPrimaryMember(selectedProfile);

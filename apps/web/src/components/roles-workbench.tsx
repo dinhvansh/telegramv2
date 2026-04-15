@@ -177,7 +177,6 @@ export function RolesWorkbench({
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<EditUserForm | null>(null);
   const [editingRole, setEditingRole] = useState<EditRoleForm | null>(null);
-  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
   const [form, setForm] = useState<CreateUserForm>({
     name: "Người dùng mới",
     email: "new.user@nexus.local",
@@ -276,7 +275,7 @@ export function RolesWorkbench({
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [token, toast]);
 
   async function refreshData() {
     if (!token) {
@@ -305,7 +304,6 @@ export function RolesWorkbench({
     }
 
     setIsCreating(true);
-    setTemporaryPassword(null);
 
     try {
       await fetchJson(`${apiBaseUrl}/users`, {
@@ -353,7 +351,6 @@ export function RolesWorkbench({
     }
 
     setDeletingUserId(user.id);
-    setTemporaryPassword(null);
 
     try {
       await fetchJson(`${apiBaseUrl}/users/${user.id}`, {
@@ -384,7 +381,6 @@ export function RolesWorkbench({
     }
 
     setIsSavingUser(true);
-    setTemporaryPassword(null);
 
     try {
       await fetchJson(`${apiBaseUrl}/users/${editingUser.id}`, {
@@ -400,7 +396,7 @@ export function RolesWorkbench({
       });
 
       if (editingUser.resetPassword !== undefined) {
-        const result = await fetchJson<{
+        await fetchJson<{
           reset: boolean;
           userId: string;
           temporaryPassword: string;
@@ -411,7 +407,6 @@ export function RolesWorkbench({
             password: editingUser.resetPassword.trim() || undefined,
           }),
         });
-        setTemporaryPassword(result.temporaryPassword);
         toast({
           message: `Đã cập nhật và reset mật khẩu cho ${editingUser.name}.`,
           type: "success",
@@ -441,7 +436,6 @@ export function RolesWorkbench({
     }
 
     setSavingRoleId(editingRole.id);
-    setTemporaryPassword(null);
 
     try {
       await fetchJson(`${apiBaseUrl}/roles/${editingRole.id}`, {

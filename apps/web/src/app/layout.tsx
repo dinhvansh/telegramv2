@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { ToastProvider } from "@/context/toast-context";
+import { ToastContainer } from "@/components/toast-container";
 
 export const metadata: Metadata = {
   title: "Skynet Telegram CRM",
@@ -13,8 +15,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="vi" className="h-full antialiased">
+      <body className="min-h-full flex flex-col">
+        <ToastProvider>
+          {children}
+          <ToastContainer />
+        </ToastProvider>
+      </body>
     </html>
   );
 }
