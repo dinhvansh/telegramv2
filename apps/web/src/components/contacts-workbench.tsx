@@ -583,6 +583,15 @@ export function ContactsWorkbench() {
         </div>
       </div>
       <div className="mx-auto max-w-7xl px-6 py-6">
+        <a
+          href="/dashboard"
+          className="mb-6 inline-flex items-center gap-2 rounded-full bg-gray-800 px-4 py-2 text-sm font-semibold text-gray-100 transition-colors hover:bg-gray-700"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          Quay lại Dashboard
+        </a>
         {hasRunningBatch ? <div className="mb-6 flex items-center justify-between rounded-lg border border-blue-800 bg-blue-950 px-4 py-3 text-sm text-blue-200"><span>Đang có batch xử lý nền. Bạn có thể rời trang, hệ thống vẫn tiếp tục chạy.</span><span className="rounded-full bg-blue-900 px-3 py-1 text-xs font-semibold">PROCESSING</span></div> : null}
         {authStatus?.authenticated ? <>
           <div className="mb-6 flex gap-1 rounded-lg bg-gray-900 p-1 w-fit"><button onClick={() => setTab("import")} className={`rounded-md px-4 py-2 text-sm transition-colors ${tab === "import" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"}`}>Import & Batches</button><button onClick={() => setTab("auth")} className={`rounded-md px-4 py-2 text-sm transition-colors ${tab === "auth" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"}`}>Telegram Session</button></div>
