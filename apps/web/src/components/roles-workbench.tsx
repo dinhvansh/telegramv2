@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { useToast } from "@/context/toast-context";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
@@ -162,14 +163,12 @@ export function RolesWorkbench({
     permissions?: string[];
   };
 }) {
+  const { toast } = useToast();
   const [token, setToken] = useState<string | null>(null);
   const [roles, setRoles] = useState<RoleItem[]>([]);
   const [permissionCatalog, setPermissionCatalog] = useState<PermissionItem[]>([]);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [workspaceCatalog, setWorkspaceCatalog] = useState<WorkspaceCatalogItem[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [isSavingUser, setIsSavingUser] = useState(false);
@@ -178,6 +177,7 @@ export function RolesWorkbench({
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<EditUserForm | null>(null);
   const [editingRole, setEditingRole] = useState<EditRoleForm | null>(null);
+  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
   const [form, setForm] = useState<CreateUserForm>({
     name: "Người dùng mới",
     email: "new.user@nexus.local",
@@ -246,17 +246,18 @@ export function RolesWorkbench({
           roleId: current.roleId || rolesResponse[0]?.id || "",
           workspaceId: current.workspaceId || profileResponse.workspaces?.[0]?.id || "",
         }));
-        setError(null);
       } catch (loadError) {
         if (!active) {
           return;
         }
 
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : "Không thể tải dữ liệu phân quyền.",
-        );
+        toast({
+          message:
+            loadError instanceof Error
+              ? loadError.message
+              : "Không thể tải dữ liệu phân quyền.",
+          type: "error",
+        });
       } finally {
         if (active) {
           setIsLoading(false);
@@ -304,8 +305,6 @@ export function RolesWorkbench({
     }
 
     setIsCreating(true);
-    setError(null);
-    setNotice(null);
     setTemporaryPassword(null);
 
     try {
@@ -315,7 +314,7 @@ export function RolesWorkbench({
         body: JSON.stringify(form),
       });
       await refreshData();
-      setNotice(`Đã tạo user ${form.email}.`);
+      toast({ message: `Đã tạo user ${form.email}.`, type: "success" });
       setForm((current) => ({
         ...current,
         name: "",
@@ -326,11 +325,13 @@ export function RolesWorkbench({
         status: "ACTIVE",
       }));
     } catch (createError) {
-      setError(
-        createError instanceof Error
-          ? createError.message
-          : "Không thể tạo user mới.",
-      );
+      toast({
+        message:
+          createError instanceof Error
+            ? createError.message
+            : "Không thể tạo user mới.",
+        type: "error",
+      });
     } finally {
       setIsCreating(false);
     }
@@ -352,8 +353,6 @@ export function RolesWorkbench({
     }
 
     setDeletingUserId(user.id);
-    setError(null);
-    setNotice(null);
     setTemporaryPassword(null);
 
     try {
@@ -362,16 +361,18 @@ export function RolesWorkbench({
         headers: { Authorization: `Bearer ${token}` },
       });
       await refreshData();
-      setNotice(`Đã xóa user ${user.email}.`);
+      toast({ message: `Đã xóa user ${user.email}.`, type: "success" });
       if (editingUser?.id === user.id) {
         setEditingUser(null);
       }
     } catch (deleteError) {
-      setError(
-        deleteError instanceof Error
-          ? deleteError.message
-          : "Không thể xóa user.",
-      );
+      toast({
+        message:
+          deleteError instanceof Error
+            ? deleteError.message
+            : "Không thể xóa user.",
+        type: "error",
+      });
     } finally {
       setDeletingUserId(null);
     }
@@ -383,8 +384,6 @@ export function RolesWorkbench({
     }
 
     setIsSavingUser(true);
-    setError(null);
-    setNotice(null);
     setTemporaryPassword(null);
 
     try {
@@ -413,21 +412,24 @@ export function RolesWorkbench({
           }),
         });
         setTemporaryPassword(result.temporaryPassword);
-        setNotice(
-          `Đã cập nhật và reset mật khẩu cho ${editingUser.name}.`,
-        );
+        toast({
+          message: `Đã cập nhật và reset mật khẩu cho ${editingUser.name}.`,
+          type: "success",
+        });
       } else {
-        setNotice(`Đã cập nhật user ${editingUser.name}.`);
+        toast({ message: `Đã cập nhật user ${editingUser.name}.`, type: "success" });
       }
 
       await refreshData();
       setEditingUser(null);
     } catch (saveError) {
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : "Không thể cập nhật user.",
-      );
+      toast({
+        message:
+          saveError instanceof Error
+            ? saveError.message
+            : "Không thể cập nhật user.",
+        type: "error",
+      });
     } finally {
       setIsSavingUser(false);
     }
@@ -439,8 +441,6 @@ export function RolesWorkbench({
     }
 
     setSavingRoleId(editingRole.id);
-    setError(null);
-    setNotice(null);
     setTemporaryPassword(null);
 
     try {
@@ -453,14 +453,16 @@ export function RolesWorkbench({
         }),
       });
       await refreshData();
-      setNotice(`Đã cập nhật quyền cho role ${text(editingRole.name)}.`);
+      toast({ message: `Đã cập nhật quyền cho role ${text(editingRole.name)}.`, type: "success" });
       setEditingRole(null);
     } catch (saveError) {
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : "Không thể cập nhật quyền cho role.",
-      );
+      toast({
+        message:
+          saveError instanceof Error
+            ? saveError.message
+            : "Không thể cập nhật quyền cho role.",
+        type: "error",
+      });
     } finally {
       setSavingRoleId(null);
     }
@@ -488,23 +490,6 @@ export function RolesWorkbench({
 
   return (
     <section className="space-y-6">
-      {error ? (
-        <div className="rounded-[18px] bg-[color:var(--danger-soft)] px-4 py-3 text-sm text-[color:var(--danger)]">
-          {error}
-        </div>
-      ) : null}
-
-      {notice ? (
-        <div className="rounded-[18px] bg-[color:var(--success-soft)] px-4 py-3 text-sm text-[color:var(--success)]">
-          {notice}
-          {temporaryPassword ? (
-            <span className="ml-2 font-bold text-[color:var(--on-surface)]">
-              Mật khẩu mới: {temporaryPassword}
-            </span>
-          ) : null}
-        </div>
-      ) : null}
-
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">

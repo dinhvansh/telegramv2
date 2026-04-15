@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { TelegramClient, Api } from 'telegram';
+import { computeCheck } from 'telegram/Password';
 import { StringSession } from 'telegram/sessions';
 import { signInUserWithQrCode } from 'telegram/client/auth';
 import bigInt from 'big-integer';
@@ -23,6 +24,20 @@ export interface QrPollResult {
   ready: boolean;
   token?: string;
   expiresIn?: number;
+  authenticated?: boolean;
+}
+
+export interface PhoneLoginStartResult {
+  phoneNumber: string;
+  sent: boolean;
+  isCodeViaApp: boolean;
+}
+
+export interface PhoneLoginVerifyResult {
+  success: boolean;
+  requiresPassword: boolean;
+  userId?: string;
+  username?: string;
 }
 
 type TelegramApiError = {
@@ -42,6 +57,13 @@ type ImportedTelegramUser = {
   firstName?: string | null;
   lastName?: string | null;
   phone?: string | null;
+};
+
+type PendingPhoneAuth = {
+  client: TelegramClient;
+  phoneNumber: string;
+  phoneCodeHash: string;
+  passwordRequired: boolean;
 };
 
 function getTelegramErrorMessage(error: unknown) {
@@ -72,6 +94,7 @@ export class MtprotoService {
   private qrToken: string | null = null;
   private qrExpiresAt: number = 0;
   private qrLoginDone = false;
+  private pendingPhoneAuth: PendingPhoneAuth | null = null;
   private apiId: number;
   private apiHash: string;
 
@@ -91,6 +114,7 @@ export class MtprotoService {
    * The qrCode callback captures the token and returns it to the caller.
    */
   async startQrLogin(): Promise<QrCodeResult> {
+    await this.resetPendingPhoneAuth();
     if (this.client) {
       await this.client.disconnect();
     }
@@ -159,20 +183,161 @@ export class MtprotoService {
     return startPromise;
   }
 
+  async startPhoneLogin(phoneNumber: string): Promise<PhoneLoginStartResult> {
+    const normalizedPhone = this.normalizePhone(phoneNumber);
+    if (!normalizedPhone) {
+      throw new Error('Phone number is required');
+    }
+
+    await this.resetPendingPhoneAuth();
+    if (this.client) {
+      await this.client.disconnect();
+      this.client = null;
+    }
+
+    this.qrToken = null;
+    this.qrExpiresAt = 0;
+    this.qrLoginDone = false;
+
+    const client = new TelegramClient(
+      new StringSession(''),
+      this.apiId,
+      this.apiHash,
+      { connectionRetries: 3, useWSS: true },
+    );
+    await client.connect();
+
+    const sentCode = await client.sendCode(
+      { apiId: this.apiId, apiHash: this.apiHash },
+      normalizedPhone,
+      false,
+    );
+
+    if (!sentCode.phoneCodeHash) {
+      await client.disconnect();
+      throw new Error('Failed to start phone login');
+    }
+
+    this.pendingPhoneAuth = {
+      client,
+      phoneNumber: normalizedPhone,
+      phoneCodeHash: sentCode.phoneCodeHash,
+      passwordRequired: false,
+    };
+
+    this.logger.log(`Phone login code sent to ${normalizedPhone}`);
+
+    return {
+      phoneNumber: normalizedPhone,
+      sent: true,
+      isCodeViaApp: sentCode.isCodeViaApp,
+    };
+  }
+
+  async verifyPhoneCode(phoneCode: string): Promise<PhoneLoginVerifyResult> {
+    if (!this.pendingPhoneAuth) {
+      throw new Error('No pending phone login. Start again.');
+    }
+
+    const normalizedCode = phoneCode.trim();
+    if (!normalizedCode) {
+      throw new Error('Phone code is required');
+    }
+
+    try {
+      const result = await this.pendingPhoneAuth.client.invoke(
+        new Api.auth.SignIn({
+          phoneNumber: this.pendingPhoneAuth.phoneNumber,
+          phoneCodeHash: this.pendingPhoneAuth.phoneCodeHash,
+          phoneCode: normalizedCode,
+        }),
+      );
+
+      if (!(result instanceof Api.auth.Authorization)) {
+        throw new Error('Telegram account requires sign-up before login');
+      }
+
+      const telegramUser = result.user as unknown as {
+        id: string | number | bigint;
+        username?: string | null;
+      };
+
+      await this.saveAuthorizedClient(this.pendingPhoneAuth.client);
+
+      return {
+        success: true,
+        requiresPassword: false,
+        userId: String(telegramUser.id),
+        username: telegramUser.username || undefined,
+      };
+    } catch (error: unknown) {
+      const message = getTelegramErrorMessage(error);
+      if (message === 'SESSION_PASSWORD_NEEDED') {
+        this.pendingPhoneAuth.passwordRequired = true;
+        return {
+          success: false,
+          requiresPassword: true,
+        };
+      }
+
+      throw new Error(message);
+    }
+  }
+
+  async verifyPassword(password: string): Promise<PhoneLoginVerifyResult> {
+    if (!this.pendingPhoneAuth) {
+      throw new Error('No pending phone login. Start again.');
+    }
+
+    const normalizedPassword = password.trim();
+    if (!normalizedPassword) {
+      throw new Error('Two-factor password is required');
+    }
+
+    const passwordInfo = await this.pendingPhoneAuth.client.invoke(
+      new Api.account.GetPassword(),
+    );
+    const passwordCheck = await computeCheck(passwordInfo, normalizedPassword);
+    const result = await this.pendingPhoneAuth.client.invoke(
+      new Api.auth.CheckPassword({
+        password: passwordCheck,
+      }),
+    );
+
+    if (!(result instanceof Api.auth.Authorization)) {
+      throw new Error('Telegram password verification did not complete login');
+    }
+
+    const telegramUser = result.user as unknown as {
+      id: string | number | bigint;
+      username?: string | null;
+    };
+
+    await this.saveAuthorizedClient(this.pendingPhoneAuth.client);
+
+    return {
+      success: true,
+      requiresPassword: false,
+      userId: String(telegramUser.id),
+      username: telegramUser.username || undefined,
+    };
+  }
+
   /**
    * GET /contacts/auth/qr/poll
    * Poll this every 2-3s. Returns token + remaining time.
    * When ready=true, call /contacts/auth/qr/confirm to save session.
    */
-  pollQrCode(): QrPollResult {
-    if (this.qrLoginDone && this.client) {
-      return { ready: true };
-    }
-
+  async pollQrCode(): Promise<QrPollResult> {
     if (!this.qrToken || !this.client) {
       throw new Error(
         'No active QR session. Call /contacts/auth/qr/start first.',
       );
+    }
+
+    const authorized = await this.syncQrAuthorizationState();
+    if (authorized) {
+      return { ready: true, authenticated: true };
     }
 
     const remaining = Math.max(
@@ -184,7 +349,8 @@ export class MtprotoService {
     }
 
     return {
-      ready: this.qrLoginDone,
+      ready: false,
+      authenticated: false,
       token: this.qrToken,
       expiresIn: remaining,
     };
@@ -198,7 +364,8 @@ export class MtprotoService {
     if (!this.client) {
       throw new Error('No active session. Call /contacts/auth/qr/start first.');
     }
-    if (!this.qrLoginDone) {
+    const authorized = await this.syncQrAuthorizationState();
+    if (!authorized) {
       throw new Error(
         'QR code not yet scanned. Poll /contacts/auth/qr/poll first.',
       );
@@ -266,6 +433,21 @@ export class MtprotoService {
     }
   }
 
+  async resetSession(): Promise<void> {
+    await this.resetPendingPhoneAuth();
+    if (this.client) {
+      await this.client.disconnect();
+      this.client = null;
+    }
+    this.qrToken = null;
+    this.qrExpiresAt = 0;
+    this.qrLoginDone = false;
+    await this.prisma.telegramSession.deleteMany({
+      where: { phoneNumber: 'MTPROTO_SESSION' },
+    });
+    this.logger.log('MTProto session reset');
+  }
+
   private async getClient(): Promise<TelegramClient> {
     if (this.client) return this.client;
 
@@ -299,6 +481,15 @@ export class MtprotoService {
     throw new Error('MTProto session not found. Scan QR code first.');
   }
 
+  private async saveAuthorizedClient(client: TelegramClient) {
+    this.client = client;
+    this.qrToken = null;
+    this.qrExpiresAt = 0;
+    this.qrLoginDone = false;
+    await this.saveSession(client);
+    this.pendingPhoneAuth = null;
+  }
+
   private async saveSession(client: TelegramClient) {
     const sessionString = (client.session as StringSession).save();
     await this.prisma.telegramSession.upsert({
@@ -312,7 +503,43 @@ export class MtprotoService {
     this.logger.log('MTProto session saved to database');
   }
 
+  private async syncQrAuthorizationState(): Promise<boolean> {
+    if (!this.client) {
+      return false;
+    }
+
+    if (this.qrLoginDone) {
+      return true;
+    }
+
+    try {
+      const authorized = await this.client.checkAuthorization();
+      if (!authorized) {
+        return false;
+      }
+
+      this.qrLoginDone = true;
+      this.qrToken = null;
+      this.qrExpiresAt = 0;
+      await this.saveSession(this.client);
+      this.logger.log('QR authorization detected during poll');
+      return true;
+    } catch (error: unknown) {
+      this.logger.warn(
+        `QR authorization check failed: ${getTelegramErrorMessage(error)}`,
+      );
+      return false;
+    }
+  }
+
   private normalizePhone(phone: string): string {
     return phone.replace(/[^\d+]/g, '');
+  }
+
+  private async resetPendingPhoneAuth() {
+    if (this.pendingPhoneAuth) {
+      await this.pendingPhoneAuth.client.disconnect();
+      this.pendingPhoneAuth = null;
+    }
   }
 }

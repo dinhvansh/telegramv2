@@ -16,6 +16,8 @@ import { Permissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import {
   MtprotoService,
+  PhoneLoginStartResult,
+  PhoneLoginVerifyResult,
   QrCodeResult,
 } from '../telegram-mtproto/mtproto.service';
 import type { QrPollResult } from '../telegram-mtproto/mtproto.service';
@@ -29,6 +31,18 @@ type ImportBatchRequestBody = {
   fileName?: string;
   workspaceId?: string;
   payload?: unknown;
+};
+
+type PhoneLoginStartBody = {
+  phoneNumber?: string;
+};
+
+type PhoneCodeVerifyBody = {
+  phoneCode?: string;
+};
+
+type PasswordVerifyBody = {
+  password?: string;
 };
 
 type AuthenticatedRequest = Request & {
@@ -83,10 +97,40 @@ export class ContactsController {
     return this.mtprotoService.startQrLogin();
   }
 
+  @Post('auth/phone/start')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('contacts.manage')
+  async startPhoneLogin(
+    @Body() body: PhoneLoginStartBody,
+  ): Promise<PhoneLoginStartResult> {
+    return this.mtprotoService.startPhoneLogin(body.phoneNumber ?? '');
+  }
+
+  @Post('auth/phone/verify')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('contacts.manage')
+  async verifyPhoneCode(
+    @Body() body: PhoneCodeVerifyBody,
+  ): Promise<PhoneLoginVerifyResult> {
+    return this.mtprotoService.verifyPhoneCode(body.phoneCode ?? '');
+  }
+
+  @Post('auth/phone/password')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('contacts.manage')
+  async verifyPassword(
+    @Body() body: PasswordVerifyBody,
+  ): Promise<PhoneLoginVerifyResult> {
+    return this.mtprotoService.verifyPassword(body.password ?? '');
+  }
+
   @Get('auth/qr/poll')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('contacts.manage')
-  pollQr(): QrPollResult {
+  async pollQr(): Promise<QrPollResult> {
     return this.mtprotoService.pollQrCode();
   }
 
@@ -108,6 +152,15 @@ export class ContactsController {
   async authStatus(): Promise<{ authenticated: boolean }> {
     const authenticated = await this.mtprotoService.isAuthenticated();
     return { authenticated };
+  }
+
+  @Post('auth/session/reset')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('contacts.manage')
+  async resetSession(): Promise<{ success: boolean }> {
+    await this.mtprotoService.resetSession();
+    return { success: true };
   }
 
   @Post('import')

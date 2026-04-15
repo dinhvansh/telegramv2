@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useToast } from "@/context/toast-context";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
@@ -178,14 +179,13 @@ export function Member360Workbench({
   const [noteDraft, setNoteDraft] = useState("");
   const [phoneDraft, setPhoneDraft] = useState("");
   const [customerSourceDraft, setCustomerSourceDraft] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     setToken(window.localStorage.getItem(authStorageKey));
@@ -229,9 +229,8 @@ export function Member360Workbench({
     void (async () => {
       try {
         await loadSummary(token);
-        if (active) setError(null);
       } catch (loadError) {
-        if (active) setError(loadError instanceof Error ? loadError.message : "Không thể tải dữ liệu Member 360.");
+        if (active) toast({ message: loadError instanceof Error ? loadError.message : "Không thể tải dữ liệu Member 360.", type: "error" });
       } finally {
         if (active) setIsLoading(false);
       }
@@ -254,7 +253,10 @@ export function Member360Workbench({
         setIsProfileLoading(true);
         await loadProfile(token, selectedExternalId);
       } catch {
-        if (active) setSelectedProfile(null);
+        if (active) {
+          setSelectedProfile(null);
+          toast({ message: "Không thể tải hồ sơ thành viên.", type: "error" });
+        }
       } finally {
         if (active) setIsProfileLoading(false);
       }
@@ -318,9 +320,8 @@ export function Member360Workbench({
     try {
       setIsProfileLoading(true);
       await loadProfile(token, externalId);
-      setError(null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Không thể tải hồ sơ thành viên.");
+      toast({ message: loadError instanceof Error ? loadError.message : "Không thể tải hồ sơ thành viên.", type: "error" });
     } finally {
       setIsProfileLoading(false);
     }
@@ -354,10 +355,9 @@ export function Member360Workbench({
       if (selectedExternalId) {
         await loadProfile(token, selectedExternalId);
       }
-      setNotice(result.message || "Đã import Excel khách hàng theo ID số.");
-      setError(null);
+      toast({ message: result.message || "Đã import Excel khách hàng theo ID số.", type: "success" });
     } catch (importError) {
-      setError(importError instanceof Error ? importError.message : "Không thể import Excel.");
+      toast({ message: importError instanceof Error ? importError.message : "Không thể import Excel.", type: "error" });
     } finally {
       setIsImporting(false);
       if (importInputRef.current) {
@@ -381,10 +381,9 @@ export function Member360Workbench({
         }),
       });
       await Promise.all([loadSummary(token), loadProfile(token, selectedExternalId || primaryMember.externalId)]);
-      setNotice("Đã lưu owner và ghi chú.");
-      setError(null);
+      toast({ message: "Đã lưu owner và ghi chú.", type: "success" });
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Không thể lưu thông tin thành viên.");
+      toast({ message: saveError instanceof Error ? saveError.message : "Không thể lưu thông tin thành viên.", type: "error" });
     } finally {
       setIsSaving(false);
     }
@@ -411,11 +410,12 @@ export function Member360Workbench({
         URL.revokeObjectURL(objectUrl);
       })
       .catch((downloadError) => {
-        setError(
-          downloadError instanceof Error
+        toast({
+          message: downloadError instanceof Error
             ? downloadError.message
             : "Không thể tải file mẫu import.",
-        );
+          type: "error",
+        });
       });
   }
 
@@ -428,10 +428,9 @@ export function Member360Workbench({
         headers: { Authorization: `Bearer ${token}`, ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}) },
       });
       await Promise.all([loadSummary(token), loadProfile(token, selectedExternalId || primaryMember.externalId)]);
-      setNotice("Đã reset cảnh báo của thành viên.");
-      setError(null);
+      toast({ message: "Đã reset cảnh báo của thành viên.", type: "success" });
     } catch (resetError) {
-      setError(resetError instanceof Error ? resetError.message : "Không thể reset cảnh báo.");
+      toast({ message: resetError instanceof Error ? resetError.message : "Không thể reset cảnh báo.", type: "error" });
     } finally {
       setIsResetting(false);
     }
@@ -475,9 +474,6 @@ export function Member360Workbench({
           </div>
         </div>
       </section>
-
-      {error ? <div className="rounded-[24px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
-      {notice ? <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div> : null}
 
       <section className="rounded-[32px] border border-white/70 bg-white/88 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
