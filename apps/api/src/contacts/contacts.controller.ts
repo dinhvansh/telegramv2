@@ -171,6 +171,14 @@ export class ContactsController {
     @Req() request: AuthenticatedRequest,
     @Body() body: unknown,
   ) {
+    const authenticated = await this.mtprotoService.isAuthenticated();
+    if (!authenticated) {
+      return {
+        error:
+          'Telegram session expired. Reconnect your Telegram session in /contacts before importing.',
+      };
+    }
+
     const extracted = extractNormalizedPayload(body);
 
     if (!extracted) {

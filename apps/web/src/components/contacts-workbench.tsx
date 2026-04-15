@@ -129,6 +129,8 @@ export function ContactsWorkbench() {
   const [actionLoading, setActionLoading] = useState<"retry" | "cancel" | "export" | null>(null);
   const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const batchPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const authPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const previousAuthRef = useRef<boolean | null>(null);
 
   const getHeaders = useCallback(
     () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem(authStorageKey) || ""}` }),
@@ -180,27 +182,58 @@ export function ContactsWorkbench() {
     }
   }, [getHeaders, itemsPage, loadBatchItems, selectedBatchId, toast]);
 
-  const checkAuthStatus = useCallback(async () => {
-    setAuthStatus({ authenticated: false });
+  const checkAuthStatus = useCallback(async (options?: { silent?: boolean }) => {
     try {
       const res = await fetch(`${apiBaseUrl}/contacts/auth/status`, { headers: getHeaders() });
-      if (!res.ok) return;
+      if (!res.ok) return false;
       const data = (await res.json()) as AuthStatus;
+      const previousAuth = previousAuthRef.current;
+      previousAuthRef.current = data.authenticated;
       setAuthStatus(data);
-      if (data.authenticated) setTab("import");
+      if (data.authenticated) {
+        setTab("import");
+      } else {
+        setTab("auth");
+        if (previousAuth && !options?.silent) {
+          toast({ message: "Session Telegram đã hết hạn. Hãy đăng nhập lại để tiếp tục.", type: "warning" });
+        }
+      }
+      return data.authenticated;
     } catch {
-      setAuthStatus({ authenticated: false });
+      return false;
     }
-  }, [getHeaders]);
+  }, [getHeaders, toast]);
 
   useEffect(() => {
-    void checkAuthStatus();
+    void checkAuthStatus({ silent: true });
     void loadBatches(false);
     return () => {
       if (qrPollRef.current) clearInterval(qrPollRef.current);
       if (batchPollRef.current) clearInterval(batchPollRef.current);
+      if (authPollRef.current) clearInterval(authPollRef.current);
     };
   }, [checkAuthStatus, loadBatches]);
+
+  useEffect(() => {
+    if (authPollRef.current) {
+      clearInterval(authPollRef.current);
+      authPollRef.current = null;
+    }
+
+    const pollAuthStatus = () => {
+      if (document.visibilityState === "visible") {
+        void checkAuthStatus();
+      }
+    };
+
+    authPollRef.current = setInterval(pollAuthStatus, 10000);
+    document.addEventListener("visibilitychange", pollAuthStatus);
+
+    return () => {
+      if (authPollRef.current) clearInterval(authPollRef.current);
+      document.removeEventListener("visibilitychange", pollAuthStatus);
+    };
+  }, [checkAuthStatus]);
 
   useEffect(() => {
     if (batchPollRef.current) {
@@ -222,6 +255,7 @@ export function ContactsWorkbench() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error((data as ErrorWithMessage).message || `HTTP ${res.status}`);
       setAuthStatus({ authenticated: true });
+      previousAuthRef.current = true;
       setLoginError(null);
       setTab("import");
       toast({ message: "Đăng nhập Telegram bằng QR thành công.", type: "success" });
@@ -312,6 +346,7 @@ export function ContactsWorkbench() {
         return;
       }
       setAuthStatus({ authenticated: true });
+      previousAuthRef.current = true;
       setLoginError(null);
       setTab("import");
       toast({ message: "Đăng nhập Telegram bằng số điện thoại thành công.", type: "success" });
@@ -334,6 +369,7 @@ export function ContactsWorkbench() {
       const data = (await res.json().catch(() => ({}))) as PhoneLoginVerifyResult & { message?: string };
       if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
       setAuthStatus({ authenticated: true });
+      previousAuthRef.current = true;
       setTab("import");
       toast({ message: "Xác thực 2FA thành công.", type: "success" });
     } catch (error) {
@@ -351,6 +387,7 @@ export function ContactsWorkbench() {
       // ignore
     }
     setAuthStatus({ authenticated: false });
+    previousAuthRef.current = false;
     setQrToken(null);
     setQrReady(false);
     setPhoneAuthStep("phone");
@@ -366,6 +403,12 @@ export function ContactsWorkbench() {
       const form = event.currentTarget;
       const fileInput = form.elements.namedItem("contactsFile") as HTMLInputElement;
       if (!fileInput.files?.[0]) return;
+      const authenticated = await checkAuthStatus({ silent: true });
+      if (!authenticated) {
+        toast({ message: "Session Telegram đã hết hạn. Đăng nhập lại rồi import tiếp.", type: "warning" });
+        setTab("auth");
+        return;
+      }
       const file = fileInput.files[0];
       const payload = JSON.parse(await file.text()) as unknown;
       const res = await fetch(`${apiBaseUrl}/contacts/import`, {

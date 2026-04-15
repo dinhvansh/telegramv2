@@ -224,6 +224,17 @@ export class UsersService {
     return Boolean(viewer?.permissions.includes('organization.manage'));
   }
 
+  private isSystemSuperadminRole(roleName: string) {
+    const normalizedRoleName = normalizeVietnameseText(roleName)
+      .trim()
+      .toLowerCase();
+
+    return (
+      normalizedRoleName === 'superadmin' ||
+      normalizedRoleName === 'quản trị hệ thống'
+    );
+  }
+
   async findAll(viewer?: UserViewer) {
     if (!process.env.DATABASE_URL) {
       return this.fallbackUsers
@@ -596,6 +607,84 @@ export class UsersService {
     }
 
     return this.normalizeUserRecord(this.serializeDatabaseUser(updated));
+  }
+
+  async delete(userId: string, viewer?: UserViewer) {
+    if (viewer?.userId === userId) {
+      throw new ForbiddenException('Cannot delete your own account');
+    }
+
+    if (!process.env.DATABASE_URL) {
+      const targetIndex = this.fallbackUsers.findIndex((user) => user.id === userId);
+      if (targetIndex === -1) {
+        throw new NotFoundException('User not found');
+      }
+
+      const target = this.fallbackUsers[targetIndex];
+      const targetIsOrganizationManager = target.roles.some(
+        (role) =>
+          role.permissions.includes('organization.manage') ||
+          this.isSystemSuperadminRole(role.name),
+      );
+
+      if (targetIsOrganizationManager && !this.isOrganizationManager(viewer)) {
+        throw new ForbiddenException(
+          'Only superadmin can delete Quản trị hệ thống',
+        );
+      }
+
+      this.fallbackUsers.splice(targetIndex, 1);
+
+      return {
+        deleted: true,
+        userId,
+      };
+    }
+
+    const existingUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        userRoles: {
+          include: {
+            role: {
+              include: {
+                rolePermissions: {
+                  include: {
+                    permission: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!existingUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    const targetIsOrganizationManager = existingUser.userRoles.some(
+      ({ role }) =>
+        role.rolePermissions.some(
+          ({ permission }) => permission.code === 'organization.manage',
+        ) || this.isSystemSuperadminRole(role.name),
+    );
+
+    if (targetIsOrganizationManager && !this.isOrganizationManager(viewer)) {
+      throw new ForbiddenException(
+        'Only superadmin can delete Quản trị hệ thống',
+      );
+    }
+
+    await this.prisma.user.delete({
+      where: { id: userId },
+    });
+
+    return {
+      deleted: true,
+      userId,
+    };
   }
 
   async resetPassword(userId: string, nextPassword?: string) {

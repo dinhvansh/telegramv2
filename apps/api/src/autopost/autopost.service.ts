@@ -29,6 +29,13 @@ type CreateScheduleInput = {
   saveAsDraft?: boolean;
 };
 
+type AutopostViewer = {
+  userId?: string;
+  permissions: string[];
+  workspaceIds?: string[];
+  workspaceId?: string;
+};
+
 @Injectable()
 export class AutopostService {
   constructor(
@@ -36,7 +43,32 @@ export class AutopostService {
     private readonly systemLogsService: SystemLogsService,
   ) {}
 
-  async getSnapshot(workspaceId?: string) {
+  private canManageOrganization(viewer?: AutopostViewer) {
+    return Boolean(viewer?.permissions.includes('organization.manage'));
+  }
+
+  private resolveWorkspaceScope(viewer?: AutopostViewer) {
+    if (!viewer) {
+      return undefined;
+    }
+
+    if (viewer.workspaceId) {
+      if (
+        this.canManageOrganization(viewer) ||
+        viewer.workspaceIds?.includes(viewer.workspaceId)
+      ) {
+        return viewer.workspaceId;
+      }
+    }
+
+    if (this.canManageOrganization(viewer)) {
+      return undefined;
+    }
+
+    return viewer.workspaceIds?.[0];
+  }
+
+  async getSnapshot(viewer?: AutopostViewer) {
     if (!process.env.DATABASE_URL) {
       return {
         targets: [],
@@ -52,6 +84,7 @@ export class AutopostService {
       };
     }
 
+    const workspaceId = this.resolveWorkspaceScope(viewer);
     const groups = (await this.prisma.telegramGroup.findMany({
       where: {
         isActive: true,
@@ -123,6 +156,10 @@ export class AutopostService {
     })) as any[];
 
     const workspaces = (await this.prisma.workspace.findMany({
+      where:
+        workspaceId && !this.canManageOrganization(viewer)
+          ? { id: workspaceId }
+          : undefined,
       select: {
         id: true,
         name: true,
@@ -209,15 +246,15 @@ export class AutopostService {
     };
   }
 
-  async createTarget(input: CreateTargetInput) {
+  async createTarget(input: CreateTargetInput, viewer?: AutopostViewer) {
     if (!process.env.DATABASE_URL) {
-      return this.getSnapshot();
+      return this.getSnapshot(viewer);
     }
 
     const externalId = String(input.externalId || '').trim();
     const displayName = String(input.displayName || '').trim();
     if (!externalId || !displayName) {
-      return this.getSnapshot();
+      return this.getSnapshot(viewer);
     }
 
     await this.prisma.autopostTarget.upsert({
@@ -249,15 +286,16 @@ export class AutopostService {
       },
     });
 
-    return this.getSnapshot();
+    return this.getSnapshot(viewer);
   }
 
-  async createSchedules(input: CreateScheduleInput, workspaceId?: string) {
+  async createSchedules(input: CreateScheduleInput, viewer?: AutopostViewer) {
+    const workspaceId = this.resolveWorkspaceScope(viewer);
     if (!process.env.DATABASE_URL) {
       return {
         created: 0,
         items: [],
-        snapshot: await this.getSnapshot(workspaceId),
+        snapshot: await this.getSnapshot(viewer),
       };
     }
 
@@ -286,7 +324,7 @@ export class AutopostService {
       return {
         created: 0,
         items: [],
-        snapshot: await this.getSnapshot(workspaceId),
+        snapshot: await this.getSnapshot(viewer),
       };
     }
 
@@ -342,16 +380,17 @@ export class AutopostService {
         targetName: item.target.displayName,
         status: item.status,
       })),
-      snapshot: await this.getSnapshot(workspaceId),
+      snapshot: await this.getSnapshot(viewer),
     };
   }
 
-  async sendNow(input: CreateScheduleInput, workspaceId?: string) {
+  async sendNow(input: CreateScheduleInput, viewer?: AutopostViewer) {
+    const workspaceId = this.resolveWorkspaceScope(viewer);
     if (!process.env.DATABASE_URL) {
       return {
         dispatched: 0,
         items: [],
-        snapshot: await this.getSnapshot(workspaceId),
+        snapshot: await this.getSnapshot(viewer),
       };
     }
 
@@ -378,7 +417,7 @@ export class AutopostService {
       return {
         dispatched: 0,
         items: [],
-        snapshot: await this.getSnapshot(workspaceId),
+        snapshot: await this.getSnapshot(viewer),
       };
     }
 
@@ -468,19 +507,20 @@ export class AutopostService {
     return {
       dispatched: items.length,
       items,
-      snapshot: await this.getSnapshot(workspaceId),
+      snapshot: await this.getSnapshot(viewer),
     };
   }
 
   async updateSchedule(
     scheduleId: string,
     input: CreateScheduleInput,
-    workspaceId?: string,
+    viewer?: AutopostViewer,
   ) {
+    const workspaceId = this.resolveWorkspaceScope(viewer);
     if (!process.env.DATABASE_URL) {
       return {
         updated: false,
-        snapshot: await this.getSnapshot(workspaceId),
+        snapshot: await this.getSnapshot(viewer),
       };
     }
 
@@ -490,7 +530,7 @@ export class AutopostService {
     if (!existing) {
       return {
         updated: false,
-        snapshot: await this.getSnapshot(workspaceId),
+        snapshot: await this.getSnapshot(viewer),
       };
     }
 
@@ -546,15 +586,16 @@ export class AutopostService {
 
     return {
       updated: true,
-      snapshot: await this.getSnapshot(workspaceId),
+      snapshot: await this.getSnapshot(viewer),
     };
   }
 
-  async toggleSchedule(scheduleId: string, workspaceId?: string) {
+  async toggleSchedule(scheduleId: string, viewer?: AutopostViewer) {
+    const workspaceId = this.resolveWorkspaceScope(viewer);
     if (!process.env.DATABASE_URL) {
       return {
         toggled: false,
-        snapshot: await this.getSnapshot(workspaceId),
+        snapshot: await this.getSnapshot(viewer),
       };
     }
 
@@ -564,7 +605,7 @@ export class AutopostService {
     if (!existing) {
       return {
         toggled: false,
-        snapshot: await this.getSnapshot(workspaceId),
+        snapshot: await this.getSnapshot(viewer),
       };
     }
 
@@ -593,15 +634,16 @@ export class AutopostService {
     return {
       toggled: true,
       status: nextStatus,
-      snapshot: await this.getSnapshot(workspaceId),
+      snapshot: await this.getSnapshot(viewer),
     };
   }
 
-  async deleteSchedule(scheduleId: string, workspaceId?: string) {
+  async deleteSchedule(scheduleId: string, viewer?: AutopostViewer) {
+    const workspaceId = this.resolveWorkspaceScope(viewer);
     if (!process.env.DATABASE_URL) {
       return {
         deleted: false,
-        snapshot: await this.getSnapshot(workspaceId),
+        snapshot: await this.getSnapshot(viewer),
       };
     }
 
@@ -611,7 +653,7 @@ export class AutopostService {
     if (!existing) {
       return {
         deleted: false,
-        snapshot: await this.getSnapshot(workspaceId),
+        snapshot: await this.getSnapshot(viewer),
       };
     }
 
@@ -630,16 +672,17 @@ export class AutopostService {
 
     return {
       deleted: true,
-      snapshot: await this.getSnapshot(workspaceId),
+      snapshot: await this.getSnapshot(viewer),
     };
   }
 
-  async dispatch(input?: { scheduleId?: string }, workspaceId?: string) {
+  async dispatch(input?: { scheduleId?: string }, viewer?: AutopostViewer) {
+    const workspaceId = this.resolveWorkspaceScope(viewer);
     if (!process.env.DATABASE_URL) {
       return {
         dispatched: 0,
         items: [],
-        snapshot: await this.getSnapshot(workspaceId),
+        snapshot: await this.getSnapshot(viewer),
       };
     }
 
@@ -677,7 +720,7 @@ export class AutopostService {
     return {
       dispatched: dispatched.length,
       items: dispatched,
-      snapshot: await this.getSnapshot(workspaceId),
+      snapshot: await this.getSnapshot(viewer),
     };
   }
 

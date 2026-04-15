@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { canAccessPage, type DashboardPage } from "@/lib/page-access";
 import { fallbackPlatformSnapshot, PlatformSnapshot } from "@/lib/platform-data";
+import { useToast } from "@/context/toast-context";
 
 const apiBaseUrl = "/api";
 
@@ -54,11 +55,6 @@ type CampaignAssigneeOption = {
   department: string | null;
 };
 
-type CampaignNoticeState = {
-  message: string;
-  inviteUrl?: string | null;
-};
-
 type PlatformDashboardProps = {
   page?: DashboardPage;
   entryMode?: boolean;
@@ -100,6 +96,7 @@ export function PlatformDashboard({
   entryMode = false,
 }: PlatformDashboardProps) {
   const router = useRouter();
+  const { toast } = useToast();
   const [snapshot, setSnapshot] = useState<PlatformSnapshot>(fallbackPlatformSnapshot);
   const [status, setStatus] = useState<"connected" | "fallback">("fallback");
   const [token, setToken] = useState<string | null>(null);
@@ -112,8 +109,6 @@ export function PlatformDashboard({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
-  const [campaignError, setCampaignError] = useState<string | null>(null);
-  const [campaignNotice, setCampaignNotice] = useState<CampaignNoticeState | null>(null);
   const [telegramGroups, setTelegramGroups] = useState<TelegramGroupOption[]>([]);
   const [campaignAssignees, setCampaignAssignees] = useState<CampaignAssigneeOption[]>([]);
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
@@ -456,12 +451,9 @@ export function PlatformDashboard({
   async function handleCopyInviteLink(inviteUrl: string) {
     try {
       await navigator.clipboard.writeText(inviteUrl);
-      setCampaignNotice({
-        message: "Đã sao chép link mời.",
-        inviteUrl,
-      });
+      toast({ message: "Đã sao chép link mời.", type: "success" });
     } catch {
-      setCampaignError("Không thể sao chép link mời trên thiết bị này.");
+      toast({ message: "Không thể sao chép link mời trên thiết bị này.", type: "error" });
     }
   }
 
@@ -469,18 +461,16 @@ export function PlatformDashboard({
     event.preventDefault();
 
     if (!token || !canCreateCampaign) {
-      setCampaignError("Tài khoản hiện tại không có quyền tạo campaign.");
+      toast({ message: "Tài khoản hiện tại không có quyền tạo campaign.", type: "error" });
       return;
     }
 
     if (!campaignForm.telegramGroupId) {
-      setCampaignError("Cần chọn một group Telegram đã đồng bộ trước khi tạo campaign.");
+      toast({ message: "Cần chọn một group Telegram đã đồng bộ trước khi tạo campaign.", type: "error" });
       return;
     }
 
     setIsCreatingCampaign(true);
-    setCampaignError(null);
-    setCampaignNotice(null);
 
     try {
       const createdCampaign = await fetchJson<{
@@ -508,10 +498,7 @@ export function PlatformDashboard({
 
       await reloadSnapshot();
       window.dispatchEvent(new CustomEvent("campaigns:refresh"));
-      setCampaignNotice({
-        message: `Đã tạo campaign ${createdCampaign.name}.`,
-        inviteUrl: createdCampaign.inviteCode ?? null,
-      });
+      toast({ message: `Đã tạo campaign ${createdCampaign.name}. Invite code: ${createdCampaign.inviteCode ?? "N/A"}`, type: "success" });
       setIsCreateModalOpen(false);
       setCampaignForm({
         name: "",
@@ -523,11 +510,13 @@ export function PlatformDashboard({
         inviteRequiresApproval: false,
       });
     } catch (createError) {
-      setCampaignError(
-        createError instanceof Error
-          ? createError.message
-          : "Không thể tạo campaign. Kiểm tra quyền hoặc trạng thái API.",
-      );
+      toast({
+        message:
+          createError instanceof Error
+            ? createError.message
+            : "Không thể tạo campaign. Kiểm tra quyền hoặc trạng thái API.",
+        type: "error",
+      });
     } finally {
       setIsCreatingCampaign(false);
     }
@@ -683,8 +672,6 @@ export function PlatformDashboard({
         canCreateCampaign={canCreateCampaign}
         canViewCampaignData={Boolean(canViewCampaignData)}
         onCreateCampaign={() => {
-          setCampaignError(null);
-          setCampaignNotice(null);
           setCampaignForm((current) => ({
             ...current,
             telegramGroupId: current.telegramGroupId || telegramGroups[0]?.id || "",
@@ -694,29 +681,6 @@ export function PlatformDashboard({
         }}
         isCreatingCampaign={isCreatingCampaign}
       />
-
-      {(campaignError || campaignNotice) && (
-        <div className="fixed bottom-5 right-5 z-20 max-w-sm rounded-[24px] bg-[color:var(--surface-card)] px-5 py-4 shadow-[0_8px_32px_rgba(42,52,57,0.12)]">
-          <p
-            className={`text-sm font-semibold ${
-              campaignError
-                ? "text-[color:var(--danger)]"
-                : "text-[color:var(--success)]"
-            }`}
-          >
-            {campaignError ?? campaignNotice?.message}
-          </p>
-          {!campaignError && campaignNotice?.inviteUrl ? (
-            <button
-              type="button"
-              onClick={() => void handleCopyInviteLink(campaignNotice.inviteUrl || "")}
-              className="mt-3 inline-flex rounded-full bg-[color:var(--primary-soft)] px-3 py-2 text-xs font-bold text-[color:var(--primary)]"
-            >
-              Copy link mời
-            </button>
-          ) : null}
-        </div>
-      )}
 
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/30 px-4">
@@ -916,12 +880,6 @@ export function PlatformDashboard({
                   </p>
                 </label>
               </div>
-
-              {campaignError ? (
-                <div className="rounded-[18px] bg-[color:var(--danger-soft)] px-4 py-3 text-sm text-[color:var(--danger)]">
-                  {campaignError}
-                </div>
-              ) : null}
 
               <div className="flex items-center justify-end gap-3">
                 <button

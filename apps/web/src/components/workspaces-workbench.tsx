@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useToast } from "@/context/toast-context";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
@@ -86,6 +87,17 @@ async function fetchJson<T>(url: string, token: string, init?: RequestInit): Pro
   return response.json() as Promise<T>;
 }
 
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+}
+
 // ─── Shared components ────────────────────────────────────────────────────────
 
 function Banner({ message, tone = "danger", extraClass = "" }: { message: string; tone?: "success" | "warning" | "danger"; extraClass?: string }) {
@@ -117,6 +129,59 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
+function MetricCard({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: number;
+  hint: string;
+}) {
+  return (
+    <div className="rounded-[20px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-low)] px-4 py-4">
+      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
+        {label}
+      </p>
+      <p className="mt-3 text-3xl font-black tracking-tight text-[color:var(--on-surface)]">{value}</p>
+      <p className="mt-2 text-xs leading-5 text-[color:var(--on-surface-variant)]">{hint}</p>
+    </div>
+  );
+}
+
+function SearchField({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div className="relative min-w-[220px] flex-1">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[color:var(--on-surface-variant)]"
+      >
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-3.5-3.5" />
+      </svg>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-[14px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-low)] py-3 pl-11 pr-4 text-sm text-[color:var(--on-surface)] outline-none transition focus:border-[color:var(--primary)]"
+      />
+    </div>
+  );
+}
+
 // ─── Organization Tab ─────────────────────────────────────────────────────────
 
 function OrganizationTab({
@@ -133,14 +198,31 @@ function OrganizationTab({
   const [isCreating, setIsCreating] = useState(false);
   const [creatingName, setCreatingName] = useState("");
   const [creatingSlug, setCreatingSlug] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [creatingSlugTouched, setCreatingSlugTouched] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  function handleCreatingNameChange(value: string) {
+    const previousAutoSlug = slugify(creatingName);
+    const nextAutoSlug = slugify(value);
+
+    setCreatingName(value);
+
+    if (!creatingSlugTouched || !creatingSlug.trim() || creatingSlug === previousAutoSlug) {
+      setCreatingSlug(nextAutoSlug);
+      setCreatingSlugTouched(false);
+    }
+  }
+
+  function handleCreatingSlugChange(value: string) {
+    setCreatingSlug(slugify(value));
+    setCreatingSlugTouched(true);
+  }
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     if (!creatingName.trim()) return;
     setIsCreating(true);
-    setError(null);
     try {
       await fetchJson(`${apiBaseUrl}/workspaces/organizations`, token, {
         method: "POST",
@@ -148,10 +230,11 @@ function OrganizationTab({
       });
       setCreatingName("");
       setCreatingSlug("");
+      setCreatingSlugTouched(false);
       setIsCreating(false);
       onCreated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Tạo thất bại");
+      toast({ message: err instanceof Error ? err.message : "Tạo thất bại", type: "error" });
       setIsCreating(false);
     }
   }
@@ -181,7 +264,7 @@ function OrganizationTab({
             <label className="mb-1 block text-xs font-semibold text-[color:var(--on-surface-variant)]">Tên</label>
             <input
               value={creatingName}
-              onChange={(e) => setCreatingName(e.target.value)}
+              onChange={(e) => handleCreatingNameChange(e.target.value)}
               placeholder="Công ty A"
               className="w-full rounded-[14px] bg-[color:var(--surface-low)] px-4 py-3 text-sm outline-none"
             />
@@ -190,7 +273,7 @@ function OrganizationTab({
             <label className="mb-1 block text-xs font-semibold text-[color:var(--on-surface-variant)]">Slug (tùy chọn)</label>
             <input
               value={creatingSlug}
-              onChange={(e) => setCreatingSlug(e.target.value)}
+              onChange={(e) => handleCreatingSlugChange(e.target.value)}
               placeholder="cong-ty-a"
               className="w-full rounded-[14px] bg-[color:var(--surface-low)] px-4 py-3 text-sm outline-none"
             />
@@ -203,7 +286,6 @@ function OrganizationTab({
             {isCreating ? "Đang tạo..." : "Tạo"}
           </button>
         </form>
-        {error ? <Banner message={error} extraClass="mt-3" /> : null}
       </section>
 
       {/* List */}
@@ -261,24 +343,89 @@ function WorkspaceTab({
 }) {
   const [isCreating, setIsCreating] = useState(false);
   const [form, setForm] = useState({ organizationId: "", name: "", slug: "", description: "" });
-  const [error, setError] = useState<string | null>(null);
+  const [workspaceSlugTouched, setWorkspaceSlugTouched] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [organizationFilter, setOrganizationFilter] = useState("all");
+  const { toast } = useToast();
+
+  const organizations = catalog?.organizations ?? [];
+  const workspaces = overview?.workspaces ?? [];
+
+  const organizationNameById = useMemo(
+    () => new Map(organizations.map((organization) => [organization.id, organization.name])),
+    [organizations],
+  );
+
+  const filteredWorkspaces = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    return workspaces.filter((workspace) => {
+      const matchesOrganization =
+        organizationFilter === "all" || workspace.organizationId === organizationFilter;
+
+      if (!matchesOrganization) {
+        return false;
+      }
+
+      if (!normalizedQuery) {
+        return true;
+      }
+
+      const searchTarget = [
+        workspace.name,
+        workspace.slug,
+        workspace.description ?? "",
+        organizationNameById.get(workspace.organizationId) ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return searchTarget.includes(normalizedQuery);
+    });
+  }, [organizationFilter, organizationNameById, query, workspaces]);
+
+  const activeWorkspaceCount = useMemo(
+    () => workspaces.filter((workspace) => workspace.isActive).length,
+    [workspaces],
+  );
+
+  function handleWorkspaceNameChange(value: string) {
+    const previousAutoSlug = slugify(form.name);
+    const shouldSyncSlug =
+      !workspaceSlugTouched || !form.slug.trim() || form.slug === previousAutoSlug;
+
+    setForm((current) => ({
+      ...current,
+      name: value,
+      ...(shouldSyncSlug ? { slug: slugify(value) } : {}),
+    }));
+
+    if (shouldSyncSlug) {
+      setWorkspaceSlugTouched(false);
+    }
+  }
+
+  function handleWorkspaceSlugChange(value: string) {
+    setForm((current) => ({ ...current, slug: slugify(value) }));
+    setWorkspaceSlugTouched(true);
+  }
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     if (!form.organizationId || !form.name.trim()) return;
     setIsCreating(true);
-    setError(null);
     try {
       await fetchJson(`${apiBaseUrl}/workspaces`, token, {
         method: "POST",
         body: JSON.stringify({ organizationId: form.organizationId, name: form.name.trim(), slug: form.slug.trim() || undefined, description: form.description.trim() || undefined }),
       });
       setForm({ organizationId: "", name: "", slug: "", description: "" });
+      setWorkspaceSlugTouched(false);
       setIsCreating(false);
       onCreated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Tạo thất bại");
+      toast({ message: err instanceof Error ? err.message : "Tạo thất bại", type: "error" });
       setIsCreating(false);
     }
   }
@@ -298,6 +445,242 @@ function WorkspaceTab({
 
   return (
     <div className="space-y-6">
+      <section className="rounded-[28px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-card)] p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
+          <div className="space-y-6">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[color:var(--on-surface-variant)]">
+                Workspace overview
+              </p>
+              <h4 className="mt-2 text-2xl font-black tracking-tight text-[color:var(--on-surface)]">
+                Easier scanning, less guessing
+              </h4>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--on-surface-variant)]">
+                Search by name, filter by organization, and spot workload quickly before opening a workspace.
+              </p>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <MetricCard
+                label="Total"
+                value={workspaces.length}
+                hint="All workspaces across organizations."
+              />
+              <MetricCard
+                label="Active"
+                value={activeWorkspaceCount}
+                hint="Currently enabled and ready for operations."
+              />
+              <MetricCard
+                label="Shown"
+                value={filteredWorkspaces.length}
+                hint="Results after search and organization filter."
+              />
+            </div>
+
+            <div className="rounded-[22px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-low)] p-4">
+              <div className="flex flex-col gap-3 lg:flex-row">
+                <SearchField
+                  value={query}
+                  onChange={setQuery}
+                  placeholder="Search workspace, slug, description, organization..."
+                />
+                <select
+                  value={organizationFilter}
+                  onChange={(e) => setOrganizationFilter(e.target.value)}
+                  className="min-w-[220px] rounded-[14px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-card)] px-4 py-3 text-sm text-[color:var(--on-surface)] outline-none transition focus:border-[color:var(--primary)]"
+                >
+                  <option value="all">All organizations</option>
+                  {organizations.map((organization) => (
+                    <option key={organization.id} value={organization.id}>
+                      {organization.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {!overview ? (
+              <LoadingSpinner />
+            ) : filteredWorkspaces.length === 0 ? (
+              <EmptyState message="No workspace matches the current search or filter." />
+            ) : (
+              <div className="grid gap-4 lg:grid-cols-2">
+                {filteredWorkspaces.map((workspace) => {
+                  const organizationName =
+                    organizationNameById.get(workspace.organizationId) ?? "Unknown organization";
+
+                  return (
+                    <article
+                      key={workspace.id}
+                      className="rounded-[22px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-low)] p-5 transition hover:-translate-y-0.5 hover:border-[color:var(--primary)]/40"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate text-lg font-black tracking-tight text-[color:var(--on-surface)]">
+                              {workspace.name}
+                            </p>
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] ${
+                                workspace.isActive
+                                  ? "bg-[color:var(--success-soft)] text-[color:var(--success)]"
+                                  : "bg-[color:var(--danger-soft)] text-[color:var(--danger)]"
+                              }`}
+                            >
+                              {workspace.isActive ? "Active" : "Paused"}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm font-semibold text-[color:var(--on-surface-variant)]">
+                            {organizationName}
+                          </p>
+                          <p className="mt-1 text-xs text-[color:var(--on-surface-variant)]">/{workspace.slug}</p>
+                        </div>
+                        <button
+                          onClick={() => handleDelete(workspace.id, workspace.name)}
+                          disabled={deletingId === workspace.id}
+                          className="shrink-0 rounded-[12px] bg-[color:var(--danger-soft)] px-3 py-2 text-xs font-bold text-[color:var(--danger)] disabled:opacity-50"
+                        >
+                          {deletingId === workspace.id ? "..." : "Delete"}
+                        </button>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-3 gap-2">
+                        <div className="rounded-[16px] bg-[color:var(--surface-card)] px-3 py-3">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">
+                            Members
+                          </p>
+                          <p className="mt-2 text-xl font-black text-[color:var(--on-surface)]">
+                            {workspace.membershipCount}
+                          </p>
+                        </div>
+                        <div className="rounded-[16px] bg-[color:var(--surface-card)] px-3 py-3">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">
+                            Bots
+                          </p>
+                          <p className="mt-2 text-xl font-black text-[color:var(--on-surface)]">
+                            {workspace.botCount}
+                          </p>
+                        </div>
+                        <div className="rounded-[16px] bg-[color:var(--surface-card)] px-3 py-3">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">
+                            Groups
+                          </p>
+                          <p className="mt-2 text-xl font-black text-[color:var(--on-surface)]">
+                            {workspace.groupCount}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <span className="rounded-full bg-[color:var(--surface-card)] px-3 py-1 text-xs font-semibold text-[color:var(--on-surface-variant)]">
+                          {workspace.campaignCount} campaigns
+                        </span>
+                        <span className="rounded-full bg-[color:var(--primary-soft)] px-3 py-1 text-xs font-semibold text-[color:var(--primary)]">
+                          org linked
+                        </span>
+                      </div>
+
+                      {workspace.description ? (
+                        <p className="mt-4 rounded-[16px] bg-[color:var(--surface-card)] px-4 py-3 text-sm leading-6 text-[color:var(--on-surface-variant)]">
+                          {workspace.description}
+                        </p>
+                      ) : (
+                        <p className="mt-4 text-sm leading-6 text-[color:var(--on-surface-variant)]">
+                          No description yet.
+                        </p>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <aside className="rounded-[24px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-low)] p-5">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[color:var(--on-surface-variant)]">
+              Create workspace
+            </p>
+            <h5 className="mt-2 text-xl font-black tracking-tight text-[color:var(--on-surface)]">
+              Add a new operating space
+            </h5>
+            <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">
+              Keep names short and clear so operators can identify the right workspace at a glance.
+            </p>
+
+            <form onSubmit={handleCreate} className="mt-5 space-y-4">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--on-surface-variant)]">
+                  Organization
+                </label>
+                <select
+                  value={form.organizationId}
+                  onChange={(e) => setForm({ ...form, organizationId: e.target.value })}
+                  className="w-full rounded-[14px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-card)] px-4 py-3 text-sm text-[color:var(--on-surface)] outline-none transition focus:border-[color:var(--primary)]"
+                  required
+                >
+                  <option value="">Select organization</option>
+                  {organizations.map((organization) => (
+                    <option key={organization.id} value={organization.id}>
+                      {organization.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--on-surface-variant)]">
+                  Workspace name
+                </label>
+                <input
+                  value={form.name}
+                  onChange={(e) => handleWorkspaceNameChange(e.target.value)}
+                  placeholder="Sales, Support, Affiliate..."
+                  className="w-full rounded-[14px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-card)] px-4 py-3 text-sm text-[color:var(--on-surface)] outline-none transition focus:border-[color:var(--primary)]"
+                  required
+                />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--on-surface-variant)]">
+                    Slug
+                  </label>
+                  <input
+                    value={form.slug}
+                    onChange={(e) => handleWorkspaceSlugChange(e.target.value)}
+                    placeholder="sales"
+                    className="w-full rounded-[14px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-card)] px-4 py-3 text-sm text-[color:var(--on-surface)] outline-none transition focus:border-[color:var(--primary)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--on-surface-variant)]">
+                    Description
+                  </label>
+                  <input
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    placeholder="Short note for operators"
+                    className="w-full rounded-[14px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-card)] px-4 py-3 text-sm text-[color:var(--on-surface)] outline-none transition focus:border-[color:var(--primary)]"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isCreating || !form.organizationId || !form.name.trim()}
+                className="w-full rounded-[16px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3.5 text-sm font-bold text-white shadow-[0_18px_40px_rgba(0,83,219,0.24)] disabled:opacity-50"
+              >
+                {isCreating ? "Creating..." : "Create workspace"}
+              </button>
+            </form>
+
+      </aside>
+        </div>
+      </section>
+
+      <div className="hidden">
       <section className="rounded-[24px] bg-[color:var(--surface-card)] p-6">
         <p className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">
           Tạo Workspace mới
@@ -322,7 +705,7 @@ function WorkspaceTab({
               <label className="mb-1 block text-xs font-semibold text-[color:var(--on-surface-variant)]">Tên workspace</label>
               <input
                 value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                onChange={(e) => handleWorkspaceNameChange(e.target.value)}
                 placeholder="Sales, Support, Affiliate..."
                 className="w-full rounded-[14px] bg-[color:var(--surface-low)] px-4 py-3 text-sm outline-none"
                 required
@@ -332,7 +715,7 @@ function WorkspaceTab({
               <label className="mb-1 block text-xs font-semibold text-[color:var(--on-surface-variant)]">Slug (tùy chọn)</label>
               <input
                 value={form.slug}
-                onChange={(e) => setForm({ ...form, slug: e.target.value })}
+                onChange={(e) => handleWorkspaceSlugChange(e.target.value)}
                 placeholder="sales"
                 className="w-full rounded-[14px] bg-[color:var(--surface-low)] px-4 py-3 text-sm outline-none"
               />
@@ -355,7 +738,6 @@ function WorkspaceTab({
             {isCreating ? "Đang tạo..." : "Tạo Workspace"}
           </button>
         </form>
-        {error ? <Banner message={error} extraClass="mt-3" /> : null}
       </section>
 
       <section className="rounded-[24px] bg-[color:var(--surface-card)] p-6">
@@ -396,6 +778,7 @@ function WorkspaceTab({
           </div>
         )}
       </section>
+      </div>
     </div>
   );
 }
@@ -415,13 +798,12 @@ function BotsTab({
 }) {
   const [isCreating, setIsCreating] = useState(false);
   const [form, setForm] = useState({ workspaceId: "", label: "", botToken: "" });
-  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     if (!form.workspaceId || !form.label.trim()) return;
     setIsCreating(true);
-    setError(null);
     try {
       await fetchJson(`${apiBaseUrl}/workspaces/${form.workspaceId}/bots`, token, {
         method: "POST",
@@ -434,7 +816,7 @@ function BotsTab({
       setIsCreating(false);
       onCreated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Tạo thất bại");
+      toast({ message: err instanceof Error ? err.message : "Tạo thất bại", type: "error" });
       setIsCreating(false);
     }
   }
@@ -491,7 +873,6 @@ function BotsTab({
             {isCreating ? "Đang tạo..." : "Thêm Bot"}
           </button>
         </form>
-        {error ? <Banner message={error} extraClass="mt-3" /> : null}
       </section>
 
       <section className="rounded-[24px] bg-[color:var(--surface-card)] p-6">
@@ -559,14 +940,13 @@ function MembershipsTab({
 }) {
   const [isCreating, setIsCreating] = useState(false);
   const [form, setForm] = useState({ workspaceId: "", userId: "", roleId: "" });
-  const [error, setError] = useState<string | null>(null);
   const [toggleLoading, setToggleLoading] = useState<string | null>(null);
+  const { toast } = useToast();
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     if (!form.workspaceId || !form.userId || !form.roleId) return;
     setIsCreating(true);
-    setError(null);
     try {
       await fetchJson(`${apiBaseUrl}/workspaces/${form.workspaceId}/memberships`, token, {
         method: "POST",
@@ -576,7 +956,7 @@ function MembershipsTab({
       setIsCreating(false);
       onCreated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gán thất bại");
+      toast({ message: err instanceof Error ? err.message : "Gán thất bại", type: "error" });
       setIsCreating(false);
     }
   }
@@ -657,7 +1037,6 @@ function MembershipsTab({
             {isCreating ? "Đang gán..." : "Gán"}
           </button>
         </form>
-        {error ? <Banner message={error} extraClass="mt-3" /> : null}
       </section>
 
       <section className="rounded-[24px] bg-[color:var(--surface-card)] p-6">
@@ -716,11 +1095,10 @@ export function WorkspacesWorkbench() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>("organizations");
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const loadData = useCallback(async (currentToken: string) => {
     setIsLoading(true);
-    setError(null);
     try {
       const [ov, cat] = await Promise.all([
         fetchJson<Overview>(`${apiBaseUrl}/workspaces/overview`, currentToken),
@@ -729,7 +1107,7 @@ export function WorkspacesWorkbench() {
       setOverview(ov);
       setCatalog(cat);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Tải dữ liệu thất bại");
+      toast({ message: err instanceof Error ? err.message : "Tải dữ liệu thất bại", type: "error" });
     } finally {
       setIsLoading(false);
     }
@@ -738,7 +1116,7 @@ export function WorkspacesWorkbench() {
   useEffect(() => {
     const storedToken = window.localStorage.getItem(authStorageKey);
     if (!storedToken) {
-      setError("Không có phiên đăng nhập");
+      toast({ message: "Không có phiên đăng nhập", type: "error" });
       setIsLoading(false);
       return;
     }
@@ -746,15 +1124,57 @@ export function WorkspacesWorkbench() {
     loadData(storedToken);
   }, [loadData]);
 
-  const tabs: { key: ActiveTab; label: string }[] = [
-    { key: "organizations", label: "Organizations" },
-    { key: "workspaces", label: "Workspaces" },
-    { key: "bots", label: "Bots" },
-    { key: "memberships", label: "Memberships" },
-  ];
+  const tabs = useMemo(
+    () => [
+      { key: "organizations" as const, label: "Organizations", count: overview?.organizations.length ?? 0 },
+      { key: "workspaces" as const, label: "Workspaces", count: overview?.workspaces.length ?? 0 },
+      { key: "bots" as const, label: "Bots", count: overview?.bots.length ?? 0 },
+      {
+        key: "memberships" as const,
+        label: "Memberships",
+        count: overview?.workspaces.reduce((total, workspace) => total + workspace.memberships.length, 0) ?? 0,
+      },
+    ],
+    [overview],
+  );
 
   return (
     <div>
+      <section className="mb-6 overflow-hidden rounded-[32px] border border-[color:var(--outline)]/60 bg-[radial-gradient(circle_at_top_left,rgba(0,83,219,0.16),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,248,255,0.92))] p-6 shadow-[0_24px_80px_rgba(15,23,42,0.10)]">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[color:var(--primary)]">
+              Workspace control
+            </p>
+            <h3 className="mt-3 text-3xl font-black tracking-tight text-[color:var(--on-surface)]">
+              Cleaner layout for daily operations
+            </h3>
+            <p className="mt-3 text-sm leading-7 text-[color:var(--on-surface-variant)]">
+              Use this page to structure organizations, review workspace health, attach bots, and manage access without digging through dense lists.
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[420px]">
+            <MetricCard
+              label="Organizations"
+              value={overview?.organizations.length ?? 0}
+              hint="Top-level containers for teams and clients."
+            />
+            <MetricCard
+              label="Workspaces"
+              value={overview?.workspaces.length ?? 0}
+              hint="Operational spaces currently configured."
+            />
+            <MetricCard
+              label="Bots"
+              value={overview?.bots.length ?? 0}
+              hint="Connected bot profiles across all workspaces."
+            />
+          </div>
+        </div>
+      </section>
+
+      <div className="hidden">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
@@ -773,21 +1193,32 @@ export function WorkspacesWorkbench() {
         </button>
       </div>
 
-      {error ? <Banner message={error} extraClass="mb-6" /> : null}
+      </div>
 
       {/* Tabs */}
-      <div className="mb-6 flex gap-2 overflow-x-auto">
+      <div className="mb-6 flex gap-3 overflow-x-auto pb-1">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`shrink-0 rounded-[14px] px-4 py-2 text-sm font-semibold transition-all ${
+            className={`shrink-0 rounded-[18px] border px-4 py-3 text-sm font-semibold transition-all ${
               activeTab === tab.key
-                ? "bg-[color:var(--primary)] text-white shadow-[0_12px_28px_rgba(0,83,219,0.24)]"
-                : "bg-[color:var(--surface-low)] text-[color:var(--on-surface-variant)]"
+                ? "border-[color:var(--primary)] bg-[color:var(--primary)] text-white shadow-[0_16px_36px_rgba(0,83,219,0.24)]"
+                : "border-[color:var(--outline)]/60 bg-[color:var(--surface-low)] text-[color:var(--on-surface-variant)]"
             }`}
           >
-            {tab.label}
+            <span className="flex items-center gap-2">
+              <span>{tab.label}</span>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                  activeTab === tab.key
+                    ? "bg-white/18 text-white"
+                    : "bg-[color:var(--surface-card)] text-[color:var(--on-surface)]"
+                }`}
+              >
+                {tab.count}
+              </span>
+            </span>
           </button>
         ))}
       </div>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useToast } from "@/context/toast-context";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
@@ -108,8 +109,7 @@ export function CampaignsWorkbench({
   const [deletingCampaignId, setDeletingCampaignId] = useState<string | null>(null);
   const [copyingCampaignId, setCopyingCampaignId] = useState<string | null>(null);
   const [editingCampaign, setEditingCampaign] = useState<EditCampaignForm | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     setToken(window.localStorage.getItem(authStorageKey));
@@ -174,8 +174,6 @@ export function CampaignsWorkbench({
     }
 
     setIsSaving(true);
-    setError(null);
-    setNotice(null);
 
     try {
       await fetchJson(`${apiBaseUrl}/campaigns/${editingCampaign.id}`, {
@@ -192,14 +190,15 @@ export function CampaignsWorkbench({
       });
 
       await reloadCampaigns();
-      setNotice("Đã cập nhật campaign.");
+      toast({ message: "Đã cập nhật campaign.", type: "success" });
       setEditingCampaign(null);
     } catch (updateError) {
-      setError(
-        updateError instanceof Error
+      toast({
+        message: updateError instanceof Error
           ? updateError.message
           : "Không thể cập nhật campaign.",
-      );
+        type: "error",
+      });
     } finally {
       setIsSaving(false);
     }
@@ -207,13 +206,11 @@ export function CampaignsWorkbench({
 
   async function handleToggleCampaign(campaign: CampaignItem) {
     if (!token) {
-      setError("Bạn cần đăng nhập lại để cập nhật trạng thái campaign.");
+      toast({ message: "Bạn cần đăng nhập lại để cập nhật trạng thái campaign.", type: "error" });
       return;
     }
 
     setTogglingCampaignId(campaign.id);
-    setError(null);
-    setNotice(null);
 
     try {
       const nextStatus = getNextStatus(campaign.status);
@@ -229,35 +226,39 @@ export function CampaignsWorkbench({
         }),
       });
       await reloadCampaigns();
-      setNotice(nextStatus === "Active" ? "Đã bật lại campaign." : "Đã tạm dừng campaign.");
+      toast({ message: nextStatus === "Active" ? "Đã bật lại campaign." : "Đã tạm dừng campaign.", type: "success" });
     } catch (toggleError) {
-      setError(
-        toggleError instanceof Error
+      toast({
+        message: toggleError instanceof Error
           ? toggleError.message
           : "Không thể cập nhật trạng thái campaign.",
-      );
+        type: "error",
+      });
     } finally {
       setTogglingCampaignId(null);
     }
   }
 
   async function handleCopyInviteLink(campaign: CampaignItem) {
+    if (!token) {
+      toast({ message: "Bạn cần đăng nhập lại để copy link mời.", type: "error" });
+      return;
+    }
     try {
       await navigator.clipboard.writeText(campaign.inviteCode);
-      setNotice(`Đã copy link mời của campaign ${campaign.name}.`);
-      setError(null);
+      toast({ message: `Đã copy link mời của campaign ${campaign.name}.`, type: "success" });
       setCopyingCampaignId(campaign.id);
       window.setTimeout(() => {
         setCopyingCampaignId((current) => (current === campaign.id ? null : current));
       }, 1600);
     } catch {
-      setError("Không thể copy link mời trên trình duyệt này.");
+      toast({ message: "Không thể copy link mời trên trình duyệt này.", type: "error" });
     }
   }
 
   async function handleDeleteCampaign(campaignId: string) {
     if (!token) {
-      setError("Bạn cần đăng nhập lại để xóa campaign.");
+      toast({ message: "Bạn cần đăng nhập lại để xóa campaign.", type: "error" });
       return;
     }
 
@@ -270,8 +271,6 @@ export function CampaignsWorkbench({
     }
 
     setDeletingCampaignId(campaignId);
-    setError(null);
-    setNotice(null);
 
     try {
       await fetchJson(`${apiBaseUrl}/campaigns/${campaignId}`, {
@@ -282,12 +281,13 @@ export function CampaignsWorkbench({
         },
       });
       await reloadCampaigns();
-      setNotice("Đã xóa campaign.");
+      toast({ message: "Đã xóa campaign.", type: "success" });
       setEditingCampaign((current) => (current?.id === campaignId ? null : current));
     } catch (deleteError) {
-      setError(
-        deleteError instanceof Error ? deleteError.message : "Không thể xóa campaign.",
-      );
+      toast({
+        message: deleteError instanceof Error ? deleteError.message : "Không thể xóa campaign.",
+        type: "error",
+      });
     } finally {
       setDeletingCampaignId(null);
     }
@@ -306,17 +306,13 @@ export function CampaignsWorkbench({
         }
 
         setCampaigns(data);
-        setError(null);
       } catch (loadError) {
-        if (!active) {
-          return;
-        }
-
-        setError(
-          loadError instanceof Error
+        toast({
+          message: loadError instanceof Error
             ? loadError.message
             : "Không thể tải danh sách campaign.",
-        );
+          type: "error",
+        });
       } finally {
         if (active) {
           setIsLoading(false);
@@ -393,18 +389,6 @@ export function CampaignsWorkbench({
             {campaigns.length} campaign
           </div>
         </div>
-
-        {error ? (
-          <div className="mt-6 rounded-[18px] bg-[color:var(--danger-soft)] px-4 py-3 text-sm text-[color:var(--danger)]">
-            {error}
-          </div>
-        ) : null}
-
-        {notice ? (
-          <div className="mt-6 rounded-[18px] bg-[color:var(--success-soft)] px-4 py-3 text-sm text-[color:var(--success)]">
-            {notice}
-          </div>
-        ) : null}
 
         <div className="mt-6 overflow-x-auto rounded-[24px] bg-[color:var(--surface-low)]">
           <table className="min-w-[1180px] w-full border-collapse text-left">

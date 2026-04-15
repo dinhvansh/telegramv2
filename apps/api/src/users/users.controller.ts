@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -99,5 +100,19 @@ export class UsersController {
     @Body() body: ResetPasswordBody,
   ) {
     return this.usersService.resetPassword(userId, body.password);
+  }
+
+  @Delete(':userId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('workspace.manage')
+  deleteUser(
+    @Req() request: AuthenticatedRequest,
+    @Param('userId') userId: string,
+  ) {
+    return this.usersService.delete(userId, {
+      userId: request.user.sub,
+      permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+    });
   }
 }

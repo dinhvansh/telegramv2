@@ -2,9 +2,11 @@
 
 import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useToast } from "@/context/toast-context";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
+const matchWebhookSecret = "tg-matches-webhook-secret-2026";
 
 type AutopostTarget = {
   id: string;
@@ -248,8 +250,6 @@ export function AutopostWorkbench({
   const [snapshot, setSnapshot] = useState<AutopostSnapshot | null>(null);
   const [selectedTelegramGroupIds, setSelectedTelegramGroupIds] = useState<string[]>([]);
   const [selectAllTelegramGroups, setSelectAllTelegramGroups] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
   const [isUpdatingSchedule, setIsUpdatingSchedule] = useState(false);
@@ -268,6 +268,7 @@ export function AutopostWorkbench({
   const [matchResult, setMatchResult] = useState<MatchSchedulerResult | null>(null);
   const [matchError, setMatchError] = useState<string | null>(null);
   const [matchCopyNotice, setMatchCopyNotice] = useState<string | null>(null);
+  const { toast } = useToast();
   const [scheduleForm, setScheduleForm] = useState({
     title: "Bản tin tự động",
     message: "Nội dung autopost được tạo từ CRM.",
@@ -294,6 +295,7 @@ export function AutopostWorkbench({
     () => snapshot?.workspaces?.find((item) => item.id === matchWorkspaceId) ?? null,
     [matchWorkspaceId, snapshot?.workspaces],
   );
+  const matchWorkspaceOptions = useMemo(() => snapshot?.workspaces ?? [], [snapshot?.workspaces]);
   const matchWebhookUrl = useMemo(() => {
     if (typeof window === "undefined") {
       return "/api/webhook/matches";
@@ -328,11 +330,24 @@ export function AutopostWorkbench({
   );
 
   const matchWebhookCurl = useMemo(() => {
-    const h = [`-H "Content-Type: application/json"`, `-H "x-webhook-secret: tg-matches-webhook-secret-2026"`];
+    const h = [`-H "Content-Type: application/json"`, `-H "x-webhook-secret: ${matchWebhookSecret}"`];
     if (matchWorkspaceId) h.push(`-H "x-workspace-id: ${matchWorkspaceId}"`);
     if (matchUseAi) h.push(`-H "x-use-ai: true"`);
     return [`curl -X POST "${matchWebhookUrl}"`, ...h, `-d ${matchWebhookPayload}`].join(' \\\n  ');
   }, [matchWorkspaceId, matchUseAi, matchWebhookPayload, matchWebhookUrl]);
+
+  useEffect(() => {
+    if (!matchWorkspaceOptions.length) {
+      if (matchWorkspaceId) {
+        setMatchWorkspaceId("");
+      }
+      return;
+    }
+
+    if (!matchWorkspaceOptions.some((workspace) => workspace.id === matchWorkspaceId)) {
+      setMatchWorkspaceId(matchWorkspaceOptions[0]?.id ?? "");
+    }
+  }, [matchWorkspaceId, matchWorkspaceOptions]);
 
   useEffect(() => {
     let active = true;
@@ -351,15 +366,8 @@ export function AutopostWorkbench({
         setSelectedTelegramGroupIds((current) =>
           current.length ? current : data.telegramGroups.slice(0, 1).map((group) => group.id),
         );
-        setError(null);
       } catch (loadError) {
-        if (!active) {
-          return;
-        }
-
-        setError(
-          loadError instanceof Error ? loadError.message : "Không thể tải dữ liệu autopost.",
-        );
+        toast({ message: loadError instanceof Error ? loadError.message : "Không thể tải dữ liệu autopost.", type: "error" });
       } finally {
         if (active) {
           setIsLoading(false);
@@ -481,6 +489,7 @@ export function AutopostWorkbench({
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
+        "x-webhook-secret": matchWebhookSecret,
         "x-workspace-id": matchWorkspaceId,
       };
       if (matchUseAi) headers["x-use-ai"] = "true";
@@ -564,8 +573,6 @@ export function AutopostWorkbench({
     }
 
     setIsCreatingSchedule(true);
-    setError(null);
-    setNotice(null);
 
     const timeSlots =
       scheduleForm.frequency === "ONCE"
@@ -597,11 +604,9 @@ export function AutopostWorkbench({
         }),
       });
       setSnapshot(result.snapshot);
-      setNotice(`Đã tạo ${result.created} lịch autopost.`);
+      toast({ message: `Đã tạo ${result.created} lịch autopost.`, type: "success" });
     } catch (scheduleError) {
-      setError(
-        scheduleError instanceof Error ? scheduleError.message : "Không thể tạo lịch autopost.",
-      );
+      toast({ message: scheduleError instanceof Error ? scheduleError.message : "Không thể tạo lịch autopost.", type: "error" });
     } finally {
       setIsCreatingSchedule(false);
     }
@@ -678,8 +683,6 @@ export function AutopostWorkbench({
     }
 
     setIsUpdatingSchedule(true);
-    setError(null);
-    setNotice(null);
 
     try {
       const result = await fetchJson<{ updated: boolean; snapshot: AutopostSnapshot }>(
@@ -709,12 +712,10 @@ export function AutopostWorkbench({
         },
       );
       setSnapshot(result.snapshot);
-      setNotice("Đã cập nhật lịch autopost.");
+      toast({ message: "Đã cập nhật lịch autopost.", type: "success" });
       resetScheduleForm();
     } catch (updateError) {
-      setError(
-        updateError instanceof Error ? updateError.message : "Không thể cập nhật lịch autopost.",
-      );
+      toast({ message: updateError instanceof Error ? updateError.message : "Không thể cập nhật lịch autopost.", type: "error" });
     } finally {
       setIsUpdatingSchedule(false);
     }
@@ -726,8 +727,6 @@ export function AutopostWorkbench({
     }
 
     setIsSendingNow(true);
-    setError(null);
-    setNotice(null);
 
     try {
       const result = await fetchJson<{
@@ -745,9 +744,9 @@ export function AutopostWorkbench({
         }),
       });
       setSnapshot(result.snapshot);
-      setNotice(`Đã gửi ngay tới ${result.dispatched} group.`);
+      toast({ message: `Đã gửi ngay tới ${result.dispatched} group.`, type: "success" });
     } catch (sendError) {
-      setError(sendError instanceof Error ? sendError.message : "Không thể gửi ngay.");
+      toast({ message: sendError instanceof Error ? sendError.message : "Không thể gửi ngay.", type: "error" });
     } finally {
       setIsSendingNow(false);
     }
@@ -759,8 +758,6 @@ export function AutopostWorkbench({
     }
 
     setTogglingScheduleId(scheduleId);
-    setError(null);
-    setNotice(null);
 
     try {
       const result = await fetchJson<{
@@ -772,9 +769,9 @@ export function AutopostWorkbench({
         headers: buildHeaders(token),
       });
       setSnapshot(result.snapshot);
-      setNotice(`Đã đổi trạng thái lịch sang ${result.status}.`);
+      toast({ message: `Đã đổi trạng thái lịch sang ${result.status}.`, type: "success" });
     } catch (toggleError) {
-      setError(toggleError instanceof Error ? toggleError.message : "Không thể bật/tắt lịch.");
+      toast({ message: toggleError instanceof Error ? toggleError.message : "Không thể bật/tắt lịch.", type: "error" });
     } finally {
       setTogglingScheduleId(null);
     }
@@ -786,8 +783,6 @@ export function AutopostWorkbench({
     }
 
     setDeletingScheduleId(scheduleId);
-    setError(null);
-    setNotice(null);
 
     try {
       const result = await fetchJson<{ deleted: boolean; snapshot: AutopostSnapshot }>(
@@ -798,12 +793,12 @@ export function AutopostWorkbench({
         },
       );
       setSnapshot(result.snapshot);
-      setNotice("Đã xóa lịch autopost.");
+      toast({ message: "Đã xóa lịch autopost.", type: "success" });
       if (editingScheduleId === scheduleId) {
         resetScheduleForm();
       }
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Không thể xóa lịch.");
+      toast({ message: deleteError instanceof Error ? deleteError.message : "Không thể xóa lịch.", type: "error" });
     } finally {
       setDeletingScheduleId(null);
     }
@@ -887,13 +882,21 @@ export function AutopostWorkbench({
                 <select
                   value={matchWorkspaceId}
                   onChange={(e) => setMatchWorkspaceId(e.target.value)}
+                  disabled={matchWorkspaceOptions.length <= 1}
                   className="w-full rounded-[14px] bg-[color:var(--surface-low)] px-4 py-3 text-sm outline-none"
                 >
-                  <option value="">-- Chọn workspace --</option>
-                  {snapshot?.workspaces?.map((w) => (
+                  {matchWorkspaceOptions.length > 1 ? (
+                    <option value="">-- Chọn workspace --</option>
+                  ) : null}
+                  {matchWorkspaceOptions.map((w) => (
                     <option key={w.id} value={w.id}>{w.name}</option>
                   ))}
                 </select>
+                {matchWorkspaceOptions.length === 1 ? (
+                  <p className="mt-2 text-xs text-[color:var(--on-surface-variant)]">
+                    Workspace được khóa theo quyền hiện tại của tài khoản.
+                  </p>
+                ) : null}
               </div>
               <div className="flex items-end gap-3">
                 <div className="flex-1">
@@ -948,7 +951,7 @@ export function AutopostWorkbench({
                 </div>
                 <div className="rounded-[14px] bg-[color:var(--warning-soft)] px-4 py-3 text-[13px] leading-6 text-[color:var(--warning)]">
                   <p className="font-semibold">Không cần đăng nhập — chỉ cần gửi đúng secret.</p>
-                  <p className="mt-1">Secret cố định: <code className="font-mono font-bold">tg-matches-webhook-secret-2026</code></p>
+                  <p className="mt-1">Secret cố định: <code className="font-mono font-bold">{matchWebhookSecret}</code></p>
                 </div>
                 <div>
                   <div className="mb-1 flex items-center justify-between">
@@ -973,7 +976,7 @@ export function AutopostWorkbench({
                       Headers
                     </p>
                     <div className="rounded-[14px] bg-white px-4 py-3 text-[12px] leading-5 font-mono">
-                      <p>x-webhook-secret: <span className="font-bold">tg-matches-webhook-secret-2026</span></p>
+                      <p>x-webhook-secret: <span className="font-bold">{matchWebhookSecret}</span></p>
                       <p>x-workspace-id: {selectedMatchWorkspace?.id || "workspace id"}</p>
                       <p>Content-Type: application/json</p>
                     </div>
@@ -1060,18 +1063,6 @@ export function AutopostWorkbench({
           )}
         </section>
       )}
-
-      {error ? (
-        <div className="rounded-[18px] bg-[color:var(--danger-soft)] px-4 py-3 text-sm text-[color:var(--danger)]">
-          {error}
-        </div>
-      ) : null}
-
-      {notice ? (
-        <div className="rounded-[18px] bg-[color:var(--success-soft)] px-4 py-3 text-sm text-[color:var(--success)]">
-          {notice}
-        </div>
-      ) : null}
 
       <div className="space-y-6">
         <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">

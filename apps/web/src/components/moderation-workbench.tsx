@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { TelegramControlCenter } from "@/components/telegram-control-center";
+import { useToast } from "@/context/toast-context";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
@@ -272,14 +273,13 @@ export function ModerationWorkbench({
   });
   const [simulateResult, setSimulateResult] = useState<AnalyzeResponse | null>(null);
   const [commandResult, setCommandResult] = useState<CommandExecutionResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingScope, setIsSavingScope] = useState(false);
   const [isApplyingAction, setIsApplyingAction] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
   const [isRunningCommand, setIsRunningCommand] = useState(false);
   const [isProcessingJobs, setIsProcessingJobs] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     setToken(window.localStorage.getItem(authStorageKey));
@@ -336,17 +336,8 @@ export function ModerationWorkbench({
 
       try {
         await loadAll(token);
-        if (active) {
-          setError(null);
-        }
       } catch (loadError) {
-        if (active) {
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : "Không thể tải dữ liệu moderation.",
-          );
-        }
+        toast({ message: loadError instanceof Error ? loadError.message : "Không thể tải dữ liệu moderation.", type: "error" });
       } finally {
         if (active) {
           setIsLoading(false);
@@ -412,26 +403,26 @@ export function ModerationWorkbench({
 
   async function handleSaveScope() {
     setIsSavingScope(true);
-    setNotice("Khối policy cũ đã bị vô hiệu hóa. Hãy dùng Telegram Group Moderation.");
+    toast({ message: "Khối policy cũ đã bị vô hiệu hóa. Hãy dùng Telegram Group Moderation.", type: "info" });
     setTimeout(() => setIsSavingScope(false), 0);
   }
 
   async function handleAddKeyword() {
-    setNotice("Hãy thêm từ khóa trong Telegram Group Moderation.");
+    toast({ message: "Hãy thêm từ khóa trong Telegram Group Moderation.", type: "info" });
   }
 
   async function handleRemoveKeyword(_keywordId?: string) {
     void _keywordId;
-    setNotice("Hãy xóa từ khóa trong Telegram Group Moderation.");
+    toast({ message: "Hãy xóa từ khóa trong Telegram Group Moderation.", type: "info" });
   }
 
   async function handleAddDomain() {
-    setNotice("Hãy thêm domain trong Telegram Group Moderation.");
+    toast({ message: "Hãy thêm domain trong Telegram Group Moderation.", type: "info" });
   }
 
   async function handleRemoveDomain(_domainId?: string) {
     void _domainId;
-    setNotice("Hãy xóa domain trong Telegram Group Moderation.");
+    toast({ message: "Hãy xóa domain trong Telegram Group Moderation.", type: "info" });
   }
 
   async function handleApplyAction() {
@@ -440,8 +431,6 @@ export function ModerationWorkbench({
     }
 
     setIsApplyingAction(true);
-    setError(null);
-    setNotice(null);
 
     try {
       await fetchJson(`${apiBaseUrl}/moderation/events/${selectedEvent.id}/action`, {
@@ -453,13 +442,9 @@ export function ModerationWorkbench({
         }),
       });
       await refreshData();
-      setNotice("Đã áp dụng quyết định thủ công.");
+      toast({ message: "Đã áp dụng quyết định thủ công.", type: "success" });
     } catch (applyError) {
-      setError(
-        applyError instanceof Error
-          ? applyError.message
-          : "Không thể áp dụng quyết định.",
-      );
+      toast({ message: applyError instanceof Error ? applyError.message : "Không thể áp dụng quyết định.", type: "error" });
     } finally {
       setIsApplyingAction(false);
     }
@@ -471,8 +456,6 @@ export function ModerationWorkbench({
     }
 
     setIsSimulating(true);
-    setError(null);
-    setNotice(null);
 
     try {
       const result = await fetchJson<AnalyzeResponse>(`${apiBaseUrl}/moderation/analyze`, {
@@ -489,13 +472,9 @@ export function ModerationWorkbench({
       });
       setSimulateResult(result);
       await refreshData();
-      setNotice("Đã phân tích thử và ghi event vào queue.");
+      toast({ message: "Đã phân tích thử và ghi event vào queue.", type: "success" });
     } catch (simulateError) {
-      setError(
-        simulateError instanceof Error
-          ? simulateError.message
-          : "Không thể chạy phân tích thử.",
-      );
+      toast({ message: simulateError instanceof Error ? simulateError.message : "Không thể chạy phân tích thử.", type: "error" });
     } finally {
       setIsSimulating(false);
     }
@@ -507,8 +486,6 @@ export function ModerationWorkbench({
     }
 
     setIsRunningCommand(true);
-    setError(null);
-    setNotice(null);
 
     try {
       const result = await fetchJson<CommandExecutionResponse>(
@@ -521,13 +498,9 @@ export function ModerationWorkbench({
       );
       setCommandResult(result);
       await refreshData();
-      setNotice("Đã chạy command quản trị từ CRM.");
+      toast({ message: "Đã chạy command quản trị từ CRM.", type: "success" });
     } catch (commandError) {
-      setError(
-        commandError instanceof Error
-          ? commandError.message
-          : "Không thể chạy command quản trị.",
-      );
+      toast({ message: commandError instanceof Error ? commandError.message : "Không thể chạy command quản trị.", type: "error" });
     } finally {
       setIsRunningCommand(false);
     }
@@ -539,8 +512,6 @@ export function ModerationWorkbench({
     }
 
     setIsProcessingJobs(true);
-    setError(null);
-    setNotice(null);
 
     try {
       await fetchJson(`${apiBaseUrl}/moderation/jobs/process-due`, {
@@ -548,13 +519,9 @@ export function ModerationWorkbench({
         headers: buildHeaders(token),
       });
       await refreshData();
-      setNotice("Đã chạy xử lý các action đến hạn.");
+      toast({ message: "Đã chạy xử lý các action đến hạn.", type: "success" });
     } catch (jobError) {
-      setError(
-        jobError instanceof Error
-          ? jobError.message
-          : "Không thể xử lý action đến hạn.",
-      );
+      toast({ message: jobError instanceof Error ? jobError.message : "Không thể xử lý action đến hạn.", type: "error" });
     } finally {
       setIsProcessingJobs(false);
     }
@@ -616,18 +583,6 @@ export function ModerationWorkbench({
           </article>
         ))}
       </div>
-
-      {error ? (
-        <div className="rounded-[18px] bg-[color:var(--danger-soft)] px-4 py-3 text-sm text-[color:var(--danger)]">
-          {error}
-        </div>
-      ) : null}
-
-      {notice ? (
-        <div className="rounded-[18px] bg-[color:var(--success-soft)] px-4 py-3 text-sm text-[color:var(--success)]">
-          {notice}
-        </div>
-      ) : null}
 
       <TelegramControlCenter embedded workspaceId={workspaceId} />
 

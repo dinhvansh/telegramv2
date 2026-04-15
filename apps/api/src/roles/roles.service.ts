@@ -209,6 +209,11 @@ export class RolesService {
     if (!existingRole) {
       throw new NotFoundException('Role not found');
     }
+    if (!this.isOrganizationManager(viewer)) {
+      throw new ForbiddenException(
+        'Only superadmin can edit role permissions',
+      );
+    }
     if (
       (existingRole.name === 'SuperAdmin' ||
         existingRole.name === 'Quản trị hệ thống') &&

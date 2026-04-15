@@ -419,8 +419,12 @@ export class MtprotoService {
 
   async isAuthenticated(): Promise<boolean> {
     try {
-      await this.getClient();
-      return true;
+      const client = await this.getClient();
+      const authorized = await client.checkAuthorization();
+      if (!authorized) {
+        await this.clearStaleSession();
+      }
+      return authorized;
     } catch {
       return false;
     }
@@ -449,7 +453,17 @@ export class MtprotoService {
   }
 
   private async getClient(): Promise<TelegramClient> {
-    if (this.client) return this.client;
+    if (this.client) {
+      try {
+        if (await this.client.checkAuthorization()) {
+          return this.client;
+        }
+      } catch {
+        this.logger.warn('In-memory MTProto session invalid');
+      }
+
+      await this.clearStaleSession(false);
+    }
 
     const session = await this.prisma.telegramSession.findUnique({
       where: { phoneNumber: 'MTPROTO_SESSION' },
@@ -473,8 +487,11 @@ export class MtprotoService {
           this.logger.log('Reconnected existing MTProto session');
           return this.client;
         }
+        await client.disconnect();
+        await this.clearStaleSession();
       } catch {
         this.logger.warn('Existing MTProto session invalid');
+        await this.clearStaleSession();
       }
     }
 
@@ -534,6 +551,23 @@ export class MtprotoService {
 
   private normalizePhone(phone: string): string {
     return phone.replace(/[^\d+]/g, '');
+  }
+
+  private async clearStaleSession(removePersisted = true) {
+    if (this.client) {
+      await this.client.disconnect().catch(() => undefined);
+      this.client = null;
+    }
+
+    this.qrToken = null;
+    this.qrExpiresAt = 0;
+    this.qrLoginDone = false;
+
+    if (removePersisted) {
+      await this.prisma.telegramSession.deleteMany({
+        where: { phoneNumber: 'MTPROTO_SESSION' },
+      });
+    }
   }
 
   private async resetPendingPhoneAuth() {

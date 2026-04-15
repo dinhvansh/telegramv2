@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { useToast } from "@/context/toast-context";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
@@ -106,12 +107,11 @@ export function MembersWorkbench({
   const [currentPage, setCurrentPage] = useState(1);
   const [ownerName, setOwnerName] = useState("");
   const [note, setNote] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isResettingWarning, setIsResettingWarning] = useState(false);
   const [canAssignOwner, setCanAssignOwner] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     setToken(window.localStorage.getItem(authStorageKey));
@@ -163,17 +163,17 @@ export function MembersWorkbench({
         setSelectedMember(firstMember);
         setOwnerName(firstMember?.ownerName ?? "");
         setNote(firstMember?.note ?? "");
-        setError(null);
       } catch (loadError) {
         if (!active) {
           return;
         }
 
-        setError(
-          loadError instanceof Error
+        toast({
+          message: loadError instanceof Error
             ? loadError.message
             : "Không thể tải danh sách thành viên.",
-        );
+          type: "error",
+        });
       } finally {
         if (active) {
           setIsLoading(false);
@@ -307,13 +307,13 @@ export function MembersWorkbench({
       setSelectedMember(response.member);
       setOwnerName(response.member.ownerName ?? "");
       setNote(response.member.note ?? "");
-      setNotice(null);
     } catch (loadError) {
-      setError(
-        loadError instanceof Error
+      toast({
+        message: loadError instanceof Error
           ? loadError.message
           : "Không thể tải chi tiết thành viên.",
-      );
+        type: "error",
+      });
     }
   }
 
@@ -323,8 +323,6 @@ export function MembersWorkbench({
     }
 
     setIsSaving(true);
-    setError(null);
-    setNotice(null);
 
     try {
       const response = await fetchJson<MemberDetailResponse>(
@@ -349,11 +347,9 @@ export function MembersWorkbench({
           member.id === response.member?.id ? response.member : member,
         ),
       );
-      setNotice("Đã lưu owner và ghi chú.");
+      toast({ message: "Đã lưu owner và ghi chú.", type: "success" });
     } catch (saveError) {
-      setError(
-        saveError instanceof Error ? saveError.message : "Không thể lưu owner và ghi chú.",
-      );
+      toast({ message: saveError instanceof Error ? saveError.message : "Không thể lưu owner và ghi chú.", type: "error" });
     } finally {
       setIsSaving(false);
     }
@@ -365,8 +361,6 @@ export function MembersWorkbench({
     }
 
     setIsResettingWarning(true);
-    setError(null);
-    setNotice(null);
 
     try {
       const response = await fetchJson<MemberDetailResponse>(
@@ -387,11 +381,9 @@ export function MembersWorkbench({
           member.id === response.member?.id ? response.member : member,
         ),
       );
-      setNotice("Đã reset cảnh báo cho thành viên.");
+      toast({ message: "Đã reset cảnh báo cho thành viên.", type: "success" });
     } catch (resetError) {
-      setError(
-        resetError instanceof Error ? resetError.message : "Không thể reset cảnh báo.",
-      );
+      toast({ message: resetError instanceof Error ? resetError.message : "Không thể reset cảnh báo.", type: "error" });
     } finally {
       setIsResettingWarning(false);
     }
@@ -445,13 +437,12 @@ export function MembersWorkbench({
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
-    setNotice("Đã xuất danh sách thành viên theo filter hiện tại.");
+    toast({ message: "Đã xuất danh sách thành viên theo filter hiện tại.", type: "success" });
   }
 
   function handleApplyFilters() {
     setGroupFilter(draftGroupFilter);
     setCampaignFilter(draftCampaignFilter);
-    setNotice(null);
     setCurrentPage(1);
   }
 
@@ -537,18 +528,6 @@ export function MembersWorkbench({
           {campaignId ? (
             <div className="mt-4 inline-flex rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold text-[color:var(--primary)]">
               Đang lọc theo campaign
-            </div>
-          ) : null}
-
-          {error ? (
-            <div className="mt-6 rounded-[18px] bg-[color:var(--danger-soft)] px-4 py-3 text-sm text-[color:var(--danger)]">
-              {error}
-            </div>
-          ) : null}
-
-          {notice ? (
-            <div className="mt-6 rounded-[18px] bg-[color:var(--success-soft)] px-4 py-3 text-sm text-[color:var(--success)]">
-              {notice}
             </div>
           ) : null}
 

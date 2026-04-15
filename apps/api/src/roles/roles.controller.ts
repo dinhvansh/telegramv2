@@ -56,7 +56,7 @@ export class RolesController {
 
   @Patch(':roleId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('workspace.manage')
+  @Permissions('organization.manage')
   updateRole(
     @Req() request: AuthenticatedRequest,
     @Param('roleId') roleId: string,
