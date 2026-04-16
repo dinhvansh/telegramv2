@@ -59,6 +59,11 @@ type ImportedTelegramUser = {
   phone?: string | null;
 };
 
+type ImportedContactRef = {
+  clientId?: string | number | bigint | bigInt.BigInteger;
+  userId?: string | number | bigint | bigInt.BigInteger;
+};
+
 type PendingPhoneAuth = {
   client: TelegramClient;
   phoneNumber: string;
@@ -303,7 +308,7 @@ export class MtprotoService {
       };
     } catch (error: unknown) {
       const message = getTelegramErrorMessage(error);
-      if (message === 'SESSION_PASSWORD_NEEDED') {
+      if (isSessionPasswordNeededError(message)) {
         this.pendingPhoneAuth.passwordRequired = true;
         return {
           success: false,
@@ -414,13 +419,14 @@ export class MtprotoService {
   async resolvePhoneToUserId(phone: string): Promise<ResolvedUser | null> {
     const client = await this.getClient();
     const normalized = this.normalizePhone(phone);
+    const clientId = bigInt(Date.now());
 
     try {
       const importResult = await client.invoke(
         new Api.contacts.ImportContacts({
           contacts: [
             new Api.InputPhoneContact({
-              clientId: bigInt(Date.now()),
+              clientId,
               phone: normalized,
               firstName: 'Temp',
               lastName: '',
@@ -429,11 +435,22 @@ export class MtprotoService {
         }),
       );
 
+      const imported = (importResult.imported ?? []) as unknown as ImportedContactRef[];
       const users = (importResult.users ??
         []) as unknown as ImportedTelegramUser[];
-      if (!users || users.length === 0) return null;
+      if (!imported.length || !users.length) {
+        return null;
+      }
 
-      const user = users.find((u) => u._ === 'user' && u.id);
+      const importedUserId = imported[0]?.userId;
+      if (!importedUserId) {
+        return null;
+      }
+
+      const user = users.find(
+        (candidate) =>
+          candidate._ === 'user' && String(candidate.id) === String(importedUserId),
+      );
       if (!user) return null;
 
       return {
