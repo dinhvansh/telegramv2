@@ -622,7 +622,32 @@ export class MtprotoService {
   }
 
   private normalizePhone(phone: string): string {
-    return phone.replace(/[^\d+]/g, '');
+    const raw = String(phone ?? '').trim();
+    if (!raw) {
+      return '';
+    }
+
+    let sanitized = raw.startsWith('+')
+      ? `+${raw.slice(1).replace(/\D/g, '')}`
+      : raw.replace(/\D/g, '');
+
+    if (sanitized.startsWith('00')) {
+      sanitized = `+${sanitized.slice(2)}`;
+    }
+
+    if (sanitized.startsWith('+')) {
+      return sanitized;
+    }
+
+    if (sanitized.startsWith('0') && sanitized.length >= 9) {
+      return `+84${sanitized.slice(1)}`;
+    }
+
+    if (sanitized.startsWith('84') && sanitized.length >= 10) {
+      return `+${sanitized}`;
+    }
+
+    return sanitized ? `+${sanitized}` : '';
   }
 
   private async clearStaleSession(removePersisted = true) {

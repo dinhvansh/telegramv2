@@ -43,11 +43,32 @@ export class ContactsService {
   constructor(private readonly prisma: PrismaService) {}
 
   normalizePhone(phone: string): string {
-    let p = phone.replace(/\s/g, '').replace(/^0/, '');
-    if (!p.startsWith('+')) {
-      p = '+' + p;
+    const raw = String(phone ?? '').trim();
+    if (!raw) {
+      return '';
     }
-    return p;
+
+    let sanitized = raw.startsWith('+')
+      ? `+${raw.slice(1).replace(/\D/g, '')}`
+      : raw.replace(/\D/g, '');
+
+    if (sanitized.startsWith('00')) {
+      sanitized = `+${sanitized.slice(2)}`;
+    }
+
+    if (sanitized.startsWith('+')) {
+      return sanitized;
+    }
+
+    if (sanitized.startsWith('0') && sanitized.length >= 9) {
+      return `+84${sanitized.slice(1)}`;
+    }
+
+    if (sanitized.startsWith('84') && sanitized.length >= 10) {
+      return `+${sanitized}`;
+    }
+
+    return sanitized ? `+${sanitized}` : '';
   }
 
   buildDisplayName(
