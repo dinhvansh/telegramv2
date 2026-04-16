@@ -50,8 +50,6 @@ type ContactImportItem = {
   attemptCount: number;
   processedAt: string | null;
   createdAt: string;
-  debugRequest?: unknown;
-  debugResponse?: unknown;
 };
 type ContactImportItemsResponse = { items: ContactImportItem[]; page: number; pageSize: number; total: number; totalPages: number };
 type ErrorWithMessage = { message?: string };
@@ -107,15 +105,6 @@ function statusClasses(status: ContactImportBatch["status"] | ContactImportItem[
 function progressPercent(batch: ContactImportBatch) {
   if (!batch.totalCount) return 0;
   return Math.min(100, Math.round((batch.processedCount / batch.totalCount) * 100));
-}
-
-function formatDebugValue(value: unknown) {
-  if (value === null || value === undefined) return "-";
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
 }
 
 export function ContactsWorkbench() {
@@ -564,6 +553,28 @@ export function ContactsWorkbench() {
     }
   };
 
+  const handleExportBatchExcel = async () => {
+    if (!selectedBatchId) return;
+    setActionLoading("export");
+    try {
+      const res = await fetch(`${apiBaseUrl}/contacts/import-batches/${selectedBatchId}/export?format=xlsx`, { headers: getHeaders() });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      const fileName = selectedBatch?.sourceFileName || "contact-import";
+      anchor.download = `${fileName}-${selectedBatchId}.xlsx`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast({ message: "Đã tải Excel kết quả batch.", type: "success" });
+    } catch (error) {
+      toast({ message: getErrorMessage(error, "Export Excel thất bại"), type: "error" });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const renderQrImage = (token: string) => {
     const loginUrl = `tg://login?token=${token}`;
     const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(loginUrl)}`;
@@ -667,7 +678,7 @@ export function ContactsWorkbench() {
         <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div><h2 className="text-lg font-semibold text-white">Chi tiết batch</h2><p className="text-sm text-gray-500">Tiến độ hiện tại, thông tin nguồn và thao tác retry/cancel/export.</p></div>
-            {selectedBatch ? <div className="flex flex-wrap items-center gap-2"><span className={`rounded px-2 py-1 text-xs font-semibold ${statusClasses(selectedBatch.status)}`}>{formatStatusLabel(selectedBatch.status)}</span><button type="button" onClick={() => void handleExportBatch()} disabled={actionLoading !== null} className="rounded-lg bg-gray-800 px-3 py-2 text-xs font-semibold text-gray-200 disabled:opacity-40">{actionLoading === "export" ? "Đang tải..." : "Tải JSON"}</button><button type="button" onClick={() => void handleRetryFailed()} disabled={actionLoading !== null || selectedBatch.failedCount === 0} className="rounded-lg bg-amber-900/70 px-3 py-2 text-xs font-semibold text-amber-200 disabled:opacity-40">{actionLoading === "retry" ? "Đang retry..." : "Retry lỗi"}</button><button type="button" onClick={() => void handleCancelBatch()} disabled={actionLoading !== null || !["QUEUED", "PROCESSING"].includes(selectedBatch.status)} className="rounded-lg bg-red-900/70 px-3 py-2 text-xs font-semibold text-red-200 disabled:opacity-40">{actionLoading === "cancel" ? "Đang hủy..." : "Hủy batch"}</button></div> : null}
+            {selectedBatch ? <div className="flex flex-wrap items-center gap-2"><span className={`rounded px-2 py-1 text-xs font-semibold ${statusClasses(selectedBatch.status)}`}>{formatStatusLabel(selectedBatch.status)}</span><button type="button" onClick={() => void handleExportBatch()} disabled={actionLoading !== null} className="rounded-lg bg-gray-800 px-3 py-2 text-xs font-semibold text-gray-200 disabled:opacity-40">{actionLoading === "export" ? "Đang tải..." : "Tải JSON"}</button><button type="button" onClick={() => void handleExportBatchExcel()} disabled={actionLoading !== null || !["COMPLETED", "FAILED", "CANCELLED"].includes(selectedBatch.status)} className="rounded-lg bg-emerald-900/70 px-3 py-2 text-xs font-semibold text-emerald-200 disabled:opacity-40">{actionLoading === "export" ? "Đang tải..." : "Tải Excel"}</button><button type="button" onClick={() => void handleRetryFailed()} disabled={actionLoading !== null || selectedBatch.failedCount === 0} className="rounded-lg bg-amber-900/70 px-3 py-2 text-xs font-semibold text-amber-200 disabled:opacity-40">{actionLoading === "retry" ? "Đang retry..." : "Retry lỗi"}</button><button type="button" onClick={() => void handleCancelBatch()} disabled={actionLoading !== null || !["QUEUED", "PROCESSING"].includes(selectedBatch.status)} className="rounded-lg bg-red-900/70 px-3 py-2 text-xs font-semibold text-red-200 disabled:opacity-40">{actionLoading === "cancel" ? "Đang hủy..." : "Hủy batch"}</button></div> : null}
           </div>
           {!selectedBatch ? <p className="mt-6 text-sm text-gray-500">Chọn một batch ở cột trái để xem chi tiết.</p> : <>
             <div className="mt-5 grid gap-4 md:grid-cols-4">
@@ -686,7 +697,7 @@ export function ContactsWorkbench() {
             <div><h2 className="text-lg font-semibold text-white">Items</h2><p className="text-sm text-gray-500">Danh sách contact / frequent contact trong batch được chọn.</p></div>
             {selectedBatchItems ? <div className="flex items-center gap-2"><button type="button" disabled={itemsPage <= 1 || itemsLoading || !selectedBatchId} onClick={() => selectedBatchId && void loadBatchItems(selectedBatchId, itemsPage - 1)} className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-semibold disabled:opacity-40">Prev</button><span className="text-xs text-gray-400">Trang {selectedBatchItems.page}/{selectedBatchItems.totalPages}</span><button type="button" disabled={itemsPage >= selectedBatchItems.totalPages || itemsLoading || !selectedBatchId} onClick={() => selectedBatchId && void loadBatchItems(selectedBatchId, itemsPage + 1)} className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-semibold disabled:opacity-40">Next</button></div> : null}
           </div>
-          {itemsLoading ? <p className="mt-6 text-sm text-gray-500">Đang tải items...</p> : !selectedBatchItems || selectedBatchItems.items.length === 0 ? <p className="mt-6 text-sm text-gray-500">Chưa có item để hiển thị.</p> : <div className="mt-5 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-gray-800 text-gray-400"><th className="px-3 py-2 text-left">Loại</th><th className="px-3 py-2 text-left">Phone / ID</th><th className="px-3 py-2 text-left">Tên</th><th className="px-3 py-2 text-left">Username</th><th className="px-3 py-2 text-left">Trạng thái</th><th className="px-3 py-2 text-left">Lỗi</th><th className="px-3 py-2 text-left">Request</th><th className="px-3 py-2 text-left">Response</th></tr></thead><tbody>{selectedBatchItems.items.map((item) => <tr key={item.id} className="border-b border-gray-800/50 align-top hover:bg-gray-800/30"><td className="px-3 py-2"><span className="rounded bg-gray-800 px-2 py-0.5 text-xs font-semibold text-gray-200">{item.kind === "FREQUENT" ? "Frequent" : "Contact"}</span></td><td className="px-3 py-2 font-mono text-xs">{item.kind === "FREQUENT" ? item.telegramExternalId || "-" : item.phoneNumber || "-"}</td><td className="px-3 py-2">{item.displayName || "-"}</td><td className="px-3 py-2">{item.telegramUsername || item.telegramType || "-"}</td><td className="px-3 py-2"><span className={`rounded px-2 py-0.5 text-xs font-medium ${statusClasses(item.status)}`}>{formatStatusLabel(item.status)}</span></td><td className="px-3 py-2 text-xs text-red-400">{item.errorMessage || "-"}</td><td className="px-3 py-2"><pre className="max-w-xs overflow-x-auto whitespace-pre-wrap break-all rounded bg-gray-950 p-2 text-[11px] text-gray-300">{formatDebugValue(item.debugRequest)}</pre></td><td className="px-3 py-2"><pre className="max-w-xs overflow-x-auto whitespace-pre-wrap break-all rounded bg-gray-950 p-2 text-[11px] text-cyan-300">{formatDebugValue(item.debugResponse)}</pre></td></tr>)}</tbody></table></div>}
+          {itemsLoading ? <p className="mt-6 text-sm text-gray-500">Đang tải items...</p> : !selectedBatchItems || selectedBatchItems.items.length === 0 ? <p className="mt-6 text-sm text-gray-500">Chưa có item để hiển thị.</p> : <div className="mt-5 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-gray-800 text-gray-400"><th className="px-3 py-2 text-left">Loại</th><th className="px-3 py-2 text-left">Phone</th><th className="px-3 py-2 text-left">Telegram ID</th><th className="px-3 py-2 text-left">Tên</th><th className="px-3 py-2 text-left">Username</th><th className="px-3 py-2 text-left">Trạng thái</th><th className="px-3 py-2 text-left">Lỗi</th></tr></thead><tbody>{selectedBatchItems.items.map((item) => <tr key={item.id} className="border-b border-gray-800/50 align-top hover:bg-gray-800/30"><td className="px-3 py-2"><span className="rounded bg-gray-800 px-2 py-0.5 text-xs font-semibold text-gray-200">{item.kind === "FREQUENT" ? "Frequent" : "Contact"}</span></td><td className="px-3 py-2 font-mono text-xs">{item.phoneNumber || "-"}</td><td className="px-3 py-2 font-mono text-xs text-cyan-300">{item.telegramExternalId || "-"}</td><td className="px-3 py-2">{item.displayName || "-"}</td><td className="px-3 py-2">{item.telegramUsername || item.telegramType || "-"}</td><td className="px-3 py-2"><span className={`rounded px-2 py-0.5 text-xs font-medium ${statusClasses(item.status)}`}>{formatStatusLabel(item.status)}</span></td><td className="px-3 py-2 text-xs text-red-400">{item.errorMessage || "-"}</td></tr>)}</tbody></table></div>}
         </div>
       </div>
     </div>

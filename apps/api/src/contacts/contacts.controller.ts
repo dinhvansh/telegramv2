@@ -8,9 +8,13 @@ import {
   Post,
   Query,
   Req,
+  Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import type { Response } from 'express';
+import * as XLSX from 'xlsx';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -313,6 +317,8 @@ export class ContactsController {
   async exportImportBatch(
     @Req() request: AuthenticatedRequest,
     @Param('batchId') batchId: string,
+    @Query('format') format?: string,
+    @Res({ passthrough: true }) response?: Response,
   ) {
     const result = await this.contactsService.exportImportBatch(batchId, {
       workspaceIds: request.user.workspaceIds ?? [],
@@ -323,6 +329,41 @@ export class ContactsController {
 
     if (!result) {
       throw new NotFoundException('Contact import batch not found');
+    }
+
+    if (format === 'xlsx' && response) {
+      const workbook = XLSX.utils.book_new();
+      const rows = result.items.map((item) => ({
+        Kind: item.kind,
+        Status: item.status,
+        'Phone Number': item.phoneNumber,
+        'Telegram ID': item.telegramExternalId,
+        Username: item.telegramUsername,
+        'Display Name': item.displayName,
+        'Error Message': item.errorMessage,
+        'Attempt Count': item.attemptCount,
+        'Processed At': item.processedAt,
+        'Created At': item.createdAt,
+      }));
+      const sheet = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(workbook, sheet, 'Contacts');
+
+      const buffer = XLSX.write(workbook, {
+        type: 'buffer',
+        bookType: 'xlsx',
+      }) as Buffer;
+      const safeName = result.batch.sourceFileName || 'contact-import';
+
+      response.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${safeName}-${result.batch.id}.xlsx"`,
+      );
+      response.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+
+      return new StreamableFile(buffer);
     }
 
     return result;
