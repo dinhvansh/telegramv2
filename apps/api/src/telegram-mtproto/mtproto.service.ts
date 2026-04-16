@@ -500,8 +500,8 @@ export class MtprotoService {
       const importedUserId = imported[0]?.userId;
       const user = users.find(
         (candidate) =>
-          candidate._ === 'user' &&
           importedUserId !== undefined &&
+          candidate.id !== undefined &&
           String(candidate.id) === String(importedUserId),
       );
       const debugResponse: ResolvePhoneDebugResponse = {
