@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
+import type { Prisma } from '../../node_modules/.prisma/client';
 import { MtprotoService } from '../telegram-mtproto/mtproto.service';
 import { ContactsService } from './contacts.service';
 import type { ContactInput } from './import-payload';
@@ -223,7 +224,9 @@ export class ContactImportProcessorService {
       last_name: item.lastName || undefined,
     };
 
-    const resolvedUser = await this.mtprotoService.resolvePhoneToUserId(phone);
+    const resolveResult =
+      await this.mtprotoService.resolvePhoneToUserIdWithDebug(phone);
+    const resolvedUser = resolveResult.user;
 
     if (!resolvedUser) {
       const displayName =
@@ -240,6 +243,10 @@ export class ContactImportProcessorService {
         status: 'FAILED',
         displayName,
         errorMessage: 'User not found on Telegram',
+        debugRequest:
+          resolveResult.debugRequest as unknown as Prisma.InputJsonValue,
+        debugResponse:
+          resolveResult.debugResponse as unknown as Prisma.InputJsonValue,
       });
       return;
     }
@@ -263,6 +270,10 @@ export class ContactImportProcessorService {
       telegramExternalId: resolvedUser.userId,
       telegramUsername: resolvedUser.username,
       displayName,
+      debugRequest:
+        resolveResult.debugRequest as unknown as Prisma.InputJsonValue,
+      debugResponse:
+        resolveResult.debugResponse as unknown as Prisma.InputJsonValue,
     });
   }
 

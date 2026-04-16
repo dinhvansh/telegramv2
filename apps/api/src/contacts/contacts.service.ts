@@ -474,6 +474,8 @@ export class ContactsService {
     telegramUsername?: string | null;
     displayName?: string | null;
     errorMessage?: string | null;
+    debugRequest?: Prisma.InputJsonValue | null;
+    debugResponse?: Prisma.InputJsonValue | null;
   }) {
     const countField =
       args.status === 'RESOLVED'
@@ -481,6 +483,30 @@ export class ContactsService {
         : args.status === 'SKIPPED'
           ? 'skippedCount'
           : 'failedCount';
+    const currentItem = await this.prisma.contactImportItem.findUnique({
+      where: { id: args.itemId },
+      select: { rawPayload: true },
+    });
+
+    const existingRawPayload =
+      currentItem?.rawPayload &&
+      typeof currentItem.rawPayload === 'object' &&
+      !Array.isArray(currentItem.rawPayload)
+        ? { ...(currentItem.rawPayload as Prisma.JsonObject) }
+        : currentItem?.rawPayload !== undefined
+          ? {
+              source:
+                (currentItem.rawPayload as Prisma.InputJsonValue | null) ?? null,
+            }
+          : {};
+
+    const nextRawPayload: Prisma.InputJsonValue = {
+      ...existingRawPayload,
+      __debug: {
+        request: args.debugRequest ?? null,
+        response: args.debugResponse ?? null,
+      },
+    };
 
     await this.prisma.$transaction([
       this.prisma.contactImportItem.update({
@@ -491,6 +517,7 @@ export class ContactsService {
           telegramUsername: args.telegramUsername ?? undefined,
           displayName: args.displayName ?? undefined,
           errorMessage: args.errorMessage ?? undefined,
+          rawPayload: nextRawPayload,
           processedAt: new Date(),
         },
       }),
@@ -568,6 +595,28 @@ export class ContactsService {
     createdAt: Date;
     rawPayload?: Prisma.JsonValue | null;
   }) {
+    const debugPayload =
+      item.rawPayload &&
+      typeof item.rawPayload === 'object' &&
+      !Array.isArray(item.rawPayload) &&
+      '__debug' in item.rawPayload
+        ? (item.rawPayload as Prisma.JsonObject).__debug
+        : null;
+    const debugRequest =
+      debugPayload &&
+      typeof debugPayload === 'object' &&
+      !Array.isArray(debugPayload) &&
+      'request' in debugPayload
+        ? (debugPayload as Prisma.JsonObject).request
+        : null;
+    const debugResponse =
+      debugPayload &&
+      typeof debugPayload === 'object' &&
+      !Array.isArray(debugPayload) &&
+      'response' in debugPayload
+        ? (debugPayload as Prisma.JsonObject).response
+        : null;
+
     return {
       id: item.id,
       kind: item.kind,
@@ -584,7 +633,7 @@ export class ContactsService {
       attemptCount: item.attemptCount,
       processedAt: item.processedAt,
       createdAt: item.createdAt,
-      debugRequest: {
+      debugRequest: debugRequest ?? {
         kind: item.kind,
         phoneNumber: item.phoneNumber,
         firstName: item.firstName,
@@ -592,7 +641,7 @@ export class ContactsService {
         displayName: item.displayName,
         rawPayload: item.rawPayload ?? null,
       },
-      debugResponse: {
+      debugResponse: debugResponse ?? {
         status: item.status,
         telegramExternalId: item.telegramExternalId,
         telegramUsername: item.telegramUsername,

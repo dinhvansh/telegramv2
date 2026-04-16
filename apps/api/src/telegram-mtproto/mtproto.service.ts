@@ -15,6 +15,41 @@ export interface ResolvedUser {
   phone?: string;
 }
 
+export interface ResolvePhoneDebugRequest {
+  rawPhone: string;
+  normalizedPhone: string;
+  importContacts: {
+    contacts: Array<{
+      clientId: string;
+      phone: string;
+      firstName: string;
+      lastName: string;
+    }>;
+  };
+}
+
+export interface ResolvePhoneDebugResponse {
+  importedCount: number;
+  usersCount: number;
+  retryContactsCount: number;
+  imported: Array<{ clientId: string | null; userId: string | null }>;
+  users: Array<{
+    id: string | null;
+    username: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    phone: string | null;
+  }>;
+  retryContacts: string[];
+  matchedUserId: string | null;
+}
+
+export interface ResolvePhoneToUserResult {
+  user: ResolvedUser | null;
+  debugRequest: ResolvePhoneDebugRequest;
+  debugResponse: ResolvePhoneDebugResponse;
+}
+
 export interface QrCodeResult {
   token: string; // base64url — render as QR image
   expiresIn: number; // seconds remaining
@@ -417,9 +452,30 @@ export class MtprotoService {
   }
 
   async resolvePhoneToUserId(phone: string): Promise<ResolvedUser | null> {
+    const result = await this.resolvePhoneToUserIdWithDebug(phone);
+    return result.user;
+  }
+
+  async resolvePhoneToUserIdWithDebug(
+    phone: string,
+  ): Promise<ResolvePhoneToUserResult> {
     const client = await this.getClient();
     const normalized = this.normalizePhone(phone);
     const clientId = bigInt(Date.now());
+    const debugRequest: ResolvePhoneDebugRequest = {
+      rawPhone: phone,
+      normalizedPhone: normalized,
+      importContacts: {
+        contacts: [
+          {
+            clientId: String(clientId),
+            phone: normalized,
+            firstName: 'Temp',
+            lastName: '',
+          },
+        ],
+      },
+    };
 
     try {
       const importResult = await client.invoke(
@@ -438,27 +494,55 @@ export class MtprotoService {
       const imported = (importResult.imported ?? []) as unknown as ImportedContactRef[];
       const users = (importResult.users ??
         []) as unknown as ImportedTelegramUser[];
-      if (!imported.length || !users.length) {
-        return null;
-      }
-
+      const retryContacts = (importResult.retryContacts ?? []) as unknown as Array<
+        string | number | bigint | bigInt.BigInteger
+      >;
       const importedUserId = imported[0]?.userId;
-      if (!importedUserId) {
-        return null;
-      }
-
       const user = users.find(
         (candidate) =>
-          candidate._ === 'user' && String(candidate.id) === String(importedUserId),
+          candidate._ === 'user' &&
+          importedUserId !== undefined &&
+          String(candidate.id) === String(importedUserId),
       );
-      if (!user) return null;
+      const debugResponse: ResolvePhoneDebugResponse = {
+        importedCount: imported.length,
+        usersCount: users.length,
+        retryContactsCount: retryContacts.length,
+        imported: imported.map((entry) => ({
+          clientId:
+            entry.clientId === undefined ? null : String(entry.clientId),
+          userId: entry.userId === undefined ? null : String(entry.userId),
+        })),
+        users: users.map((candidate) => ({
+          id: candidate.id === undefined ? null : String(candidate.id),
+          username: candidate.username ?? null,
+          firstName: candidate.firstName ?? null,
+          lastName: candidate.lastName ?? null,
+          phone: candidate.phone ?? null,
+        })),
+        retryContacts: retryContacts.map((entry) => String(entry)),
+        matchedUserId:
+          importedUserId === undefined ? null : String(importedUserId),
+      };
+
+      if (!user) {
+        return {
+          user: null,
+          debugRequest,
+          debugResponse,
+        };
+      }
 
       return {
-        userId: String(user.id),
-        username: user.username || undefined,
-        firstName: user.firstName || undefined,
-        lastName: user.lastName || undefined,
-        phone: user.phone || undefined,
+        user: {
+          userId: String(user.id),
+          username: user.username || undefined,
+          firstName: user.firstName || undefined,
+          lastName: user.lastName || undefined,
+          phone: user.phone || undefined,
+        },
+        debugRequest,
+        debugResponse,
       };
     } catch (error: unknown) {
       const message = getTelegramErrorMessage(error);
