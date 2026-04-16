@@ -100,19 +100,6 @@ function slugify(value: string) {
 
 // ─── Shared components ────────────────────────────────────────────────────────
 
-function Banner({ message, tone = "danger", extraClass = "" }: { message: string; tone?: "success" | "warning" | "danger"; extraClass?: string }) {
-  const toneClass = tone === "success"
-    ? "bg-[color:var(--success-soft)] text-[color:var(--success)]"
-    : tone === "warning"
-    ? "bg-[color:var(--warning-soft)] text-[color:var(--warning)]"
-    : "bg-[color:var(--danger-soft)] text-[color:var(--danger)]";
-  return (
-    <div className={`mt-3 rounded-[16px] px-4 py-3 text-sm font-semibold ${toneClass} ${extraClass}`}>
-      {message}
-    </div>
-  );
-}
-
 function LoadingSpinner() {
   return (
     <div className="flex items-center justify-center py-12">
@@ -349,8 +336,14 @@ function WorkspaceTab({
   const [organizationFilter, setOrganizationFilter] = useState("all");
   const { toast } = useToast();
 
-  const organizations = catalog?.organizations ?? [];
-  const workspaces = overview?.workspaces ?? [];
+  const organizations = useMemo(
+    () => catalog?.organizations ?? [],
+    [catalog?.organizations],
+  );
+  const workspaces = useMemo(
+    () => overview?.workspaces ?? [],
+    [overview?.workspaces],
+  );
 
   const organizationNameById = useMemo(
     () => new Map(organizations.map((organization) => [organization.id, organization.name])),
@@ -1111,7 +1104,7 @@ export function WorkspacesWorkbench() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     const storedToken = window.localStorage.getItem(authStorageKey);
@@ -1122,7 +1115,7 @@ export function WorkspacesWorkbench() {
     }
     setToken(storedToken);
     loadData(storedToken);
-  }, [loadData]);
+  }, [loadData, toast]);
 
   const tabs = useMemo(
     () => [

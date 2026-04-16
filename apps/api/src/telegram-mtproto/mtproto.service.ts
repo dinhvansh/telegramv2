@@ -536,7 +536,9 @@ export class MtprotoService {
         await this.clearStaleSession();
       } catch (error) {
         const message = getTelegramErrorMessage(error);
-        this.logger.warn(`Existing MTProto session reconnect failed: ${message}`);
+        this.logger.warn(
+          `Existing MTProto session reconnect failed: ${message}`,
+        );
         if (
           isSessionPasswordNeededError(message) ||
           isUnauthorizedSessionError(message)

@@ -591,7 +591,6 @@ export class AutopostService {
   }
 
   async toggleSchedule(scheduleId: string, viewer?: AutopostViewer) {
-    const workspaceId = this.resolveWorkspaceScope(viewer);
     if (!process.env.DATABASE_URL) {
       return {
         toggled: false,
@@ -639,7 +638,6 @@ export class AutopostService {
   }
 
   async deleteSchedule(scheduleId: string, viewer?: AutopostViewer) {
-    const workspaceId = this.resolveWorkspaceScope(viewer);
     if (!process.env.DATABASE_URL) {
       return {
         deleted: false,

@@ -191,7 +191,7 @@ export function MembersWorkbench({
     return () => {
       active = false;
     };
-  }, [campaignId, scopedHeaders, token]);
+  }, [campaignId, scopedHeaders, toast, token]);
 
   useEffect(() => {
     const initialCampaignFilter = campaignId ?? "all";

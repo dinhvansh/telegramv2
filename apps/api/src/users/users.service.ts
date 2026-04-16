@@ -615,7 +615,9 @@ export class UsersService {
     }
 
     if (!process.env.DATABASE_URL) {
-      const targetIndex = this.fallbackUsers.findIndex((user) => user.id === userId);
+      const targetIndex = this.fallbackUsers.findIndex(
+        (user) => user.id === userId,
+      );
       if (targetIndex === -1) {
         throw new NotFoundException('User not found');
       }

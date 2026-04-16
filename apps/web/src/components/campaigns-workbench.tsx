@@ -159,7 +159,7 @@ export function CampaignsWorkbench({
     return () => {
       active = false;
     };
-  }, [scopedHeaders, token]);
+  }, [scopedHeaders, toast, token]);
 
   const reloadCampaigns = useCallback(async () => {
     const data = await fetchJson<CampaignItem[]>(`${apiBaseUrl}/campaigns`, {
@@ -325,7 +325,7 @@ export function CampaignsWorkbench({
     return () => {
       active = false;
     };
-  }, [scopedHeaders, token]);
+  }, [scopedHeaders, toast, token]);
 
   useEffect(() => {
     function handleRefresh() {

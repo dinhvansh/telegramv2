@@ -448,15 +448,6 @@ export function PlatformDashboard({
     router.replace("/");
   }
 
-  async function handleCopyInviteLink(inviteUrl: string) {
-    try {
-      await navigator.clipboard.writeText(inviteUrl);
-      toast({ message: "Đã sao chép link mời.", type: "success" });
-    } catch {
-      toast({ message: "Không thể sao chép link mời trên thiết bị này.", type: "error" });
-    }
-  }
-
   async function handleCreateCampaign(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 

@@ -210,9 +210,7 @@ export class RolesService {
       throw new NotFoundException('Role not found');
     }
     if (!this.isOrganizationManager(viewer)) {
-      throw new ForbiddenException(
-        'Only superadmin can edit role permissions',
-      );
+      throw new ForbiddenException('Only superadmin can edit role permissions');
     }
     if (
       (existingRole.name === 'SuperAdmin' ||

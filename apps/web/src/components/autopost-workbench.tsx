@@ -386,7 +386,7 @@ export function AutopostWorkbench({
     return () => {
       active = false;
     };
-  }, [buildHeaders, token]);
+  }, [buildHeaders, toast, token]);
 
   const selectedGroupCount = useMemo(() => {
     if (!snapshot) {

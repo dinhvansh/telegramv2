@@ -350,7 +350,7 @@ export function ModerationWorkbench({
     return () => {
       active = false;
     };
-  }, [loadAll, token]);
+  }, [loadAll, toast, token]);
 
   const selectedEvent =
     events.find((event) => event.id === selectedEventId) ?? events[0] ?? null;
