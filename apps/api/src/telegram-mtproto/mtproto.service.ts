@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { TelegramClient, Api } from 'telegram';
@@ -85,6 +85,31 @@ function getTelegramErrorMessage(error: unknown) {
   }
 
   return 'Unknown Telegram error';
+}
+
+function isSessionPasswordNeededError(message: string) {
+  return message.includes('SESSION_PASSWORD_NEEDED');
+}
+
+function isUnauthorizedSessionError(message: string) {
+  return (
+    message.includes('AUTH_KEY_UNREGISTERED') ||
+    message.includes('SESSION_REVOKED') ||
+    message.includes('SESSION_EXPIRED') ||
+    message.includes('USER_DEACTIVATED')
+  );
+}
+
+function getSessionRecoveryMessage(message: string) {
+  if (isSessionPasswordNeededError(message)) {
+    return 'Telegram session requires the account 2FA password. Reconnect your Telegram session in /contacts and complete the 2FA step.';
+  }
+
+  if (isUnauthorizedSessionError(message)) {
+    return 'Telegram session is no longer valid. Reconnect your Telegram session in /contacts.';
+  }
+
+  return message;
 }
 
 @Injectable()
@@ -186,7 +211,7 @@ export class MtprotoService {
   async startPhoneLogin(phoneNumber: string): Promise<PhoneLoginStartResult> {
     const normalizedPhone = this.normalizePhone(phoneNumber);
     if (!normalizedPhone) {
-      throw new Error('Phone number is required');
+      throw new BadRequestException('Phone number is required');
     }
 
     await this.resetPendingPhoneAuth();
@@ -205,43 +230,49 @@ export class MtprotoService {
       this.apiHash,
       { connectionRetries: 3, useWSS: true },
     );
-    await client.connect();
 
-    const sentCode = await client.sendCode(
-      { apiId: this.apiId, apiHash: this.apiHash },
-      normalizedPhone,
-      false,
-    );
+    try {
+      await client.connect();
 
-    if (!sentCode.phoneCodeHash) {
-      await client.disconnect();
-      throw new Error('Failed to start phone login');
+      const sentCode = await client.sendCode(
+        { apiId: this.apiId, apiHash: this.apiHash },
+        normalizedPhone,
+        false,
+      );
+
+      if (!sentCode.phoneCodeHash) {
+        await client.disconnect();
+        throw new BadRequestException('Failed to start phone login');
+      }
+
+      this.pendingPhoneAuth = {
+        client,
+        phoneNumber: normalizedPhone,
+        phoneCodeHash: sentCode.phoneCodeHash,
+        passwordRequired: false,
+      };
+
+      this.logger.log(`Phone login code sent to ${normalizedPhone}`);
+
+      return {
+        phoneNumber: normalizedPhone,
+        sent: true,
+        isCodeViaApp: sentCode.isCodeViaApp,
+      };
+    } catch (error: unknown) {
+      await client.disconnect().catch(() => undefined);
+      throw new BadRequestException(getTelegramErrorMessage(error));
     }
-
-    this.pendingPhoneAuth = {
-      client,
-      phoneNumber: normalizedPhone,
-      phoneCodeHash: sentCode.phoneCodeHash,
-      passwordRequired: false,
-    };
-
-    this.logger.log(`Phone login code sent to ${normalizedPhone}`);
-
-    return {
-      phoneNumber: normalizedPhone,
-      sent: true,
-      isCodeViaApp: sentCode.isCodeViaApp,
-    };
   }
 
   async verifyPhoneCode(phoneCode: string): Promise<PhoneLoginVerifyResult> {
     if (!this.pendingPhoneAuth) {
-      throw new Error('No pending phone login. Start again.');
+      throw new BadRequestException('No pending phone login. Start again.');
     }
 
     const normalizedCode = phoneCode.trim();
     if (!normalizedCode) {
-      throw new Error('Phone code is required');
+      throw new BadRequestException('Phone code is required');
     }
 
     try {
@@ -280,18 +311,18 @@ export class MtprotoService {
         };
       }
 
-      throw new Error(message);
+      throw new BadRequestException(message);
     }
   }
 
   async verifyPassword(password: string): Promise<PhoneLoginVerifyResult> {
     if (!this.pendingPhoneAuth) {
-      throw new Error('No pending phone login. Start again.');
+      throw new BadRequestException('No pending phone login. Start again.');
     }
 
     const normalizedPassword = password.trim();
     if (!normalizedPassword) {
-      throw new Error('Two-factor password is required');
+      throw new BadRequestException('Two-factor password is required');
     }
 
     const passwordInfo = await this.pendingPhoneAuth.client.invoke(
@@ -305,7 +336,9 @@ export class MtprotoService {
     );
 
     if (!(result instanceof Api.auth.Authorization)) {
-      throw new Error('Telegram password verification did not complete login');
+      throw new BadRequestException(
+        'Telegram password verification did not complete login',
+      );
     }
 
     const telegramUser = result.user as unknown as {
@@ -413,18 +446,20 @@ export class MtprotoService {
     } catch (error: unknown) {
       const message = getTelegramErrorMessage(error);
       this.logger.error(`resolvePhone failed for ${phone}: ${message}`);
-      throw new Error(message);
+      if (
+        isSessionPasswordNeededError(message) ||
+        isUnauthorizedSessionError(message)
+      ) {
+        await this.clearStaleSession();
+      }
+      throw new Error(getSessionRecoveryMessage(message));
     }
   }
 
   async isAuthenticated(): Promise<boolean> {
     try {
       const client = await this.getClient();
-      const authorized = await client.checkAuthorization();
-      if (!authorized) {
-        await this.clearStaleSession();
-      }
-      return authorized;
+      return await client.checkAuthorization();
     } catch {
       return false;
     }
@@ -458,11 +493,21 @@ export class MtprotoService {
         if (await this.client.checkAuthorization()) {
           return this.client;
         }
-      } catch {
-        this.logger.warn('In-memory MTProto session invalid');
+        this.logger.warn('In-memory MTProto session is no longer authorized');
+        await this.clearStaleSession();
+      } catch (error) {
+        const message = getTelegramErrorMessage(error);
+        this.logger.warn(
+          `In-memory MTProto authorization check failed: ${message}`,
+        );
+        if (
+          isSessionPasswordNeededError(message) ||
+          isUnauthorizedSessionError(message)
+        ) {
+          await this.clearStaleSession();
+        }
       }
-
-      await this.clearStaleSession(false);
+      this.client = null;
     }
 
     const session = await this.prisma.telegramSession.findUnique({
@@ -489,13 +534,21 @@ export class MtprotoService {
         }
         await client.disconnect();
         await this.clearStaleSession();
-      } catch {
-        this.logger.warn('Existing MTProto session invalid');
-        await this.clearStaleSession();
+      } catch (error) {
+        const message = getTelegramErrorMessage(error);
+        this.logger.warn(`Existing MTProto session reconnect failed: ${message}`);
+        if (
+          isSessionPasswordNeededError(message) ||
+          isUnauthorizedSessionError(message)
+        ) {
+          await this.clearStaleSession();
+        }
       }
     }
 
-    throw new Error('MTProto session not found. Scan QR code first.');
+    throw new Error(
+      'MTProto session not found. Reconnect your Telegram session in /contacts.',
+    );
   }
 
   private async saveAuthorizedClient(client: TelegramClient) {

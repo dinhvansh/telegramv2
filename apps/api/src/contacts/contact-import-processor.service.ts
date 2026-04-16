@@ -80,7 +80,7 @@ export class ContactImportProcessorService {
       if (!authenticated) {
         await this.contactsService.markBatchFailed(
           batch.id,
-          'MTProto not authenticated. Create a new QR session and retry this batch.',
+          'MTProto not authenticated. Reconnect your Telegram session in /contacts and retry this batch.',
         );
         return;
       }
@@ -121,8 +121,10 @@ export class ContactImportProcessorService {
         });
 
         if (
+          errorMessage.includes('requires the account 2FA password') ||
           errorMessage.includes('AUTH_KEY_UNREGISTERED') ||
-          errorMessage.includes('MTProto session not found')
+          errorMessage.includes('MTProto session not found') ||
+          errorMessage.includes('Telegram session is no longer valid')
         ) {
           await this.contactsService.markBatchFailed(batch.id, errorMessage);
           return;

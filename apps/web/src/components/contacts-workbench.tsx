@@ -113,6 +113,7 @@ export function ContactsWorkbench() {
   const [tab, setTab] = useState<"auth" | "import">("auth");
   const [loginMethod, setLoginMethod] = useState<"phone" | "qr">("phone");
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginSuccess, setLoginSuccess] = useState<string | null>(null);
   const [qrToken, setQrToken] = useState<string | null>(null);
   const [qrExpires, setQrExpires] = useState(0);
   const [qrReady, setQrReady] = useState(false);
@@ -131,6 +132,7 @@ export function ContactsWorkbench() {
   const batchPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const authPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previousAuthRef = useRef<boolean | null>(null);
+  const authSuccessRedirectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const getHeaders = useCallback(
     () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem(authStorageKey) || ""}` }),
@@ -182,6 +184,25 @@ export function ContactsWorkbench() {
     }
   }, [getHeaders, itemsPage, loadBatchItems, selectedBatchId, toast]);
 
+  const handleAuthSuccess = useCallback((message: string) => {
+    if (authSuccessRedirectRef.current) {
+      clearTimeout(authSuccessRedirectRef.current);
+      authSuccessRedirectRef.current = null;
+    }
+
+    setAuthStatus({ authenticated: true });
+    previousAuthRef.current = true;
+    setLoginError(null);
+    setLoginSuccess(message);
+    toast({ message, type: "success" });
+
+    authSuccessRedirectRef.current = setTimeout(() => {
+      setLoginSuccess(null);
+      setTab("import");
+      authSuccessRedirectRef.current = null;
+    }, 1200);
+  }, [toast]);
+
   const checkAuthStatus = useCallback(async (options?: { silent?: boolean }) => {
     try {
       const res = await fetch(`${apiBaseUrl}/contacts/auth/status`, { headers: getHeaders() });
@@ -191,8 +212,11 @@ export function ContactsWorkbench() {
       previousAuthRef.current = data.authenticated;
       setAuthStatus(data);
       if (data.authenticated) {
-        setTab("import");
+        if (!loginSuccess) {
+          setTab("import");
+        }
       } else {
+        setLoginSuccess(null);
         setTab("auth");
         if (previousAuth && !options?.silent) {
           toast({ message: "Session Telegram đã hết hạn. Hãy đăng nhập lại để tiếp tục.", type: "warning" });
@@ -202,7 +226,7 @@ export function ContactsWorkbench() {
     } catch {
       return false;
     }
-  }, [getHeaders, toast]);
+  }, [getHeaders, loginSuccess, toast]);
 
   useEffect(() => {
     void checkAuthStatus({ silent: true });
@@ -211,6 +235,7 @@ export function ContactsWorkbench() {
       if (qrPollRef.current) clearInterval(qrPollRef.current);
       if (batchPollRef.current) clearInterval(batchPollRef.current);
       if (authPollRef.current) clearInterval(authPollRef.current);
+      if (authSuccessRedirectRef.current) clearTimeout(authSuccessRedirectRef.current);
     };
   }, [checkAuthStatus, loadBatches]);
 
@@ -254,15 +279,11 @@ export function ContactsWorkbench() {
       const res = await fetch(`${apiBaseUrl}/contacts/auth/qr/confirm`, { headers: getHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error((data as ErrorWithMessage).message || `HTTP ${res.status}`);
-      setAuthStatus({ authenticated: true });
-      previousAuthRef.current = true;
-      setLoginError(null);
-      setTab("import");
-      toast({ message: "Đăng nhập Telegram bằng QR thành công.", type: "success" });
+      handleAuthSuccess("Đăng nhập Telegram bằng QR thành công.");
     } catch (error) {
       setLoginError(getErrorMessage(error, "Không thể xác nhận phiên QR"));
     }
-  }, [getHeaders, toast]);
+  }, [getHeaders, handleAuthSuccess]);
 
   const startQrPolling = useCallback(() => {
     if (qrPollRef.current) clearInterval(qrPollRef.current);
@@ -290,6 +311,7 @@ export function ContactsWorkbench() {
   const startQrLogin = async () => {
     setQrLoading(true);
     setLoginError(null);
+    setLoginSuccess(null);
     setQrToken(null);
     setQrReady(false);
     try {
@@ -309,6 +331,7 @@ export function ContactsWorkbench() {
   const startPhoneLogin = async () => {
     setPhoneAuthLoading(true);
     setLoginError(null);
+    setLoginSuccess(null);
     try {
       const res = await fetch(`${apiBaseUrl}/contacts/auth/phone/start`, {
         method: "POST",
@@ -345,11 +368,7 @@ export function ContactsWorkbench() {
         toast({ message: "Tài khoản này đang bật 2FA. Nhập mật khẩu để hoàn tất.", type: "warning" });
         return;
       }
-      setAuthStatus({ authenticated: true });
-      previousAuthRef.current = true;
-      setLoginError(null);
-      setTab("import");
-      toast({ message: "Đăng nhập Telegram bằng số điện thoại thành công.", type: "success" });
+      handleAuthSuccess("Đăng nhập Telegram bằng số điện thoại thành công.");
     } catch (error) {
       setLoginError(getErrorMessage(error, "Mã xác thực không hợp lệ"));
     } finally {
@@ -368,10 +387,7 @@ export function ContactsWorkbench() {
       });
       const data = (await res.json().catch(() => ({}))) as PhoneLoginVerifyResult & { message?: string };
       if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
-      setAuthStatus({ authenticated: true });
-      previousAuthRef.current = true;
-      setTab("import");
-      toast({ message: "Xác thực 2FA thành công.", type: "success" });
+      handleAuthSuccess("Xác thực 2FA thành công.");
     } catch (error) {
       setLoginError(getErrorMessage(error, "Mật khẩu 2FA không hợp lệ"));
     } finally {
@@ -393,6 +409,7 @@ export function ContactsWorkbench() {
     setPhoneAuthStep("phone");
     setPhoneAuthForm({ phoneNumber: "", phoneCode: "", password: "" });
     setLoginError(null);
+    setLoginSuccess(null);
     setTab("auth");
   };
 
@@ -527,6 +544,7 @@ export function ContactsWorkbench() {
         <button type="button" onClick={() => setLoginMethod("phone")} className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${loginMethod === "phone" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"}`}>Số điện thoại</button>
         <button type="button" onClick={() => setLoginMethod("qr")} className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${loginMethod === "qr" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"}`}>QR Code</button>
       </div>
+      {loginSuccess ? <div className="mb-5 rounded-lg border border-green-800 bg-green-950/30 px-4 py-3 text-sm text-green-300">{loginSuccess} Đang chuyển sang màn batch...</div> : null}
       {loginError ? <div className="mb-5 rounded-lg border border-red-800 bg-red-950/30 px-4 py-3 text-sm text-red-300">{loginError}</div> : null}
       {loginMethod === "phone" ? (
         <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
