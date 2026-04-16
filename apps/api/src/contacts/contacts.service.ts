@@ -225,23 +225,7 @@ export class ContactsService {
     ]);
 
     return {
-      items: items.map((item) => ({
-        id: item.id,
-        kind: item.kind,
-        status: item.status,
-        phoneNumber: item.phoneNumber,
-        firstName: item.firstName,
-        lastName: item.lastName,
-        displayName: item.displayName,
-        telegramExternalId: item.telegramExternalId,
-        telegramUsername: item.telegramUsername,
-        telegramType: item.telegramType,
-        rating: item.rating,
-        errorMessage: item.errorMessage,
-        attemptCount: item.attemptCount,
-        processedAt: item.processedAt,
-        createdAt: item.createdAt,
-      })),
+      items: items.map((item) => this.serializeBatchItem(item)),
       page: safePage,
       pageSize: safePageSize,
       total,
@@ -273,23 +257,7 @@ export class ContactsService {
 
     return {
       batch: this.serializeBatch(batch),
-      items: batch.items.map((item) => ({
-        id: item.id,
-        kind: item.kind,
-        status: item.status,
-        phoneNumber: item.phoneNumber,
-        firstName: item.firstName,
-        lastName: item.lastName,
-        displayName: item.displayName,
-        telegramExternalId: item.telegramExternalId,
-        telegramUsername: item.telegramUsername,
-        telegramType: item.telegramType,
-        rating: item.rating,
-        errorMessage: item.errorMessage,
-        attemptCount: item.attemptCount,
-        processedAt: item.processedAt,
-        createdAt: item.createdAt,
-      })),
+      items: batch.items.map((item) => this.serializeBatchItem(item)),
     };
   }
 
@@ -558,6 +526,61 @@ export class ContactsService {
       finishedAt: batch.finishedAt,
       createdAt: batch.createdAt,
       updatedAt: batch.updatedAt,
+    };
+  }
+
+  private serializeBatchItem(item: {
+    id: string;
+    kind: ContactImportItemKindValue;
+    status: ContactImportItemStatusValue;
+    phoneNumber: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    displayName: string | null;
+    telegramExternalId: string | null;
+    telegramUsername: string | null;
+    telegramType: string | null;
+    rating: number | null;
+    errorMessage: string | null;
+    attemptCount: number;
+    processedAt: Date | null;
+    createdAt: Date;
+    rawPayload?: Prisma.JsonValue | null;
+  }) {
+    return {
+      id: item.id,
+      kind: item.kind,
+      status: item.status,
+      phoneNumber: item.phoneNumber,
+      firstName: item.firstName,
+      lastName: item.lastName,
+      displayName: item.displayName,
+      telegramExternalId: item.telegramExternalId,
+      telegramUsername: item.telegramUsername,
+      telegramType: item.telegramType,
+      rating: item.rating,
+      errorMessage: item.errorMessage,
+      attemptCount: item.attemptCount,
+      processedAt: item.processedAt,
+      createdAt: item.createdAt,
+      debugRequest: {
+        kind: item.kind,
+        phoneNumber: item.phoneNumber,
+        firstName: item.firstName,
+        lastName: item.lastName,
+        displayName: item.displayName,
+        rawPayload: item.rawPayload ?? null,
+      },
+      debugResponse: {
+        status: item.status,
+        telegramExternalId: item.telegramExternalId,
+        telegramUsername: item.telegramUsername,
+        telegramType: item.telegramType,
+        rating: item.rating,
+        errorMessage: item.errorMessage,
+        attemptCount: item.attemptCount,
+        processedAt: item.processedAt,
+      },
     };
   }
 

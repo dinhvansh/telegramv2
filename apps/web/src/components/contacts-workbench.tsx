@@ -50,6 +50,8 @@ type ContactImportItem = {
   attemptCount: number;
   processedAt: string | null;
   createdAt: string;
+  debugRequest?: unknown;
+  debugResponse?: unknown;
 };
 type ContactImportItemsResponse = { items: ContactImportItem[]; page: number; pageSize: number; total: number; totalPages: number };
 type ErrorWithMessage = { message?: string };
@@ -107,6 +109,15 @@ function progressPercent(batch: ContactImportBatch) {
   return Math.min(100, Math.round((batch.processedCount / batch.totalCount) * 100));
 }
 
+function formatDebugValue(value: unknown) {
+  if (value === null || value === undefined) return "-";
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
 export function ContactsWorkbench() {
   const { toast } = useToast();
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
@@ -130,9 +141,12 @@ export function ContactsWorkbench() {
   const [actionLoading, setActionLoading] = useState<"retry" | "cancel" | "export" | null>(null);
   const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const batchPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const batchItemsPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const authPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previousAuthRef = useRef<boolean | null>(null);
   const authSuccessRedirectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectedBatchIdRef = useRef<string | null>(null);
+  const itemsPageRef = useRef(1);
 
   const getHeaders = useCallback(
     () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem(authStorageKey) || ""}` }),
@@ -151,18 +165,23 @@ export function ContactsWorkbench() {
     [batches],
   );
 
-  const loadBatchItems = useCallback(async (batchId: string, page = 1) => {
-    setItemsLoading(true);
+  const loadBatchItems = useCallback(async (batchId: string, page = 1, options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setItemsLoading(true);
+    }
     try {
       const res = await fetch(`${apiBaseUrl}/contacts/import-batches/${batchId}/items?page=${page}&pageSize=20`, { headers: getHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as ContactImportItemsResponse;
       setSelectedBatchItems(data);
       setItemsPage(page);
+      itemsPageRef.current = page;
     } catch (error) {
       toast({ message: getErrorMessage(error, "Không tải được chi tiết batch"), type: "error" });
     } finally {
-      setItemsLoading(false);
+      if (!options?.silent) {
+        setItemsLoading(false);
+      }
     }
   }, [getHeaders, toast]);
 
@@ -172,17 +191,26 @@ export function ContactsWorkbench() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as ContactImportBatch[];
       setBatches(data);
+      const currentSelectedBatchId = selectedBatchIdRef.current;
       const nextSelectedId =
-        preserveSelected && selectedBatchId && data.some((batch) => batch.id === selectedBatchId)
-          ? selectedBatchId
+        preserveSelected && currentSelectedBatchId && data.some((batch) => batch.id === currentSelectedBatchId)
+          ? currentSelectedBatchId
           : data[0]?.id ?? null;
-      setSelectedBatchId(nextSelectedId);
-      if (nextSelectedId) void loadBatchItems(nextSelectedId, preserveSelected ? itemsPage : 1);
-      else setSelectedBatchItems(null);
+      if (nextSelectedId !== currentSelectedBatchId) {
+        setSelectedBatchId(nextSelectedId);
+        selectedBatchIdRef.current = nextSelectedId;
+        if (nextSelectedId) {
+          void loadBatchItems(nextSelectedId, preserveSelected ? itemsPageRef.current : 1);
+        } else {
+          setSelectedBatchItems(null);
+        }
+      } else if (!nextSelectedId) {
+        setSelectedBatchItems(null);
+      }
     } catch (error) {
       toast({ message: getErrorMessage(error, "Không tải được lịch sử import"), type: "error" });
     }
-  }, [getHeaders, itemsPage, loadBatchItems, selectedBatchId, toast]);
+  }, [getHeaders, loadBatchItems, toast]);
 
   const handleAuthSuccess = useCallback((message: string) => {
     if (authSuccessRedirectRef.current) {
@@ -234,10 +262,19 @@ export function ContactsWorkbench() {
     return () => {
       if (qrPollRef.current) clearInterval(qrPollRef.current);
       if (batchPollRef.current) clearInterval(batchPollRef.current);
+      if (batchItemsPollRef.current) clearInterval(batchItemsPollRef.current);
       if (authPollRef.current) clearInterval(authPollRef.current);
       if (authSuccessRedirectRef.current) clearTimeout(authSuccessRedirectRef.current);
     };
   }, [checkAuthStatus, loadBatches]);
+
+  useEffect(() => {
+    selectedBatchIdRef.current = selectedBatchId;
+  }, [selectedBatchId]);
+
+  useEffect(() => {
+    itemsPageRef.current = itemsPage;
+  }, [itemsPage]);
 
   useEffect(() => {
     if (authPollRef.current) {
@@ -265,14 +302,34 @@ export function ContactsWorkbench() {
       clearInterval(batchPollRef.current);
       batchPollRef.current = null;
     }
+    if (batchItemsPollRef.current) {
+      clearInterval(batchItemsPollRef.current);
+      batchItemsPollRef.current = null;
+    }
     if (!hasRunningBatch) return;
+
     batchPollRef.current = setInterval(() => {
-      void loadBatches(true);
-    }, 5000);
+      if (document.visibilityState === "visible") {
+        void loadBatches(true);
+      }
+    }, 4000);
+
+    batchItemsPollRef.current = setInterval(() => {
+      if (
+        document.visibilityState === "visible" &&
+        selectedBatch &&
+        selectedBatchIdRef.current === selectedBatch.id &&
+        (selectedBatch.status === "QUEUED" || selectedBatch.status === "PROCESSING")
+      ) {
+        void loadBatchItems(selectedBatch.id, itemsPageRef.current, { silent: true });
+      }
+    }, 2000);
+
     return () => {
       if (batchPollRef.current) clearInterval(batchPollRef.current);
+      if (batchItemsPollRef.current) clearInterval(batchItemsPollRef.current);
     };
-  }, [hasRunningBatch, loadBatches]);
+  }, [hasRunningBatch, loadBatchItems, loadBatches, selectedBatch]);
 
   const confirmQrLogin = useCallback(async () => {
     try {
@@ -629,7 +686,7 @@ export function ContactsWorkbench() {
             <div><h2 className="text-lg font-semibold text-white">Items</h2><p className="text-sm text-gray-500">Danh sách contact / frequent contact trong batch được chọn.</p></div>
             {selectedBatchItems ? <div className="flex items-center gap-2"><button type="button" disabled={itemsPage <= 1 || itemsLoading || !selectedBatchId} onClick={() => selectedBatchId && void loadBatchItems(selectedBatchId, itemsPage - 1)} className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-semibold disabled:opacity-40">Prev</button><span className="text-xs text-gray-400">Trang {selectedBatchItems.page}/{selectedBatchItems.totalPages}</span><button type="button" disabled={itemsPage >= selectedBatchItems.totalPages || itemsLoading || !selectedBatchId} onClick={() => selectedBatchId && void loadBatchItems(selectedBatchId, itemsPage + 1)} className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-semibold disabled:opacity-40">Next</button></div> : null}
           </div>
-          {itemsLoading ? <p className="mt-6 text-sm text-gray-500">Đang tải items...</p> : !selectedBatchItems || selectedBatchItems.items.length === 0 ? <p className="mt-6 text-sm text-gray-500">Chưa có item để hiển thị.</p> : <div className="mt-5 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-gray-800 text-gray-400"><th className="px-3 py-2 text-left">Loại</th><th className="px-3 py-2 text-left">Phone / ID</th><th className="px-3 py-2 text-left">Tên</th><th className="px-3 py-2 text-left">Username</th><th className="px-3 py-2 text-left">Trạng thái</th><th className="px-3 py-2 text-left">Lỗi</th></tr></thead><tbody>{selectedBatchItems.items.map((item) => <tr key={item.id} className="border-b border-gray-800/50 hover:bg-gray-800/30"><td className="px-3 py-2"><span className="rounded bg-gray-800 px-2 py-0.5 text-xs font-semibold text-gray-200">{item.kind === "FREQUENT" ? "Frequent" : "Contact"}</span></td><td className="px-3 py-2 font-mono text-xs">{item.kind === "FREQUENT" ? item.telegramExternalId || "-" : item.phoneNumber || "-"}</td><td className="px-3 py-2">{item.displayName || "-"}</td><td className="px-3 py-2">{item.telegramUsername || item.telegramType || "-"}</td><td className="px-3 py-2"><span className={`rounded px-2 py-0.5 text-xs font-medium ${statusClasses(item.status)}`}>{formatStatusLabel(item.status)}</span></td><td className="px-3 py-2 text-xs text-red-400">{item.errorMessage || "-"}</td></tr>)}</tbody></table></div>}
+          {itemsLoading ? <p className="mt-6 text-sm text-gray-500">Đang tải items...</p> : !selectedBatchItems || selectedBatchItems.items.length === 0 ? <p className="mt-6 text-sm text-gray-500">Chưa có item để hiển thị.</p> : <div className="mt-5 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-gray-800 text-gray-400"><th className="px-3 py-2 text-left">Loại</th><th className="px-3 py-2 text-left">Phone / ID</th><th className="px-3 py-2 text-left">Tên</th><th className="px-3 py-2 text-left">Username</th><th className="px-3 py-2 text-left">Trạng thái</th><th className="px-3 py-2 text-left">Lỗi</th><th className="px-3 py-2 text-left">Request</th><th className="px-3 py-2 text-left">Response</th></tr></thead><tbody>{selectedBatchItems.items.map((item) => <tr key={item.id} className="border-b border-gray-800/50 align-top hover:bg-gray-800/30"><td className="px-3 py-2"><span className="rounded bg-gray-800 px-2 py-0.5 text-xs font-semibold text-gray-200">{item.kind === "FREQUENT" ? "Frequent" : "Contact"}</span></td><td className="px-3 py-2 font-mono text-xs">{item.kind === "FREQUENT" ? item.telegramExternalId || "-" : item.phoneNumber || "-"}</td><td className="px-3 py-2">{item.displayName || "-"}</td><td className="px-3 py-2">{item.telegramUsername || item.telegramType || "-"}</td><td className="px-3 py-2"><span className={`rounded px-2 py-0.5 text-xs font-medium ${statusClasses(item.status)}`}>{formatStatusLabel(item.status)}</span></td><td className="px-3 py-2 text-xs text-red-400">{item.errorMessage || "-"}</td><td className="px-3 py-2"><pre className="max-w-xs overflow-x-auto whitespace-pre-wrap break-all rounded bg-gray-950 p-2 text-[11px] text-gray-300">{formatDebugValue(item.debugRequest)}</pre></td><td className="px-3 py-2"><pre className="max-w-xs overflow-x-auto whitespace-pre-wrap break-all rounded bg-gray-950 p-2 text-[11px] text-cyan-300">{formatDebugValue(item.debugResponse)}</pre></td></tr>)}</tbody></table></div>}
         </div>
       </div>
     </div>
