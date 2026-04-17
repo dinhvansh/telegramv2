@@ -190,6 +190,29 @@ export class ModerationController {
     });
   }
 
+  @Put('member360/:externalId')
+  @UseGuards(JwtAuthGuard)
+  updateMember360Profile(
+    @Req() request: AuthenticatedRequest,
+    @Param('externalId') externalId: string,
+    @Headers('x-workspace-id') workspaceId: string | undefined,
+    @Body() body: UpdateMemberBody,
+  ) {
+    this.assertMemberWriteAccess(request);
+    return this.moderationService.updateMember360Profile(externalId, {
+      ownerName: body.ownerName ?? null,
+      note: body.note ?? null,
+      phoneNumber: body.phoneNumber ?? null,
+      customerSource: body.customerSource ?? null,
+      viewer: {
+        userId: request.user.sub,
+        permissions: request.user.permissions,
+        workspaceIds: request.user.workspaceIds ?? [],
+        workspaceId: workspaceId || undefined,
+      },
+    });
+  }
+
   @Post('members/:memberId/reset-warning')
   @UseGuards(JwtAuthGuard)
   resetMemberWarning(

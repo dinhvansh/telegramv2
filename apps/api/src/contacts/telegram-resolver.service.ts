@@ -75,7 +75,7 @@ export class TelegramResolverService {
           phone_number: phone,
           externalId: existing.externalId,
           username: existing.username || undefined,
-          displayName: existing.displayName,
+          displayName: existing.displayName || undefined,
           status: 'skipped',
         });
         skipped++;

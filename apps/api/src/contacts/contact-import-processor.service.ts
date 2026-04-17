@@ -103,7 +103,11 @@ export class ContactImportProcessorService {
         if (item.kind === 'FREQUENT') {
           await this.processFrequentItem(batch.id, item);
         } else {
-          await this.processContactItem(batch.id, item);
+          await this.processContactItem(
+            batch.id,
+            batch.workspaceId ?? undefined,
+            item,
+          );
         }
       } catch (error) {
         const errorMessage =
@@ -183,6 +187,7 @@ export class ContactImportProcessorService {
 
   private async processContactItem(
     batchId: string,
+    workspaceId: string | undefined,
     item: {
       id: string;
       phoneNumber: string | null;
@@ -203,8 +208,10 @@ export class ContactImportProcessorService {
     }
 
     const phone = this.contactsService.normalizePhone(item.phoneNumber);
-    const existing =
-      await this.contactsService.findExistingResolvedUserByPhone(phone);
+    const existing = await this.contactsService.findExistingResolvedUserByPhone(
+      phone,
+      workspaceId,
+    );
 
     if (existing?.externalId && !existing.externalId.startsWith('temp_')) {
       await this.contactsService.markItemResult({

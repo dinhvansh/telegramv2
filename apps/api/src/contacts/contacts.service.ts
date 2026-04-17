@@ -84,10 +84,42 @@ export class ContactsService {
     return contact.phone_number;
   }
 
-  async findExistingResolvedUserByPhone(phoneNumber: string) {
-    return this.prisma.telegramUser.findFirst({
-      where: { phoneNumber },
+  async findExistingResolvedUserByPhone(
+    phoneNumber: string,
+    workspaceId?: string,
+  ) {
+    const item = await this.prisma.contactImportItem.findFirst({
+      where: {
+        phoneNumber,
+        telegramExternalId: { not: null },
+        status: {
+          in: ['RESOLVED', 'SKIPPED'] as ContactImportItemStatusValue[],
+        },
+        ...(workspaceId !== undefined
+          ? {
+              batch: {
+                workspaceId,
+              },
+            }
+          : {}),
+      },
+      orderBy: [{ processedAt: 'desc' }, { createdAt: 'desc' }],
+      select: {
+        telegramExternalId: true,
+        telegramUsername: true,
+        displayName: true,
+      },
     });
+
+    if (!item?.telegramExternalId) {
+      return null;
+    }
+
+    return {
+      externalId: item.telegramExternalId,
+      username: item.telegramUsername,
+      displayName: item.displayName,
+    };
   }
 
   async upsertTelegramUser(data: {
@@ -492,11 +524,12 @@ export class ContactsService {
       currentItem?.rawPayload &&
       typeof currentItem.rawPayload === 'object' &&
       !Array.isArray(currentItem.rawPayload)
-        ? { ...(currentItem.rawPayload as Prisma.JsonObject) }
+        ? { ...currentItem.rawPayload }
         : currentItem?.rawPayload !== undefined
           ? {
               source:
-                (currentItem.rawPayload as Prisma.InputJsonValue | null) ?? null,
+                (currentItem.rawPayload as Prisma.InputJsonValue | null) ??
+                null,
             }
           : {};
 
@@ -600,21 +633,21 @@ export class ContactsService {
       typeof item.rawPayload === 'object' &&
       !Array.isArray(item.rawPayload) &&
       '__debug' in item.rawPayload
-        ? (item.rawPayload as Prisma.JsonObject).__debug
+        ? item.rawPayload.__debug
         : null;
     const debugRequest =
       debugPayload &&
       typeof debugPayload === 'object' &&
       !Array.isArray(debugPayload) &&
       'request' in debugPayload
-        ? (debugPayload as Prisma.JsonObject).request
+        ? debugPayload.request
         : null;
     const debugResponse =
       debugPayload &&
       typeof debugPayload === 'object' &&
       !Array.isArray(debugPayload) &&
       'response' in debugPayload
-        ? (debugPayload as Prisma.JsonObject).response
+        ? debugPayload.response
         : null;
 
     return {

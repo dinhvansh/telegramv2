@@ -367,10 +367,13 @@ export function Member360Workbench({
   }
 
   async function handleSave() {
-    if (!token || !primaryMember) return;
+    if (!token || !selectedProfile) return;
     try {
       setIsSaving(true);
-      await fetchJson(`${apiBaseUrl}/moderation/members/${primaryMember.id}`, {
+      const targetUrl = primaryMember
+        ? `${apiBaseUrl}/moderation/members/${primaryMember.id}`
+        : `${apiBaseUrl}/moderation/member360/${encodeURIComponent(selectedProfile.externalId)}`;
+      await fetchJson(targetUrl, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}`, ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}) },
         body: JSON.stringify({
@@ -380,7 +383,7 @@ export function Member360Workbench({
           customerSource: customerSourceDraft.trim() || null,
         }),
       });
-      await Promise.all([loadSummary(token), loadProfile(token, selectedExternalId || primaryMember.externalId)]);
+      await Promise.all([loadSummary(token), loadProfile(token, selectedExternalId || selectedProfile.externalId)]);
       toast({ message: "Đã lưu owner và ghi chú.", type: "success" });
     } catch (saveError) {
       toast({ message: saveError instanceof Error ? saveError.message : "Không thể lưu thông tin thành viên.", type: "error" });
