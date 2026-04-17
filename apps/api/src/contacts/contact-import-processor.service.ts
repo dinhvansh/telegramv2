@@ -217,10 +217,27 @@ export class ContactImportProcessorService {
     );
 
     if (existing?.externalId && !existing.externalId.startsWith('temp_')) {
+      const resolveResult =
+        await this.mtprotoService.resolvePhoneToUserIdWithDebug(phone);
+      const resolvedUser = resolveResult.user;
+
+      const displayName = resolvedUser
+        ? this.contactsService.buildTelegramDisplayName(
+            {
+              firstName: resolvedUser.firstName,
+              lastName: resolvedUser.lastName,
+              username: resolvedUser.username,
+            },
+            {
+              first_name: phone,
+            },
+          )
+        : existing.displayName ?? phone;
+
       const telegramUser = await this.contactsService.upsertTelegramUser({
         externalId: existing.externalId,
-        username: existing.username ?? undefined,
-        displayName: existing.displayName ?? undefined,
+        username: resolvedUser?.username ?? existing.username ?? undefined,
+        displayName,
       });
 
       await this.contactsService.upsertTelegramUserWorkspaceMeta({
@@ -237,8 +254,8 @@ export class ContactImportProcessorService {
         status: 'SKIPPED',
         phoneNumber: phone,
         telegramExternalId: existing.externalId,
-        telegramUsername: existing.username,
-        displayName: existing.displayName,
+        telegramUsername: resolvedUser?.username ?? existing.username,
+        displayName,
       });
       return;
     }
