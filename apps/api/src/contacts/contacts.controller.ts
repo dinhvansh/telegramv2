@@ -217,7 +217,11 @@ export class ContactsController {
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('contacts.manage')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 100 * 1024 * 1024 },
+    }),
+  )
   async createImportBatch(
     @Req() request: AuthenticatedRequest,
     @UploadedFile() file: UploadedJsonFile | undefined,
