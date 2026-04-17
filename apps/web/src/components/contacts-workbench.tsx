@@ -774,66 +774,70 @@ export function ContactsWorkbench() {
   );
 
   const importPanel = (
-    <div className="grid gap-6 xl:grid-cols-[400px_minmax(0,1fr)]">
-      <div className="space-y-6">
-        <section className="rounded-[32px] border border-white/70 bg-white/88 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
-          <span className="inline-flex rounded-full bg-[color:var(--primary-soft)] px-3 py-1 text-xs font-semibold text-[color:var(--primary)]">New import</span>
-          <h2 className="mt-4 text-xl font-black tracking-tight text-[color:var(--on-surface)]">Create a new batch</h2>
-          <p className="mt-3 text-sm leading-6 text-[color:var(--on-surface-variant)]">Upload a Telegram export JSON and run resolve in the same workspace.</p>
-          <form onSubmit={handleImport} className="mt-5 space-y-4">
-            <div>
-              <label className="mb-2 block text-sm font-medium text-[color:var(--on-surface)]">JSON file</label>
-              <input type="file" name="contactsFile" accept=".json" className="block w-full cursor-pointer rounded-[18px] border border-dashed border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-4 text-sm text-[color:var(--on-surface-variant)] file:mr-4 file:cursor-pointer file:rounded-full file:border-0 file:bg-[color:var(--primary)] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" />
-            </div>
-            <div className="rounded-[22px] bg-[color:var(--surface-low)] p-4 text-sm leading-6 text-[color:var(--on-surface-variant)]">
-              <p>1. Parse JSON and split contact data.</p>
-              <p>2. Resolve Telegram IDs in background.</p>
-              <p>3. Review result status, retry failures, or export the batch.</p>
-            </div>
-            <button type="submit" disabled={importLoading} className="w-full rounded-[18px] bg-[color:var(--primary)] px-5 py-3 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">{importLoading ? 'Creating batch...' : 'Create import batch'}</button>
-          </form>
-        </section>
-
-        <section className="rounded-[32px] border border-white/70 bg-white/88 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-black tracking-tight text-[color:var(--on-surface)]">Recent batches</h2>
-              <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">Pick a batch to inspect progress and items.</p>
-            </div>
-            <button type="button" onClick={() => void loadBatches(false)} className="rounded-full border border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-2 text-xs font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)]">Refresh</button>
+    <div className="space-y-6">
+      <section className="rounded-[32px] border border-white/70 bg-white/88 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_340px]">
+          <div>
+            <span className="inline-flex rounded-full bg-[color:var(--primary-soft)] px-3 py-1 text-xs font-semibold text-[color:var(--primary)]">New import</span>
+            <h2 className="mt-4 text-xl font-black tracking-tight text-[color:var(--on-surface)]">Create a new batch</h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-[color:var(--on-surface-variant)]">Upload a Telegram export JSON, let the server normalize it, then track the resolve run below in the same screen.</p>
+            <form onSubmit={handleImport} className="mt-5 space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[color:var(--on-surface)]">JSON file</label>
+                <input type="file" name="contactsFile" accept=".json" className="block w-full cursor-pointer rounded-[18px] border border-dashed border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-4 text-sm text-[color:var(--on-surface-variant)] file:mr-4 file:cursor-pointer file:rounded-full file:border-0 file:bg-[color:var(--primary)] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" />
+              </div>
+              <button type="submit" disabled={importLoading} className="inline-flex rounded-[18px] bg-[color:var(--primary)] px-5 py-3 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">{importLoading ? 'Creating batch...' : 'Create import batch'}</button>
+            </form>
           </div>
-          <div className="mt-5 max-h-[620px] space-y-3 overflow-y-auto pr-1">
-            {batches.length === 0 ? <p className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)]">No import batch yet.</p> : batches.map((batch) => (
-              <button key={batch.id} type="button" onClick={() => { setSelectedBatchId(batch.id); void loadBatchItems(batch.id, 1); }} className={`w-full rounded-[24px] border p-4 text-left transition ${
-                selectedBatchId === batch.id
-                  ? 'border-[color:var(--primary)] bg-[color:var(--primary-soft)]/60'
-                  : 'border-[color:var(--outline)]/60 bg-[color:var(--surface-low)] hover:border-[color:var(--primary)]/50'
-              }`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-[color:var(--on-surface)]">{batch.sourceFileName || 'telegram_export.json'}</p>
-                    <p className="mt-1 text-xs text-[color:var(--on-surface-variant)]">#{batch.id.slice(0, 8)} ? {formatDateTime(batch.createdAt)}</p>
-                  </div>
-                  <span className={`rounded-full px-3 py-1 text-[11px] font-semibold ${statusTone(batch.status)}`}>{displayStatus(batch.status)}</span>
-                </div>
-                <div className="mt-4">
-                  <div className="mb-2 flex items-center justify-between text-xs text-[color:var(--on-surface-variant)]"><span>{batch.processedCount}/{batch.totalCount} rows</span><span>{progressPercent(batch)}%</span></div>
-                  <div className="h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-gradient-to-r from-[color:var(--primary)] to-sky-400" style={{ width: `${progressPercent(batch)}%` }} /></div>
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-[color:var(--on-surface-variant)]">
-                  <div>Contacts: <span className="font-semibold text-[color:var(--on-surface)]">{batch.contactsCount}</span></div>
-                  <div>Frequent: <span className="font-semibold text-[color:var(--on-surface)]">{batch.frequentCount}</span></div>
-                  <div>Resolved: <span className="font-semibold text-[color:var(--success)]">{batch.resolvedCount}</span></div>
-                  <div>Failed: <span className="font-semibold text-[color:var(--danger)]">{batch.failedCount}</span></div>
-                </div>
-              </button>
-            ))}
+          <div className="rounded-[24px] bg-[color:var(--surface-low)] p-5 text-sm leading-6 text-[color:var(--on-surface-variant)]">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">Flow</p>
+            <div className="mt-3 space-y-2">
+              <p>1. Upload the original Telegram export JSON.</p>
+              <p>2. Server creates one import batch and resolves rows in background.</p>
+              <p>3. Review status, retry failures, and export result files below.</p>
+            </div>
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
 
-      <div className="space-y-6">
-        <section className="rounded-[32px] border border-white/70 bg-white/88 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
+      <section className="rounded-[32px] border border-white/70 bg-white/88 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-xl font-black tracking-tight text-[color:var(--on-surface)]">Recent batches</h2>
+            <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">Pick a batch to inspect progress and result rows.</p>
+          </div>
+          <button type="button" onClick={() => void loadBatches(false)} className="rounded-full border border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-2 text-xs font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)]">Refresh</button>
+        </div>
+        <div className="mt-5 grid gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+          {batches.length === 0 ? <p className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)] xl:col-span-2 2xl:col-span-3">No import batch yet.</p> : batches.map((batch) => (
+            <button key={batch.id} type="button" onClick={() => { setSelectedBatchId(batch.id); void loadBatchItems(batch.id, 1); }} className={`w-full rounded-[24px] border p-4 text-left transition ${
+              selectedBatchId === batch.id
+                ? 'border-[color:var(--primary)] bg-[color:var(--primary-soft)]/60'
+                : 'border-[color:var(--outline)]/60 bg-[color:var(--surface-low)] hover:border-[color:var(--primary)]/50'
+            }`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-[color:var(--on-surface)]">{batch.sourceFileName || 'telegram_export.json'}</p>
+                  <p className="mt-1 text-xs text-[color:var(--on-surface-variant)]">#{batch.id.slice(0, 8)} • {formatDateTime(batch.createdAt)}</p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-[11px] font-semibold ${statusTone(batch.status)}`}>{displayStatus(batch.status)}</span>
+              </div>
+              <div className="mt-4">
+                <div className="mb-2 flex items-center justify-between text-xs text-[color:var(--on-surface-variant)]"><span>{batch.processedCount}/{batch.totalCount} rows</span><span>{progressPercent(batch)}%</span></div>
+                <div className="h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-gradient-to-r from-[color:var(--primary)] to-sky-400" style={{ width: `${progressPercent(batch)}%` }} /></div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-[color:var(--on-surface-variant)]">
+                <div>Contacts: <span className="font-semibold text-[color:var(--on-surface)]">{batch.contactsCount}</span></div>
+                <div>Frequent: <span className="font-semibold text-[color:var(--on-surface)]">{batch.frequentCount}</span></div>
+                <div>Resolved: <span className="font-semibold text-[color:var(--success)]">{batch.resolvedCount}</span></div>
+                <div>Failed: <span className="font-semibold text-[color:var(--danger)]">{batch.failedCount}</span></div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-[32px] border border-white/70 bg-white/88 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div>
               <h2 className="text-xl font-black tracking-tight text-[color:var(--on-surface)]">Batch details</h2>
@@ -849,7 +853,7 @@ export function ContactsWorkbench() {
               </div>
             ) : null}
           </div>
-          {!selectedBatch ? <div className="mt-6 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)]">Select a batch from the left column to see details.</div> : (
+          {!selectedBatch ? <div className="mt-6 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)]">Select a batch from the list above to see details.</div> : (
             <>
               <div className="mt-6 grid gap-4 md:grid-cols-4">
                 <div className="rounded-[22px] bg-[color:var(--surface-low)] p-4 text-center"><div className="text-3xl font-black tracking-tight text-[color:var(--on-surface)]">{selectedBatch.totalCount}</div><div className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Total</div></div>
@@ -868,58 +872,57 @@ export function ContactsWorkbench() {
           )}
         </section>
 
-        <section className="rounded-[32px] border border-white/70 bg-white/88 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-xl font-black tracking-tight text-[color:var(--on-surface)]">Batch items</h2>
-              <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">Review contact rows and Telegram resolution output.</p>
-            </div>
-            {selectedBatchItems ? (
-              <div className="flex items-center gap-2">
-                <button type="button" disabled={itemsPage <= 1 || itemsLoading || !selectedBatchId} onClick={() => selectedBatchId && void loadBatchItems(selectedBatchId, itemsPage - 1)} className="rounded-full border border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-2 text-xs font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)] disabled:cursor-not-allowed disabled:opacity-40">Prev</button>
-                <span className="text-xs font-medium text-[color:var(--on-surface-variant)]">Page {selectedBatchItems.page}/{selectedBatchItems.totalPages}</span>
-                <button type="button" disabled={itemsPage >= selectedBatchItems.totalPages || itemsLoading || !selectedBatchId} onClick={() => selectedBatchId && void loadBatchItems(selectedBatchId, itemsPage + 1)} className="rounded-full border border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-2 text-xs font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)] disabled:cursor-not-allowed disabled:opacity-40">Next</button>
-              </div>
-            ) : null}
+      <section className="rounded-[32px] border border-white/70 bg-white/88 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-xl font-black tracking-tight text-[color:var(--on-surface)]">Batch items</h2>
+            <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">Review contact rows and Telegram resolution output.</p>
           </div>
-          {itemsLoading ? <div className="mt-6 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)]">Loading items...</div> : !selectedBatchItems || selectedBatchItems.items.length === 0 ? <div className="mt-6 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)]">No items to display.</div> : (
-            <div className="mt-6 overflow-x-auto rounded-[24px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-low)]">
-              <table className="w-full min-w-[860px] text-sm">
-                <thead>
-                  <tr className="border-b border-[color:var(--outline)]/60 text-left text-xs uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">
-                    <th className="px-4 py-3 font-semibold">Type</th>
-                    <th className="px-4 py-3 font-semibold">Phone</th>
-                    <th className="px-4 py-3 font-semibold">Telegram ID</th>
-                    <th className="px-4 py-3 font-semibold">Name</th>
-                    <th className="px-4 py-3 font-semibold">Username</th>
-                    <th className="px-4 py-3 font-semibold">Status</th>
-                    <th className="px-4 py-3 font-semibold">Error</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedBatchItems.items.map((item) => (
-                    <tr key={item.id} className="border-b border-[color:var(--outline)]/50 align-top last:border-b-0">
-                      <td className="px-4 py-3"><span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[color:var(--on-surface)]">{item.kind === 'FREQUENT' ? 'Frequent' : 'Contact'}</span></td>
-                      <td className="px-4 py-3 font-mono text-xs text-[color:var(--on-surface)]">{item.phoneNumber || '-'}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-sky-700">{item.telegramExternalId || '-'}</td>
-                      <td className="px-4 py-3 text-[color:var(--on-surface)]">{item.displayName || '-'}</td>
-                      <td className="px-4 py-3 text-[color:var(--on-surface-variant)]">{item.telegramUsername || item.telegramType || '-'}</td>
-                      <td className="px-4 py-3"><span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusTone(item.status)}`}>{displayStatus(item.status)}</span></td>
-                      <td className="px-4 py-3 text-xs text-[color:var(--danger)]">{item.errorMessage || '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {selectedBatchItems ? (
+            <div className="flex items-center gap-2">
+              <button type="button" disabled={itemsPage <= 1 || itemsLoading || !selectedBatchId} onClick={() => selectedBatchId && void loadBatchItems(selectedBatchId, itemsPage - 1)} className="rounded-full border border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-2 text-xs font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)] disabled:cursor-not-allowed disabled:opacity-40">Prev</button>
+              <span className="text-xs font-medium text-[color:var(--on-surface-variant)]">Page {selectedBatchItems.page}/{selectedBatchItems.totalPages}</span>
+              <button type="button" disabled={itemsPage >= selectedBatchItems.totalPages || itemsLoading || !selectedBatchId} onClick={() => selectedBatchId && void loadBatchItems(selectedBatchId, itemsPage + 1)} className="rounded-full border border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-2 text-xs font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)] disabled:cursor-not-allowed disabled:opacity-40">Next</button>
             </div>
-          )}
-        </section>
-      </div>
+          ) : null}
+        </div>
+        {itemsLoading ? <div className="mt-6 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)]">Loading items...</div> : !selectedBatchItems || selectedBatchItems.items.length === 0 ? <div className="mt-6 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)]">No items to display.</div> : (
+          <div className="mt-6 overflow-x-auto rounded-[24px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-low)]">
+            <table className="w-full min-w-[860px] text-sm">
+              <thead>
+                <tr className="border-b border-[color:var(--outline)]/60 text-left text-xs uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">
+                  <th className="px-4 py-3 font-semibold">Type</th>
+                  <th className="px-4 py-3 font-semibold">Phone</th>
+                  <th className="px-4 py-3 font-semibold">Telegram ID</th>
+                  <th className="px-4 py-3 font-semibold">Name</th>
+                  <th className="px-4 py-3 font-semibold">Username</th>
+                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 font-semibold">Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedBatchItems.items.map((item) => (
+                  <tr key={item.id} className="border-b border-[color:var(--outline)]/50 align-top last:border-b-0">
+                    <td className="px-4 py-3"><span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[color:var(--on-surface)]">{item.kind === 'FREQUENT' ? 'Frequent' : 'Contact'}</span></td>
+                    <td className="px-4 py-3 font-mono text-xs text-[color:var(--on-surface)]">{item.phoneNumber || '-'}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-sky-700">{item.telegramExternalId || '-'}</td>
+                    <td className="px-4 py-3 text-[color:var(--on-surface)]">{item.displayName || '-'}</td>
+                    <td className="px-4 py-3 text-[color:var(--on-surface-variant)]">{item.telegramUsername || item.telegramType || '-'}</td>
+                    <td className="px-4 py-3"><span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusTone(item.status)}`}>{displayStatus(item.status)}</span></td>
+                    <td className="px-4 py-3 text-xs text-[color:var(--danger)]">{item.errorMessage || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#fff2d8_0%,#f7f5ef_32%,#eef3f8_100%)] text-[color:var(--on-surface)]">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <div className="rounded-[36px] border border-white/70 bg-white/58 p-4 shadow-[0_32px_120px_rgba(15,23,42,0.08)] backdrop-blur sm:p-6">
           <div className="flex flex-col gap-4 border-b border-[color:var(--outline)]/50 pb-6 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
