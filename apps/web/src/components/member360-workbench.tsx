@@ -198,6 +198,7 @@ export function Member360Workbench({
   const [search, setSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [campaignFilter, setCampaignFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [ownerDraft, setOwnerDraft] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
@@ -304,6 +305,20 @@ export function Member360Workbench({
     [items],
   );
 
+  const campaignOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          items.flatMap((item) =>
+            item.currentGroups
+              .map((group) => group.campaignLabel)
+              .filter((campaign) => campaign.trim().length > 0),
+          ),
+        ),
+      ).sort(),
+    [items],
+  );
+
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase();
     return items.filter((item) => {
@@ -324,14 +339,15 @@ export function Member360Workbench({
             .toLowerCase()
             .includes(query);
       const matchesGroup = groupFilter === "all" ? true : item.currentGroups.some((group) => group.groupTitle === groupFilter);
+      const matchesCampaign = campaignFilter === "all" ? true : item.currentGroups.some((group) => group.campaignLabel === campaignFilter);
       const matchesSource = sourceFilter === "all"
         ? true
         : sourceFilter === "contacts-import"
           ? item.groupsTotalCount === 0 || (item.customerSource || "").toLowerCase().includes("contacts import")
           : item.groupsTotalCount > 0;
-      return matchesSearch && matchesGroup && matchesSource;
+      return matchesSearch && matchesGroup && matchesCampaign && matchesSource;
     });
-  }, [groupFilter, items, search, sourceFilter]);
+  }, [campaignFilter, groupFilter, items, search, sourceFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
   const pagedItems = useMemo(() => {
@@ -342,7 +358,7 @@ export function Member360Workbench({
 
   useEffect(() => {
     setPage(1);
-  }, [search, groupFilter, sourceFilter]);
+  }, [search, groupFilter, sourceFilter, campaignFilter]);
 
   useEffect(() => {
     setPage((current) => Math.min(current, totalPages));
@@ -473,6 +489,7 @@ export function Member360Workbench({
     const query = new URLSearchParams({ format: "xlsx" });
     if (search.trim()) query.set("search", search.trim());
     if (groupFilter !== "all") query.set("group", groupFilter);
+    if (campaignFilter !== "all") query.set("campaign", campaignFilter);
     if (sourceFilter !== "all") query.set("source", sourceFilter);
 
     fetch(`${apiBaseUrl}/moderation/member360/export?${query.toString()}`, {
@@ -575,6 +592,10 @@ export function Member360Workbench({
             <select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)} className="rounded-[18px] border border-transparent bg-[color:var(--surface-low)] px-5 py-3 text-sm outline-none transition focus:border-[color:var(--primary)]">
               <option value="all">Tất cả group</option>
               {groupOptions.map((group) => <option key={group} value={group}>{group}</option>)}
+            </select>
+            <select value={campaignFilter} onChange={(event) => setCampaignFilter(event.target.value)} className="rounded-[18px] border border-transparent bg-[color:var(--surface-low)] px-5 py-3 text-sm outline-none transition focus:border-[color:var(--primary)]">
+              <option value="all">Tất cả campaign</option>
+              {campaignOptions.map((campaign) => <option key={campaign} value={campaign}>{campaign}</option>)}
             </select>
             <input ref={importInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportFile} />
             <button type="button" onClick={handleDownloadTemplate} className="rounded-[18px] bg-[color:var(--surface-low)] px-5 py-3 text-sm font-semibold text-[color:var(--on-surface)]">
