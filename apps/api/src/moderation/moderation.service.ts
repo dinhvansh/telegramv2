@@ -104,6 +104,16 @@ type Member360ImportRow = {
   customerSource: string | null;
 };
 
+type ResolvedContactEntry = {
+  externalId: string;
+  displayName: string;
+  avatarInitials: string;
+  username: string | null;
+  phoneNumber: string | null;
+  customerSource: string | null;
+  lastActivityAt: string | null;
+};
+
 type ModerationViewer = {
   userId: string;
   permissions: string[];
@@ -299,6 +309,102 @@ export class ModerationService {
     };
   }
 
+  private buildAvatarInitials(displayName: string) {
+    const tokens = displayName
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter(Boolean);
+
+    if (!tokens.length) {
+      return 'TG';
+    }
+
+    return tokens
+      .slice(0, 2)
+      .map((token) => token.charAt(0).toUpperCase())
+      .join('');
+  }
+
+  private async getResolvedContactEntries(
+    viewer?: ModerationViewer,
+    externalId?: string,
+  ): Promise<ResolvedContactEntry[]> {
+    if (!process.env.DATABASE_URL) {
+      return [];
+    }
+
+    const workspaceId = this.resolveWorkspaceScope(viewer);
+    const items = await this.prisma.contactImportItem.findMany({
+      where: {
+        telegramExternalId: externalId ? externalId : { not: null },
+        status: {
+          in: ['RESOLVED', 'SKIPPED'],
+        },
+        batch: workspaceId ? { workspaceId } : undefined,
+      },
+      select: {
+        telegramExternalId: true,
+        telegramUsername: true,
+        displayName: true,
+        phoneNumber: true,
+        processedAt: true,
+        createdAt: true,
+      },
+      orderBy: [{ processedAt: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    const latestByExternalId = new Map<string, (typeof items)[number]>();
+    for (const item of items) {
+      if (!item.telegramExternalId) {
+        continue;
+      }
+      if (!latestByExternalId.has(item.telegramExternalId)) {
+        latestByExternalId.set(item.telegramExternalId, item);
+      }
+    }
+
+    const externalIds = Array.from(latestByExternalId.keys());
+    if (!externalIds.length) {
+      return [];
+    }
+
+    const telegramUsers = await this.prisma.telegramUser.findMany({
+      where: { externalId: { in: externalIds } },
+      select: {
+        externalId: true,
+        username: true,
+        displayName: true,
+        phoneNumber: true,
+        customerSource: true,
+      },
+    });
+    const telegramUserByExternalId = new Map(
+      telegramUsers.map((user) => [user.externalId, user]),
+    );
+
+    return externalIds.map((resolvedExternalId) => {
+      const item = latestByExternalId.get(resolvedExternalId)!;
+      const telegramUser = telegramUserByExternalId.get(resolvedExternalId);
+      const displayName =
+        telegramUser?.displayName ||
+        item.displayName ||
+        item.phoneNumber ||
+        `Telegram ${resolvedExternalId}`;
+
+      return {
+        externalId: resolvedExternalId,
+        displayName,
+        avatarInitials: this.buildAvatarInitials(displayName),
+        username: telegramUser?.username || item.telegramUsername || null,
+        phoneNumber: telegramUser?.phoneNumber || item.phoneNumber || null,
+        customerSource: telegramUser?.customerSource || 'Contacts import',
+        lastActivityAt: (
+          item.processedAt || item.createdAt
+        )?.toISOString?.() ?? null,
+      };
+    });
+  }
+
   async getMembers(campaignId?: string, viewer?: ModerationViewer) {
     if (!process.env.DATABASE_URL) {
       return this.composePayload(fallbackMembers);
@@ -421,6 +527,43 @@ export class ModerationService {
       });
     }
 
+    const resolvedContacts = await this.getResolvedContactEntries(viewer);
+    for (const contact of resolvedContacts) {
+      const existing = grouped.get(contact.externalId);
+      if (existing) {
+        existing.phoneNumber = existing.phoneNumber || contact.phoneNumber;
+        existing.customerSource =
+          existing.customerSource || contact.customerSource;
+        existing.username = existing.username || contact.username;
+        existing.lastActivityAt =
+          !existing.lastActivityAt ||
+          (contact.lastActivityAt &&
+            new Date(contact.lastActivityAt).getTime() >
+              new Date(existing.lastActivityAt).getTime())
+            ? contact.lastActivityAt
+            : existing.lastActivityAt;
+        continue;
+      }
+
+      grouped.set(contact.externalId, {
+        externalId: contact.externalId,
+        displayName: contact.displayName,
+        avatarInitials: contact.avatarInitials,
+        username: contact.username,
+        phoneNumber: contact.phoneNumber,
+        customerSource: contact.customerSource,
+        ownerName: null,
+        note: null,
+        groupsActiveCount: 0,
+        groupsTotalCount: 0,
+        joinCount: 0,
+        leftCount: 0,
+        warningTotal: 0,
+        lastActivityAt: contact.lastActivityAt,
+        currentGroups: [],
+      });
+    }
+
     return {
       items: Array.from(grouped.values()).sort((left, right) => {
         const leftTime = left.lastActivityAt
@@ -442,11 +585,41 @@ export class ModerationService {
     const memberships = payload.members.filter(
       (member) => member.externalId === externalId,
     );
+    const resolvedContact = (
+      await this.getResolvedContactEntries(viewer, externalId)
+    )[0];
 
-    if (!memberships.length) {
+    if (!memberships.length && !resolvedContact) {
       return {
         found: false,
         profile: null,
+      };
+    }
+
+    if (!memberships.length && resolvedContact) {
+      return {
+        found: true,
+        profile: {
+          externalId: resolvedContact.externalId,
+          displayName: resolvedContact.displayName,
+          avatarInitials: resolvedContact.avatarInitials,
+          username: resolvedContact.username,
+          phoneNumber: resolvedContact.phoneNumber,
+          customerSource: resolvedContact.customerSource,
+          ownerName: null,
+          note: null,
+          groupsActiveCount: 0,
+          groupsTotalCount: 0,
+          joinCount: 0,
+          leftCount: 0,
+          warningTotal: 0,
+          lastActivityAt: resolvedContact.lastActivityAt,
+          currentGroups: [],
+          memberships: [],
+          timeline: [],
+          moderationTimeline: [],
+          inviteTimeline: [],
+        },
       };
     }
 
@@ -641,6 +814,11 @@ export class ModerationService {
           ),
         );
       }
+    }
+
+    if (resolvedContact) {
+      phoneNumber = phoneNumber || resolvedContact.phoneNumber;
+      customerSource = customerSource || resolvedContact.customerSource;
     }
 
     return {
