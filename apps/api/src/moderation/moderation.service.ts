@@ -136,6 +136,13 @@ type WorkspaceGroupScope = {
   externalIds: string[];
 };
 
+type WorkspaceMemberMeta = {
+  phoneNumber: string | null;
+  customerSource: string | null;
+  ownerName: string | null;
+  note: string | null;
+};
+
 type WarningEscalationPreview = {
   memberId: string | null;
   currentWarningCount: number;
@@ -435,15 +442,7 @@ export class ModerationService {
     workspaceId?: string,
   ) {
     if (!process.env.DATABASE_URL || !workspaceId || !externalIds.length) {
-      return new Map<
-        string,
-        {
-          phoneNumber: string | null;
-          customerSource: string | null;
-          ownerName: string | null;
-          note: string | null;
-        }
-      >();
+      return new Map<string, WorkspaceMemberMeta>();
     }
 
     const rows = await this.prisma.telegramUserWorkspaceMeta.findMany({
@@ -622,12 +621,8 @@ export class ModerationService {
       members.map((member) => {
         const hasLeft = Boolean(member.leftAt);
         const workspaceMeta = workspaceMetaByExternalId.get(member.externalId);
-        const scopedPhoneNumber = workspaceId
-          ? (workspaceMeta?.phoneNumber ?? null)
-          : (member.telegramUser?.phoneNumber ?? null);
-        const scopedCustomerSource = workspaceId
-          ? (workspaceMeta?.customerSource ?? null)
-          : (member.telegramUser?.customerSource ?? null);
+        const scopedPhoneNumber = workspaceMeta?.phoneNumber ?? null;
+        const scopedCustomerSource = workspaceMeta?.customerSource ?? null;
         const scopedOwnerName = workspaceMeta?.ownerName ?? member.ownerName;
         const scopedNote = workspaceMeta?.note ?? member.note;
         return {
@@ -976,11 +971,6 @@ export class ModerationService {
         campaignLabel: event.inviteLink?.campaign?.name || null,
       }));
 
-      if (telegramUser && !workspaceId) {
-        phoneNumber = telegramUser.phoneNumber || phoneNumber;
-        customerSource = telegramUser.customerSource || customerSource;
-      }
-
       const workspaceMeta = workspaceMetaByExternalId.get(externalId);
       if (workspaceMeta) {
         phoneNumber = workspaceMeta.phoneNumber || phoneNumber;
@@ -1093,6 +1083,16 @@ export class ModerationService {
       },
     });
 
+    const workspaceMetaByExternalId = member
+      ? await this.getWorkspaceMetaMap(
+          [member.externalId],
+          this.resolveWorkspaceTarget(viewer),
+        )
+      : new Map<string, WorkspaceMemberMeta>();
+    const workspaceMeta: WorkspaceMemberMeta | undefined = member
+      ? workspaceMetaByExternalId.get(member.externalId)
+      : undefined;
+
     return {
       found: Boolean(member),
       member: member
@@ -1102,13 +1102,13 @@ export class ModerationService {
             avatarInitials: member.avatarInitials,
             externalId: member.externalId,
             username: member.username,
-            phoneNumber: member.telegramUser?.phoneNumber || null,
-            customerSource: member.telegramUser?.customerSource || null,
+            phoneNumber: workspaceMeta?.phoneNumber ?? null,
+            customerSource: workspaceMeta?.customerSource ?? null,
             campaignLabel: member.campaign?.name || member.campaignLabel,
             campaignId: member.campaignId,
             groupTitle: member.groupTitle,
-            ownerName: member.ownerName,
-            note: member.note,
+            ownerName: workspaceMeta?.ownerName ?? member.ownerName,
+            note: workspaceMeta?.note ?? member.note,
             warningCount: member.warningCount,
             lastWarnedAt: member.lastWarnedAt
               ? member.lastWarnedAt.toISOString()

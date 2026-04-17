@@ -162,6 +162,9 @@ export function CampaignsWorkbench({
   }, [scopedHeaders, toast, token]);
 
   const reloadCampaigns = useCallback(async () => {
+    if (!scopedHeaders) {
+      return;
+    }
     const data = await fetchJson<CampaignItem[]>(`${apiBaseUrl}/campaigns`, {
       headers: scopedHeaders,
     });
@@ -295,6 +298,14 @@ export function CampaignsWorkbench({
 
   useEffect(() => {
     let active = true;
+
+    if (!token || !scopedHeaders) {
+      setCampaigns([]);
+      setIsLoading(false);
+      return () => {
+        active = false;
+      };
+    }
 
     async function load() {
       try {
