@@ -179,6 +179,7 @@ model Workspace {
   telegramGroups TelegramGroup[]
   campaigns      Campaign[]
   contactImportBatches ContactImportBatch[]
+  telegramUserMetas TelegramUserWorkspaceMeta[]
 
   @@unique([organizationId, slug])
 }
@@ -419,8 +420,27 @@ model TelegramUser {
   updatedAt          DateTime                 @updatedAt
   communityMembers   CommunityMember[]
   membershipSessions GroupMembershipSession[]
+  workspaceMetas     TelegramUserWorkspaceMeta[]
 
   @@index([username])
+}
+
+model TelegramUserWorkspaceMeta {
+  id             String       @id @default(cuid())
+  telegramUserId String
+  workspaceId    String
+  phoneNumber    String?
+  customerSource String?
+  ownerName      String?
+  note           String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  telegramUser   TelegramUser @relation(fields: [telegramUserId], references: [id], onDelete: Cascade)
+  workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([telegramUserId, workspaceId])
+  @@index([workspaceId, phoneNumber])
+  @@index([workspaceId, customerSource])
 }
 
 model CommunityMember {

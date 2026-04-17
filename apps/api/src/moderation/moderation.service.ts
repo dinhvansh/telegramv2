@@ -283,6 +283,26 @@ export class ModerationService {
       : undefined;
   }
 
+  private resolveWorkspaceTarget(viewer?: ModerationViewer) {
+    const scopedWorkspaceId = this.resolveWorkspaceScope(viewer);
+    if (scopedWorkspaceId) {
+      return scopedWorkspaceId;
+    }
+
+    if (!viewer) {
+      return undefined;
+    }
+
+    if (
+      viewer.permissions.includes('settings.manage') ||
+      viewer.permissions.includes('organization.manage')
+    ) {
+      return viewer.workspaceId || viewer.workspaceIds?.[0];
+    }
+
+    return viewer.workspaceIds?.[0];
+  }
+
   private async getWorkspaceGroupScope(
     workspaceId?: string,
   ): Promise<WorkspaceGroupScope | null> {
@@ -381,7 +401,7 @@ export class ModerationService {
   }
 
   private buildResolvedContactBatchWhere(viewer?: ModerationViewer) {
-    const workspaceId = this.resolveWorkspaceScope(viewer);
+    const workspaceId = this.resolveWorkspaceTarget(viewer);
     if (workspaceId) {
       return { workspaceId };
     }
@@ -408,6 +428,57 @@ export class ModerationService {
     return {
       workspaceId: '__no_workspace_access__',
     };
+  }
+
+  private async getWorkspaceMetaMap(
+    externalIds: string[],
+    workspaceId?: string,
+  ) {
+    if (!process.env.DATABASE_URL || !workspaceId || !externalIds.length) {
+      return new Map<
+        string,
+        {
+          phoneNumber: string | null;
+          customerSource: string | null;
+          ownerName: string | null;
+          note: string | null;
+        }
+      >();
+    }
+
+    const rows = await this.prisma.telegramUserWorkspaceMeta.findMany({
+      where: {
+        workspaceId,
+        telegramUser: {
+          externalId: {
+            in: externalIds,
+          },
+        },
+      },
+      select: {
+        phoneNumber: true,
+        customerSource: true,
+        ownerName: true,
+        note: true,
+        telegramUser: {
+          select: {
+            externalId: true,
+          },
+        },
+      },
+    });
+
+    return new Map(
+      rows.map((row) => [
+        row.telegramUser.externalId,
+        {
+          phoneNumber: row.phoneNumber,
+          customerSource: row.customerSource,
+          ownerName: row.ownerName,
+          note: row.note,
+        },
+      ]),
+    );
   }
 
   private async getResolvedContactEntries(
@@ -452,6 +523,7 @@ export class ModerationService {
     if (!externalIds.length) {
       return [];
     }
+    const workspaceId = this.resolveWorkspaceTarget(viewer);
 
     const telegramUsers = await this.prisma.telegramUser.findMany({
       where: { externalId: { in: externalIds } },
@@ -459,10 +531,12 @@ export class ModerationService {
         externalId: true,
         username: true,
         displayName: true,
-        phoneNumber: true,
-        customerSource: true,
       },
     });
+    const workspaceMetaByExternalId = await this.getWorkspaceMetaMap(
+      externalIds,
+      workspaceId,
+    );
     const telegramUserByExternalId = new Map(
       telegramUsers.map((user) => [user.externalId, user]),
     );
@@ -470,6 +544,7 @@ export class ModerationService {
     return externalIds.map((resolvedExternalId) => {
       const item = latestByExternalId.get(resolvedExternalId)!;
       const meta = this.extractMember360Meta(item.rawPayload);
+      const workspaceMeta = workspaceMetaByExternalId.get(resolvedExternalId);
       const telegramUser = telegramUserByExternalId.get(resolvedExternalId);
       const displayName =
         telegramUser?.displayName ||
@@ -482,10 +557,17 @@ export class ModerationService {
         displayName,
         avatarInitials: this.buildAvatarInitials(displayName),
         username: telegramUser?.username || item.telegramUsername || null,
-        phoneNumber: meta.phoneNumber || item.phoneNumber || null,
-        customerSource: meta.customerSource || 'Contacts import',
-        ownerName: meta.ownerName,
-        note: meta.note,
+        phoneNumber:
+          workspaceMeta?.phoneNumber ||
+          meta.phoneNumber ||
+          item.phoneNumber ||
+          null,
+        customerSource:
+          workspaceMeta?.customerSource ||
+          meta.customerSource ||
+          'Contacts import',
+        ownerName: workspaceMeta?.ownerName || meta.ownerName,
+        note: workspaceMeta?.note || meta.note,
         lastActivityAt:
           (item.processedAt || item.createdAt)?.toISOString?.() ?? null,
       };
@@ -531,16 +613,23 @@ export class ModerationService {
       },
       orderBy: { joinedAt: 'desc' },
     });
+    const workspaceMetaByExternalId = await this.getWorkspaceMetaMap(
+      Array.from(new Set(members.map((member) => member.externalId))),
+      workspaceId,
+    );
 
     return this.composePayload(
       members.map((member) => {
         const hasLeft = Boolean(member.leftAt);
+        const workspaceMeta = workspaceMetaByExternalId.get(member.externalId);
         const scopedPhoneNumber = workspaceId
-          ? null
+          ? (workspaceMeta?.phoneNumber ?? null)
           : (member.telegramUser?.phoneNumber ?? null);
         const scopedCustomerSource = workspaceId
-          ? null
+          ? (workspaceMeta?.customerSource ?? null)
           : (member.telegramUser?.customerSource ?? null);
+        const scopedOwnerName = workspaceMeta?.ownerName ?? member.ownerName;
+        const scopedNote = workspaceMeta?.note ?? member.note;
         return {
           id: member.id,
           displayName: member.displayName,
@@ -552,8 +641,8 @@ export class ModerationService {
           campaignLabel: member.campaign?.name || member.campaignLabel,
           campaignId: member.campaignId,
           groupTitle: member.groupTitle,
-          ownerName: member.ownerName,
-          note: member.note,
+          ownerName: scopedOwnerName,
+          note: scopedNote,
           warningCount: member.warningCount,
           lastWarnedAt: member.lastWarnedAt
             ? member.lastWarnedAt.toISOString()
@@ -778,6 +867,7 @@ export class ModerationService {
       );
 
     const first = memberships[0];
+    const workspaceId = this.resolveWorkspaceTarget(viewer);
 
     let moderationTimeline: Member360TimelineEvent[] = [];
     let inviteTimeline: Member360TimelineEvent[] = [];
@@ -787,7 +877,12 @@ export class ModerationService {
     let note = first.note;
 
     if (process.env.DATABASE_URL) {
-      const [spamEvents, inviteEvents, telegramUser] = await Promise.all([
+      const [
+        spamEvents,
+        inviteEvents,
+        telegramUser,
+        workspaceMetaByExternalId,
+      ] = await Promise.all([
         this.prisma.spamEvent.findMany({
           where: {
             actorExternalId: externalId,
@@ -828,6 +923,7 @@ export class ModerationService {
             },
           },
         }),
+        this.getWorkspaceMetaMap([externalId], workspaceId),
       ]);
 
       moderationTimeline = spamEvents.map((event) => {
@@ -880,9 +976,17 @@ export class ModerationService {
         campaignLabel: event.inviteLink?.campaign?.name || null,
       }));
 
-      if (telegramUser) {
+      if (telegramUser && !workspaceId) {
         phoneNumber = telegramUser.phoneNumber || phoneNumber;
         customerSource = telegramUser.customerSource || customerSource;
+      }
+
+      const workspaceMeta = workspaceMetaByExternalId.get(externalId);
+      if (workspaceMeta) {
+        phoneNumber = workspaceMeta.phoneNumber || phoneNumber;
+        customerSource = workspaceMeta.customerSource || customerSource;
+        ownerName = workspaceMeta.ownerName || ownerName;
+        note = workspaceMeta.note || note;
       }
 
       if (telegramUser?.membershipSessions.length) {
@@ -1059,6 +1163,11 @@ export class ModerationService {
       select: {
         id: true,
         telegramUserId: true,
+        campaign: {
+          select: {
+            workspaceId: true,
+          },
+        },
       },
     });
 
@@ -1078,13 +1187,34 @@ export class ModerationService {
     });
 
     if (existingMember.telegramUserId) {
-      await this.prisma.telegramUser.update({
-        where: { id: existingMember.telegramUserId },
-        data: {
-          phoneNumber: input.phoneNumber?.trim() || null,
-          customerSource: input.customerSource?.trim() || null,
-        },
-      });
+      const workspaceId =
+        this.resolveWorkspaceTarget(input.viewer) ||
+        existingMember.campaign?.workspaceId ||
+        undefined;
+      if (workspaceId) {
+        await this.prisma.telegramUserWorkspaceMeta.upsert({
+          where: {
+            telegramUserId_workspaceId: {
+              telegramUserId: existingMember.telegramUserId,
+              workspaceId,
+            },
+          },
+          update: {
+            phoneNumber: input.phoneNumber?.trim() || null,
+            customerSource: input.customerSource?.trim() || null,
+            ownerName: input.ownerName?.trim() || null,
+            note: input.note?.trim() || null,
+          },
+          create: {
+            telegramUserId: existingMember.telegramUserId,
+            workspaceId,
+            phoneNumber: input.phoneNumber?.trim() || null,
+            customerSource: input.customerSource?.trim() || null,
+            ownerName: input.ownerName?.trim() || null,
+            note: input.note?.trim() || null,
+          },
+        });
+      }
     }
 
     return this.getMemberDetail(member.id, input.viewer);
@@ -1104,6 +1234,11 @@ export class ModerationService {
       return this.getMember360Profile(externalId, input.viewer);
     }
 
+    let telegramUser = await this.prisma.telegramUser.findUnique({
+      where: { externalId },
+      select: { id: true },
+    });
+
     const latestResolvedItem = await this.prisma.contactImportItem.findFirst({
       where: {
         telegramExternalId: externalId,
@@ -1119,40 +1254,64 @@ export class ModerationService {
       },
     });
 
-    if (!latestResolvedItem) {
+    const workspaceId =
+      this.resolveWorkspaceTarget(input.viewer) ||
+      (
+        await this.prisma.contactImportBatch.findFirst({
+          where: {
+            items: {
+              some: {
+                telegramExternalId: externalId,
+                status: {
+                  in: ['RESOLVED', 'SKIPPED'],
+                },
+              },
+            },
+            workspaceId: { not: null },
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { workspaceId: true },
+        })
+      )?.workspaceId ||
+      (
+        await this.prisma.communityMember.findFirst({
+          where: { externalId, campaign: { workspaceId: { not: null } } },
+          orderBy: { joinedAt: 'desc' },
+          select: { campaign: { select: { workspaceId: true } } },
+        })
+      )?.campaign?.workspaceId;
+
+    if (!telegramUser && latestResolvedItem) {
+      telegramUser = await this.prisma.telegramUser.findUnique({
+        where: { externalId },
+        select: { id: true },
+      });
+    }
+
+    if (!telegramUser || !workspaceId) {
       return { found: false, profile: null };
     }
 
-    const currentRawPayload =
-      latestResolvedItem.rawPayload &&
-      typeof latestResolvedItem.rawPayload === 'object' &&
-      !Array.isArray(latestResolvedItem.rawPayload)
-        ? { ...latestResolvedItem.rawPayload }
-        : latestResolvedItem.rawPayload !== undefined
-          ? {
-              source:
-                (latestResolvedItem.rawPayload as Prisma.InputJsonValue | null) ??
-                null,
-            }
-          : {};
-
-    const existingMeta = this.extractMember360Meta(
-      latestResolvedItem.rawPayload,
-    );
-
-    await this.prisma.contactImportItem.update({
-      where: { id: latestResolvedItem.id },
-      data: {
-        rawPayload: {
-          ...currentRawPayload,
-          __member360Meta: {
-            ...existingMeta,
-            ownerName: input.ownerName?.trim() || null,
-            note: input.note?.trim() || null,
-            phoneNumber: input.phoneNumber?.trim() || null,
-            customerSource: input.customerSource?.trim() || null,
-          },
+    await this.prisma.telegramUserWorkspaceMeta.upsert({
+      where: {
+        telegramUserId_workspaceId: {
+          telegramUserId: telegramUser.id,
+          workspaceId,
         },
+      },
+      update: {
+        ownerName: input.ownerName?.trim() || null,
+        note: input.note?.trim() || null,
+        phoneNumber: input.phoneNumber?.trim() || null,
+        customerSource: input.customerSource?.trim() || null,
+      },
+      create: {
+        telegramUserId: telegramUser.id,
+        workspaceId,
+        ownerName: input.ownerName?.trim() || null,
+        note: input.note?.trim() || null,
+        phoneNumber: input.phoneNumber?.trim() || null,
+        customerSource: input.customerSource?.trim() || null,
       },
     });
 
@@ -1198,7 +1357,10 @@ export class ModerationService {
     return this.getMemberDetail(member.id, viewer);
   }
 
-  async importMember360Customers(rows: Record<string, unknown>[]) {
+  async importMember360Customers(
+    rows: Record<string, unknown>[],
+    viewer?: ModerationViewer,
+  ) {
     const normalizedRows = rows
       .map((row) => this.normalizeMember360ImportRow(row))
       .filter((row): row is Member360ImportRow => Boolean(row?.externalId));
@@ -1219,6 +1381,13 @@ export class ModerationService {
       const linkedMembers = await this.prisma.communityMember.findMany({
         where: { externalId: row.externalId },
         orderBy: { joinedAt: 'desc' },
+        include: {
+          campaign: {
+            select: {
+              workspaceId: true,
+            },
+          },
+        },
       });
 
       if (!linkedMembers.length) {
@@ -1228,6 +1397,10 @@ export class ModerationService {
       let telegramUser = await this.prisma.telegramUser.findUnique({
         where: { externalId: row.externalId },
       });
+      const workspaceId =
+        this.resolveWorkspaceTarget(viewer) ||
+        linkedMembers.find((member) => member.campaign?.workspaceId)?.campaign
+          ?.workspaceId;
 
       if (!telegramUser) {
         const seed = linkedMembers[0];
@@ -1237,8 +1410,6 @@ export class ModerationService {
             username: seed.username,
             displayName: seed.displayName,
             avatarInitials: seed.avatarInitials,
-            phoneNumber: row.phoneNumber,
-            customerSource: row.customerSource,
           },
         });
 
@@ -1250,20 +1421,33 @@ export class ModerationService {
           data: { telegramUserId: telegramUser.id },
         });
       } else {
-        await this.prisma.telegramUser.update({
-          where: { id: telegramUser.id },
-          data: {
-            phoneNumber: row.phoneNumber || null,
-            customerSource: row.customerSource || null,
-          },
-        });
-
         await this.prisma.communityMember.updateMany({
           where: {
             externalId: row.externalId,
             telegramUserId: null,
           },
           data: { telegramUserId: telegramUser.id },
+        });
+      }
+
+      if (workspaceId) {
+        await this.prisma.telegramUserWorkspaceMeta.upsert({
+          where: {
+            telegramUserId_workspaceId: {
+              telegramUserId: telegramUser.id,
+              workspaceId,
+            },
+          },
+          update: {
+            phoneNumber: row.phoneNumber || null,
+            customerSource: row.customerSource || null,
+          },
+          create: {
+            telegramUserId: telegramUser.id,
+            workspaceId,
+            phoneNumber: row.phoneNumber || null,
+            customerSource: row.customerSource || null,
+          },
         });
       }
 

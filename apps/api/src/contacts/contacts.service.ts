@@ -88,6 +88,41 @@ export class ContactsService {
     phoneNumber: string,
     workspaceId?: string,
   ) {
+    if (workspaceId) {
+      const workspaceMeta =
+        await this.prisma.telegramUserWorkspaceMeta.findFirst({
+          where: {
+            workspaceId,
+            phoneNumber,
+            telegramUser: {
+              externalId: {
+                not: {
+                  startsWith: 'temp_',
+                },
+              },
+            },
+          },
+          orderBy: { updatedAt: 'desc' },
+          select: {
+            telegramUser: {
+              select: {
+                externalId: true,
+                username: true,
+                displayName: true,
+              },
+            },
+          },
+        });
+
+      if (workspaceMeta?.telegramUser?.externalId) {
+        return {
+          externalId: workspaceMeta.telegramUser.externalId,
+          username: workspaceMeta.telegramUser.username,
+          displayName: workspaceMeta.telegramUser.displayName,
+        };
+      }
+    }
+
     const item = await this.prisma.contactImportItem.findFirst({
       where: {
         phoneNumber,
@@ -127,35 +162,74 @@ export class ContactsService {
     externalId?: string;
     username?: string;
     displayName?: string;
-  }): Promise<void> {
+  }): Promise<{ id: string; externalId: string }> {
     const identity =
       data.externalId ||
       (data.phoneNumber ? `temp_${data.phoneNumber}` : undefined);
 
     if (!identity) {
       this.logger.warn('Skip upsertTelegramUser because identity is missing');
-      return;
+      throw new Error('Skip upsertTelegramUser because identity is missing');
     }
 
     const initials = this.getInitials(
       data.displayName || data.username || data.phoneNumber || identity,
     );
 
-    await this.prisma.telegramUser.upsert({
+    const telegramUser = await this.prisma.telegramUser.upsert({
       where: { externalId: identity },
       update: {
-        ...(data.phoneNumber ? { phoneNumber: data.phoneNumber } : {}),
         ...(data.username ? { username: data.username } : {}),
         ...(data.displayName ? { displayName: data.displayName } : {}),
         lastSeenAt: new Date(),
       },
       create: {
         externalId: identity,
-        phoneNumber: data.phoneNumber || null,
         username: data.username || null,
         displayName:
           data.displayName || data.username || data.phoneNumber || identity,
         avatarInitials: initials,
+      },
+    });
+
+    return {
+      id: telegramUser.id,
+      externalId: telegramUser.externalId,
+    };
+  }
+
+  async upsertTelegramUserWorkspaceMeta(data: {
+    telegramUserId: string;
+    workspaceId?: string;
+    phoneNumber?: string | null;
+    customerSource?: string | null;
+    ownerName?: string | null;
+    note?: string | null;
+  }): Promise<void> {
+    if (!data.workspaceId) {
+      return;
+    }
+
+    await this.prisma.telegramUserWorkspaceMeta.upsert({
+      where: {
+        telegramUserId_workspaceId: {
+          telegramUserId: data.telegramUserId,
+          workspaceId: data.workspaceId,
+        },
+      },
+      update: {
+        phoneNumber: data.phoneNumber ?? null,
+        customerSource: data.customerSource ?? null,
+        ownerName: data.ownerName ?? null,
+        note: data.note ?? null,
+      },
+      create: {
+        telegramUserId: data.telegramUserId,
+        workspaceId: data.workspaceId,
+        phoneNumber: data.phoneNumber ?? null,
+        customerSource: data.customerSource ?? null,
+        ownerName: data.ownerName ?? null,
+        note: data.note ?? null,
       },
     });
   }

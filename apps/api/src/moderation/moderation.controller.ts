@@ -175,6 +175,7 @@ export class ModerationController {
   updateMember(
     @Req() request: AuthenticatedRequest,
     @Param('memberId') memberId: string,
+    @Headers('x-workspace-id') workspaceId: string | undefined,
     @Body() body: UpdateMemberBody,
   ) {
     this.assertMemberWriteAccess(request);
@@ -186,6 +187,8 @@ export class ModerationController {
       viewer: {
         userId: request.user.sub,
         permissions: request.user.permissions,
+        workspaceIds: request.user.workspaceIds ?? [],
+        workspaceId: workspaceId || undefined,
       },
     });
   }
@@ -231,6 +234,8 @@ export class ModerationController {
   @Permissions('moderation.review')
   @UseInterceptors(FileInterceptor('file'))
   async importMember360Excel(
+    @Req() request: AuthenticatedRequest,
+    @Headers('x-workspace-id') workspaceId: string | undefined,
     @UploadedFile(
       new ParseFilePipe({
         validators: [new MaxFileSizeValidator({ maxSize: 8 * 1024 * 1024 })],
@@ -253,7 +258,12 @@ export class ModerationController {
       defval: '',
     });
 
-    return this.moderationService.importMember360Customers(rows);
+    return this.moderationService.importMember360Customers(rows, {
+      userId: request.user.sub,
+      permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+      workspaceId: workspaceId || undefined,
+    });
   }
 
   @Get('member360/template')

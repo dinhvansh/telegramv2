@@ -263,11 +263,18 @@ export class ContactImportProcessorService {
       username: resolvedUser.username,
     });
 
-    await this.contactsService.upsertTelegramUser({
+    const telegramUser = await this.contactsService.upsertTelegramUser({
       phoneNumber: phone,
       externalId: resolvedUser.userId,
       username: resolvedUser.username,
       displayName,
+    });
+
+    await this.contactsService.upsertTelegramUserWorkspaceMeta({
+      telegramUserId: telegramUser.id,
+      workspaceId,
+      phoneNumber: phone,
+      customerSource: 'Contacts import',
     });
 
     await this.contactsService.markItemResult({
