@@ -525,6 +525,15 @@ export class ContactsService {
         },
       },
       orderBy: [{ createdAt: 'asc' }],
+      include: {
+        createdByUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
     });
   }
 

@@ -106,6 +106,7 @@ export class ContactImportProcessorService {
           await this.processContactItem(
             batch.id,
             batch.workspaceId ?? undefined,
+            batch.createdByUser?.name ?? null,
             item,
           );
         }
@@ -188,6 +189,7 @@ export class ContactImportProcessorService {
   private async processContactItem(
     batchId: string,
     workspaceId: string | undefined,
+    ownerName: string | null,
     item: {
       id: string;
       phoneNumber: string | null;
@@ -215,6 +217,20 @@ export class ContactImportProcessorService {
     );
 
     if (existing?.externalId && !existing.externalId.startsWith('temp_')) {
+      const telegramUser = await this.contactsService.upsertTelegramUser({
+        externalId: existing.externalId,
+        username: existing.username ?? undefined,
+        displayName: existing.displayName ?? undefined,
+      });
+
+      await this.contactsService.upsertTelegramUserWorkspaceMeta({
+        telegramUserId: telegramUser.id,
+        workspaceId,
+        phoneNumber: phone,
+        customerSource: 'Contacts import',
+        ownerName,
+      });
+
       await this.contactsService.markItemResult({
         itemId: item.id,
         batchId,
@@ -285,6 +301,7 @@ export class ContactImportProcessorService {
       workspaceId,
       phoneNumber: resolvedPhone,
       customerSource: 'Contacts import',
+      ownerName,
     });
 
     await this.contactsService.markItemResult({

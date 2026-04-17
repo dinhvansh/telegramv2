@@ -516,15 +516,19 @@ export function ContactsWorkbench() {
         return;
       }
       const file = fileInput.files[0];
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("fileName", file.name);
+      let parsedPayload: unknown;
+      try {
+        parsedPayload = JSON.parse(await file.text()) as unknown;
+      } catch {
+        throw new Error("Uploaded file must be valid JSON");
+      }
       const res = await fetch(`${apiBaseUrl}/contacts/import`, {
         method: "POST",
-        headers: {
-          Authorization: getHeaders().Authorization,
-        },
-        body: formData,
+        headers: getHeaders(),
+        body: JSON.stringify({
+          fileName: file.name,
+          payload: parsedPayload,
+        }),
       });
       const data = (await res.json()) as { error?: string; message?: string; batch?: ContactImportBatch };
       if (!res.ok || data.error || !data.batch) throw new Error(data.error || `HTTP ${res.status}`);
@@ -775,23 +779,23 @@ export function ContactsWorkbench() {
 
   const importPanel = (
     <div className="space-y-6">
-      <section className="rounded-[32px] border border-white/70 bg-white/88 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_340px]">
+      <section className="rounded-[28px] border border-white/70 bg-white/88 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_280px]">
           <div>
             <span className="inline-flex rounded-full bg-[color:var(--primary-soft)] px-3 py-1 text-xs font-semibold text-[color:var(--primary)]">New import</span>
-            <h2 className="mt-4 text-xl font-black tracking-tight text-[color:var(--on-surface)]">Create a new batch</h2>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-[color:var(--on-surface-variant)]">Upload a Telegram export JSON, let the server normalize it, then track the resolve run below in the same screen.</p>
-            <form onSubmit={handleImport} className="mt-5 space-y-4">
+            <h2 className="mt-3 text-xl font-black tracking-tight text-[color:var(--on-surface)]">Create a new batch</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--on-surface-variant)]">Upload the original Telegram export JSON, then track the resolve run below in the same screen.</p>
+            <form onSubmit={handleImport} className="mt-4 space-y-3">
               <div>
                 <label className="mb-2 block text-sm font-medium text-[color:var(--on-surface)]">JSON file</label>
-                <input type="file" name="contactsFile" accept=".json" className="block w-full cursor-pointer rounded-[18px] border border-dashed border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-4 text-sm text-[color:var(--on-surface-variant)] file:mr-4 file:cursor-pointer file:rounded-full file:border-0 file:bg-[color:var(--primary)] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" />
+                <input type="file" name="contactsFile" accept=".json" className="block w-full cursor-pointer rounded-[16px] border border-dashed border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-3 text-sm text-[color:var(--on-surface-variant)] file:mr-4 file:cursor-pointer file:rounded-full file:border-0 file:bg-[color:var(--primary)] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" />
               </div>
-              <button type="submit" disabled={importLoading} className="inline-flex rounded-[18px] bg-[color:var(--primary)] px-5 py-3 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">{importLoading ? 'Creating batch...' : 'Create import batch'}</button>
+              <button type="submit" disabled={importLoading} className="inline-flex rounded-[16px] bg-[color:var(--primary)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">{importLoading ? 'Creating batch...' : 'Create import batch'}</button>
             </form>
           </div>
-          <div className="rounded-[24px] bg-[color:var(--surface-low)] p-5 text-sm leading-6 text-[color:var(--on-surface-variant)]">
+          <div className="rounded-[22px] bg-[color:var(--surface-low)] p-4 text-sm leading-6 text-[color:var(--on-surface-variant)]">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">Flow</p>
-            <div className="mt-3 space-y-2">
+            <div className="mt-2 space-y-1.5">
               <p>1. Upload the original Telegram export JSON.</p>
               <p>2. Server creates one import batch and resolves rows in background.</p>
               <p>3. Review status, retry failures, and export result files below.</p>
@@ -800,17 +804,17 @@ export function ContactsWorkbench() {
         </div>
       </section>
 
-      <section className="rounded-[32px] border border-white/70 bg-white/88 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
+      <section className="rounded-[28px] border border-white/70 bg-white/88 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
             <h2 className="text-xl font-black tracking-tight text-[color:var(--on-surface)]">Recent batches</h2>
-            <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">Pick a batch to inspect progress and result rows.</p>
+            <p className="mt-1 text-sm leading-6 text-[color:var(--on-surface-variant)]">Pick a batch to inspect progress and result rows.</p>
           </div>
           <button type="button" onClick={() => void loadBatches(false)} className="rounded-full border border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-2 text-xs font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)]">Refresh</button>
         </div>
-        <div className="mt-5 grid gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+        <div className="mt-4 grid gap-3 xl:grid-cols-3">
           {batches.length === 0 ? <p className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)] xl:col-span-2 2xl:col-span-3">No import batch yet.</p> : batches.map((batch) => (
-            <button key={batch.id} type="button" onClick={() => { setSelectedBatchId(batch.id); void loadBatchItems(batch.id, 1); }} className={`w-full rounded-[24px] border p-4 text-left transition ${
+            <button key={batch.id} type="button" onClick={() => { setSelectedBatchId(batch.id); void loadBatchItems(batch.id, 1); }} className={`w-full rounded-[22px] border p-3.5 text-left transition ${
               selectedBatchId === batch.id
                 ? 'border-[color:var(--primary)] bg-[color:var(--primary-soft)]/60'
                 : 'border-[color:var(--outline)]/60 bg-[color:var(--surface-low)] hover:border-[color:var(--primary)]/50'
@@ -822,11 +826,11 @@ export function ContactsWorkbench() {
                 </div>
                 <span className={`rounded-full px-3 py-1 text-[11px] font-semibold ${statusTone(batch.status)}`}>{displayStatus(batch.status)}</span>
               </div>
-              <div className="mt-4">
+              <div className="mt-3">
                 <div className="mb-2 flex items-center justify-between text-xs text-[color:var(--on-surface-variant)]"><span>{batch.processedCount}/{batch.totalCount} rows</span><span>{progressPercent(batch)}%</span></div>
                 <div className="h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-gradient-to-r from-[color:var(--primary)] to-sky-400" style={{ width: `${progressPercent(batch)}%` }} /></div>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-[color:var(--on-surface-variant)]">
+              <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-[color:var(--on-surface-variant)]">
                 <div>Contacts: <span className="font-semibold text-[color:var(--on-surface)]">{batch.contactsCount}</span></div>
                 <div>Frequent: <span className="font-semibold text-[color:var(--on-surface)]">{batch.frequentCount}</span></div>
                 <div>Resolved: <span className="font-semibold text-[color:var(--success)]">{batch.resolvedCount}</span></div>
@@ -837,7 +841,7 @@ export function ContactsWorkbench() {
         </div>
       </section>
 
-      <section className="rounded-[32px] border border-white/70 bg-white/88 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
+      <section className="rounded-[28px] border border-white/70 bg-white/88 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div>
               <h2 className="text-xl font-black tracking-tight text-[color:var(--on-surface)]">Batch details</h2>
@@ -855,17 +859,17 @@ export function ContactsWorkbench() {
           </div>
           {!selectedBatch ? <div className="mt-6 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)]">Select a batch from the list above to see details.</div> : (
             <>
-              <div className="mt-6 grid gap-4 md:grid-cols-4">
-                <div className="rounded-[22px] bg-[color:var(--surface-low)] p-4 text-center"><div className="text-3xl font-black tracking-tight text-[color:var(--on-surface)]">{selectedBatch.totalCount}</div><div className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Total</div></div>
-                <div className="rounded-[22px] bg-[color:var(--surface-low)] p-4 text-center"><div className="text-3xl font-black tracking-tight text-sky-700">{selectedBatch.processedCount}</div><div className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Processed</div></div>
-                <div className="rounded-[22px] bg-[color:var(--surface-low)] p-4 text-center"><div className="text-3xl font-black tracking-tight text-[color:var(--success)]">{selectedBatch.resolvedCount}</div><div className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Resolved</div></div>
-                <div className="rounded-[22px] bg-[color:var(--surface-low)] p-4 text-center"><div className="text-3xl font-black tracking-tight text-[color:var(--danger)]">{selectedBatch.failedCount}</div><div className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Failed</div></div>
+              <div className="mt-5 grid gap-3 md:grid-cols-4">
+                <div className="rounded-[18px] bg-[color:var(--surface-low)] p-3 text-center"><div className="text-2xl font-black tracking-tight text-[color:var(--on-surface)]">{selectedBatch.totalCount}</div><div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Total</div></div>
+                <div className="rounded-[18px] bg-[color:var(--surface-low)] p-3 text-center"><div className="text-2xl font-black tracking-tight text-sky-700">{selectedBatch.processedCount}</div><div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Processed</div></div>
+                <div className="rounded-[18px] bg-[color:var(--surface-low)] p-3 text-center"><div className="text-2xl font-black tracking-tight text-[color:var(--success)]">{selectedBatch.resolvedCount}</div><div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Resolved</div></div>
+                <div className="rounded-[18px] bg-[color:var(--surface-low)] p-3 text-center"><div className="text-2xl font-black tracking-tight text-[color:var(--danger)]">{selectedBatch.failedCount}</div><div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Failed</div></div>
               </div>
-              <div className="mt-6 grid gap-3 md:grid-cols-2">
-                <div className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4 text-sm"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Workspace</p><p className="mt-2 font-medium text-[color:var(--on-surface)]">{selectedBatch.workspaceName || '-'}</p></div>
-                <div className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4 text-sm"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">File</p><p className="mt-2 font-medium text-[color:var(--on-surface)]">{selectedBatch.sourceFileName || '-'}</p></div>
-                <div className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4 text-sm"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Started at</p><p className="mt-2 font-medium text-[color:var(--on-surface)]">{formatDateTime(selectedBatch.startedAt)}</p></div>
-                <div className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4 text-sm"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Finished at</p><p className="mt-2 font-medium text-[color:var(--on-surface)]">{formatDateTime(selectedBatch.finishedAt)}</p></div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-3 text-sm"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Workspace</p><p className="mt-1.5 font-medium text-[color:var(--on-surface)]">{selectedBatch.workspaceName || '-'}</p></div>
+                <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-3 text-sm"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">File</p><p className="mt-1.5 font-medium text-[color:var(--on-surface)]">{selectedBatch.sourceFileName || '-'}</p></div>
+                <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-3 text-sm"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Started at</p><p className="mt-1.5 font-medium text-[color:var(--on-surface)]">{formatDateTime(selectedBatch.startedAt)}</p></div>
+                <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-3 text-sm"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Finished at</p><p className="mt-1.5 font-medium text-[color:var(--on-surface)]">{formatDateTime(selectedBatch.finishedAt)}</p></div>
               </div>
               {selectedBatch.errorMessage ? <div className="mt-4 rounded-[22px] border border-[color:var(--danger)]/20 bg-[color:var(--danger-soft)] px-4 py-4 text-sm text-[color:var(--danger)]">Batch error: {selectedBatch.errorMessage}</div> : null}
             </>

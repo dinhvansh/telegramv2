@@ -491,12 +491,12 @@ export class MtprotoService {
         }),
       );
 
-      const imported = (importResult.imported ?? []) as unknown as ImportedContactRef[];
+      const imported = (importResult.imported ??
+        []) as unknown as ImportedContactRef[];
       const users = (importResult.users ??
         []) as unknown as ImportedTelegramUser[];
-      const retryContacts = (importResult.retryContacts ?? []) as unknown as Array<
-        string | number | bigint | bigInt.BigInteger
-      >;
+      const retryContacts = (importResult.retryContacts ??
+        []) as unknown as Array<string | number | bigint | bigInt.BigInteger>;
       const importedUserId = imported[0]?.userId;
       const user = users.find(
         (candidate) =>

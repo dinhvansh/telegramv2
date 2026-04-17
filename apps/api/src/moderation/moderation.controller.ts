@@ -137,10 +137,12 @@ export class ModerationController {
     search?: string,
     group?: string,
     source?: string,
+    campaign?: string,
   ) {
     const query = search?.trim().toLowerCase() ?? '';
     const groupFilter = group?.trim() || 'all';
     const sourceFilter = source?.trim() || 'all';
+    const campaignFilter = campaign?.trim() || 'all';
 
     return items.filter((item) => {
       const matchesSearch = !query
@@ -167,6 +169,13 @@ export class ModerationController {
               (entry) => entry.groupTitle === groupFilter,
             );
 
+      const matchesCampaign =
+        campaignFilter === 'all'
+          ? true
+          : item.currentGroups.some(
+              (entry) => entry.campaignLabel === campaignFilter,
+            );
+
       const normalizedSource = (item.customerSource || '').toLowerCase();
       const matchesSource =
         sourceFilter === 'all'
@@ -176,7 +185,7 @@ export class ModerationController {
               normalizedSource.includes('contacts import')
             : item.groupsTotalCount > 0;
 
-      return matchesSearch && matchesGroup && matchesSource;
+      return matchesSearch && matchesGroup && matchesCampaign && matchesSource;
     });
   }
 
@@ -220,6 +229,7 @@ export class ModerationController {
     @Query('search') search?: string,
     @Query('group') group?: string,
     @Query('source') source?: string,
+    @Query('campaign') campaign?: string,
     @Res({ passthrough: true }) response?: Response,
   ) {
     this.assertMemberAccess(request);
@@ -236,6 +246,7 @@ export class ModerationController {
       search,
       group,
       source,
+      campaign,
     );
 
     if (format === 'xlsx' && response) {

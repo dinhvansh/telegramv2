@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -10,10 +11,13 @@ import {
   Req,
   Res,
   StreamableFile,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import type { Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
 import * as XLSX from 'xlsx';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Permissions } from '../auth/permissions.decorator';
@@ -59,6 +63,11 @@ type AuthenticatedRequest = Request & {
   };
 };
 
+type UploadedJsonFile = {
+  buffer: Buffer;
+  originalname: string;
+};
+
 function extractNormalizedPayload(body: unknown): {
   fileName?: string;
   workspaceId?: string;
@@ -84,6 +93,43 @@ function extractNormalizedPayload(body: unknown): {
   }
 
   return { payload };
+}
+
+function extractPayloadFromUpload(
+  file: UploadedJsonFile | undefined,
+  body: unknown,
+): {
+  fileName?: string;
+  workspaceId?: string;
+  payload: NormalizedImportPayload;
+} | null {
+  if (file) {
+    let parsed: unknown;
+
+    try {
+      parsed = JSON.parse(file.buffer.toString('utf8')) as unknown;
+    } catch {
+      throw new BadRequestException('Uploaded file must be valid JSON');
+    }
+
+    const payload = normalizeContactsImportPayload(parsed);
+    if (!payload) {
+      return null;
+    }
+
+    const requestBody =
+      typeof body === 'object' && body !== null
+        ? (body as ImportBatchRequestBody)
+        : undefined;
+
+    return {
+      fileName: requestBody?.fileName || file.originalname,
+      workspaceId: requestBody?.workspaceId,
+      payload,
+    };
+  }
+
+  return extractNormalizedPayload(body);
 }
 
 @Controller('contacts')
@@ -171,8 +217,10 @@ export class ContactsController {
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('contacts.manage')
+  @UseInterceptors(FileInterceptor('file'))
   async createImportBatch(
     @Req() request: AuthenticatedRequest,
+    @UploadedFile() file: UploadedJsonFile | undefined,
     @Body() body: unknown,
   ) {
     const authenticated = await this.mtprotoService.isAuthenticated();
@@ -183,12 +231,12 @@ export class ContactsController {
       };
     }
 
-    const extracted = extractNormalizedPayload(body);
+    const extracted = extractPayloadFromUpload(file, body);
 
     if (!extracted) {
       return {
         error:
-          'Body must be a JSON array of contacts or a Telegram export object with contacts.list/frequent_contacts.list',
+          'Request must include a JSON file upload or a JSON body with contacts.list/frequent_contacts.list',
       };
     }
 
