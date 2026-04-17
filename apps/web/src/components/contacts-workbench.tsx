@@ -68,39 +68,6 @@ function formatDateTime(value?: string | null) {
   return new Date(value).toLocaleString("vi-VN");
 }
 
-function formatStatusLabel(status: ContactImportBatch["status"] | ContactImportItem["status"]) {
-  switch (status) {
-    case "QUEUED": return "Đang chờ";
-    case "PROCESSING": return "Đang xử lý";
-    case "COMPLETED": return "Hoàn tất";
-    case "FAILED": return "Thất bại";
-    case "CANCELLED": return "Đã hủy";
-    case "PENDING": return "Chờ xử lý";
-    case "RESOLVED": return "Đã resolve";
-    case "SKIPPED": return "Bỏ qua";
-    default: return status;
-  }
-}
-
-function statusClasses(status: ContactImportBatch["status"] | ContactImportItem["status"]) {
-  switch (status) {
-    case "COMPLETED":
-    case "RESOLVED":
-      return "bg-green-900 text-green-300";
-    case "QUEUED":
-    case "PENDING":
-      return "bg-sky-900 text-sky-300";
-    case "PROCESSING":
-      return "bg-blue-900 text-blue-300";
-    case "SKIPPED":
-      return "bg-yellow-900 text-yellow-300";
-    case "FAILED":
-    case "CANCELLED":
-      return "bg-red-900 text-red-300";
-    default:
-      return "bg-gray-800 text-gray-300";
-  }
-}
 
 function displayStatus(status: ContactImportBatch["status"] | ContactImportItem["status"]) {
   switch (status) {
