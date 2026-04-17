@@ -5,6 +5,7 @@ import { useToast } from "@/context/toast-context";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
+const pageSize = 20;
 
 type SummaryItem = {
   externalId: string;
@@ -196,6 +197,8 @@ export function Member360Workbench({
   const [drawerTab, setDrawerTab] = useState<"overview" | "groups" | "timeline" | "moderation">("overview");
   const [search, setSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [page, setPage] = useState(1);
   const [ownerDraft, setOwnerDraft] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
   const [phoneDraft, setPhoneDraft] = useState("");
@@ -321,9 +324,29 @@ export function Member360Workbench({
             .toLowerCase()
             .includes(query);
       const matchesGroup = groupFilter === "all" ? true : item.currentGroups.some((group) => group.groupTitle === groupFilter);
-      return matchesSearch && matchesGroup;
+      const matchesSource = sourceFilter === "all"
+        ? true
+        : sourceFilter === "contacts-import"
+          ? item.groupsTotalCount === 0 || (item.customerSource || "").toLowerCase().includes("contacts import")
+          : item.groupsTotalCount > 0;
+      return matchesSearch && matchesGroup && matchesSource;
     });
-  }, [groupFilter, items, search]);
+  }, [groupFilter, items, search, sourceFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+  const pagedItems = useMemo(() => {
+    const safePage = Math.min(page, totalPages);
+    const startIndex = (safePage - 1) * pageSize;
+    return filteredItems.slice(startIndex, startIndex + pageSize);
+  }, [filteredItems, page, totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, groupFilter, sourceFilter]);
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
 
   const primaryMember = getPrimaryMember(selectedProfile);
   const selectedProfileBadge = selectedProfile ? getProfileBadge(selectedProfile) : null;
@@ -444,6 +467,42 @@ export function Member360Workbench({
       });
   }
 
+  function handleDownloadCustomersExcel() {
+    if (!token) return;
+
+    const query = new URLSearchParams({ format: "xlsx" });
+    if (search.trim()) query.set("search", search.trim());
+    if (groupFilter !== "all") query.set("group", groupFilter);
+    if (sourceFilter !== "all") query.set("source", sourceFilter);
+
+    fetch(`${apiBaseUrl}/moderation/member360/export?${query.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
+      },
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Tải Excel thất bại với mã ${response.status}`);
+        }
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download = "member360-customers.xlsx";
+        link.click();
+        URL.revokeObjectURL(objectUrl);
+      })
+      .catch((downloadError) => {
+        toast({
+          message: downloadError instanceof Error
+            ? downloadError.message
+            : "Không thể tải Excel khách.",
+          type: "error",
+        });
+      });
+  }
+
   async function handleResetWarning() {
     if (!token || !primaryMember) return;
     try {
@@ -508,6 +567,11 @@ export function Member360Workbench({
           </div>
           <div className="flex w-full flex-col gap-3 sm:flex-row xl:max-w-3xl">
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm theo tên, @username, ID số, owner hoặc group" className="min-w-0 flex-1 rounded-[18px] border border-transparent bg-[color:var(--surface-low)] px-5 py-3 text-sm outline-none transition focus:border-[color:var(--primary)]" />
+            <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} className="rounded-[18px] border border-transparent bg-[color:var(--surface-low)] px-5 py-3 text-sm outline-none transition focus:border-[color:var(--primary)]">
+              <option value="all">Tất cả nguồn</option>
+              <option value="contacts-import">Contacts import</option>
+              <option value="campaign-group">Campaign / Group</option>
+            </select>
             <select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)} className="rounded-[18px] border border-transparent bg-[color:var(--surface-low)] px-5 py-3 text-sm outline-none transition focus:border-[color:var(--primary)]">
               <option value="all">Tất cả group</option>
               {groupOptions.map((group) => <option key={group} value={group}>{group}</option>)}
@@ -515,6 +579,9 @@ export function Member360Workbench({
             <input ref={importInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportFile} />
             <button type="button" onClick={handleDownloadTemplate} className="rounded-[18px] bg-[color:var(--surface-low)] px-5 py-3 text-sm font-semibold text-[color:var(--on-surface)]">
               Tải template
+            </button>
+            <button type="button" onClick={handleDownloadCustomersExcel} className="rounded-[18px] bg-[color:var(--surface-low)] px-5 py-3 text-sm font-semibold text-[color:var(--on-surface)]">
+              Tải Excel khách
             </button>
             <button type="button" onClick={() => importInputRef.current?.click()} disabled={isImporting} className="rounded-[18px] bg-[color:var(--primary-soft)] px-5 py-3 text-sm font-semibold text-[color:var(--primary)] disabled:opacity-60">
               {isImporting ? "Đang import..." : "Import Excel"}
@@ -527,7 +594,7 @@ export function Member360Workbench({
         </p>
 
         <div className="mt-6 overflow-x-auto">
-          <table className="min-w-[1620px] text-sm">
+          <table className="min-w-[1520px] text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-[0.28em] text-[color:var(--on-surface-variant)]">
                 <th className="px-4 py-3">User</th>
@@ -539,7 +606,6 @@ export function Member360Workbench({
                 <th className="px-4 py-3">Số group</th>
                 <th className="px-4 py-3">Lần vào</th>
                 <th className="px-4 py-3">Lần rời</th>
-                <th className="px-4 py-3">Cảnh báo</th>
                 <th className="px-4 py-3">Owner</th>
                 <th className="px-4 py-3">Hoạt động gần nhất</th>
                 <th className="px-4 py-3">Ghi chú</th>
@@ -547,18 +613,15 @@ export function Member360Workbench({
               </tr>
             </thead>
             <tbody>
-              {filteredItems.map((item) => {
+              {pagedItems.map((item) => {
                 const latestCampaign = item.currentGroups.find((group) => group.campaignLabel)?.campaignLabel || "Chưa gắn campaign";
-                const profileBadge = getProfileBadge(item);
 
                 return (
                   <tr key={item.externalId} className={`border-t border-[color:var(--surface-strong)] align-top transition hover:bg-[color:var(--surface-low)]/60 ${item.externalId === selectedExternalId ? "bg-[color:var(--primary-soft)]/40" : ""}`}>
                     <td className="px-4 py-4">
-                      <button type="button" className="flex items-start gap-3 text-left" onClick={() => void openProfile(item.externalId)}>
-                        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[color:var(--surface-low)] font-semibold text-[color:var(--primary)]">{item.avatarInitials}</span>
+                      <button type="button" className="text-left" onClick={() => void openProfile(item.externalId)}>
                         <span>
                           <span className="block text-base font-semibold text-[color:var(--on-surface)]">{item.displayName}</span>
-                          <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${profileBadge.className}`}>{profileBadge.label}</span>
                           <span className="block text-[color:var(--on-surface-variant)]">{item.username ? `@${item.username}` : "Chưa có username"}</span>
                         </span>
                       </button>
@@ -571,7 +634,6 @@ export function Member360Workbench({
                     <td className="px-4 py-4 text-[color:var(--on-surface)]">{item.groupsActiveCount} / {item.groupsTotalCount}</td>
                     <td className="px-4 py-4 text-[color:var(--on-surface)]">{item.joinCount}</td>
                     <td className="px-4 py-4 text-[color:var(--on-surface)]">{item.leftCount}</td>
-                    <td className="px-4 py-4"><span className={`rounded-full px-3 py-1 text-xs font-semibold ${tone(item.warningTotal > 0 ? "warning" : "neutral")}`}>{item.warningTotal} cảnh báo</span></td>
                     <td className="px-4 py-4 text-[color:var(--on-surface)]">{item.ownerName || "-"}</td>
                     <td className="px-4 py-4 text-[color:var(--on-surface)]">{formatDateTime(item.lastActivityAt)}</td>
                     <td className="max-w-[220px] px-4 py-4 text-[color:var(--on-surface-variant)]"><span className="line-clamp-2">{item.note || "-"}</span></td>
@@ -589,6 +651,33 @@ export function Member360Workbench({
               })}
             </tbody>
           </table>
+        </div>
+
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-[color:var(--on-surface-variant)]">
+            Hiển thị {pagedItems.length ? (page - 1) * pageSize + 1 : 0}-{(page - 1) * pageSize + pagedItems.length} trên {filteredItems.length} user
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={page <= 1}
+              className="rounded-[16px] bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold text-[color:var(--on-surface)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Prev
+            </button>
+            <span className="rounded-[16px] bg-[color:var(--primary-soft)] px-4 py-2 text-sm font-semibold text-[color:var(--primary)]">
+              Trang {page}/{totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              disabled={page >= totalPages}
+              className="rounded-[16px] bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold text-[color:var(--on-surface)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </section>
 

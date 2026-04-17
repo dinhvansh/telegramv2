@@ -70,6 +70,28 @@ type UpdateMemberBody = {
   customerSource?: string | null;
 };
 
+type Member360SummaryItem = {
+  externalId: string;
+  displayName: string;
+  username: string | null;
+  phoneNumber: string | null;
+  customerSource: string | null;
+  ownerName: string | null;
+  note: string | null;
+  groupsActiveCount: number;
+  groupsTotalCount: number;
+  joinCount: number;
+  leftCount: number;
+  warningTotal: number;
+  lastActivityAt: string | null;
+  currentGroups: Array<{
+    groupTitle: string;
+    campaignLabel: string;
+    joinedAt: string;
+    warningCount: number;
+  }>;
+};
+
 type AuthenticatedRequest = Request & {
   user: {
     sub: string;
@@ -110,6 +132,54 @@ export class ModerationController {
     }
   }
 
+  private filterMember360Items(
+    items: Member360SummaryItem[],
+    search?: string,
+    group?: string,
+    source?: string,
+  ) {
+    const query = search?.trim().toLowerCase() ?? '';
+    const groupFilter = group?.trim() || 'all';
+    const sourceFilter = source?.trim() || 'all';
+
+    return items.filter((item) => {
+      const matchesSearch = !query
+        ? true
+        : [
+            item.displayName,
+            item.username || '',
+            item.externalId,
+            item.ownerName || '',
+            item.note || '',
+            item.phoneNumber || '',
+            item.customerSource || '',
+            ...item.currentGroups.map((entry) => entry.groupTitle),
+            ...item.currentGroups.map((entry) => entry.campaignLabel),
+          ]
+            .join(' ')
+            .toLowerCase()
+            .includes(query);
+
+      const matchesGroup =
+        groupFilter === 'all'
+          ? true
+          : item.currentGroups.some(
+              (entry) => entry.groupTitle === groupFilter,
+            );
+
+      const normalizedSource = (item.customerSource || '').toLowerCase();
+      const matchesSource =
+        sourceFilter === 'all'
+          ? true
+          : sourceFilter === 'contacts-import'
+            ? item.groupsTotalCount === 0 ||
+              normalizedSource.includes('contacts import')
+            : item.groupsTotalCount > 0;
+
+      return matchesSearch && matchesGroup && matchesSource;
+    });
+  }
+
   @Get('members')
   @UseGuards(JwtAuthGuard)
   getMembers(
@@ -139,6 +209,79 @@ export class ModerationController {
       workspaceIds: request.user.workspaceIds ?? [],
       workspaceId: workspaceId || undefined,
     });
+  }
+
+  @Get('member360/export')
+  @UseGuards(JwtAuthGuard)
+  async exportMember360Summary(
+    @Req() request: AuthenticatedRequest,
+    @Headers('x-workspace-id') workspaceId: string | undefined,
+    @Query('format') format = 'xlsx',
+    @Query('search') search?: string,
+    @Query('group') group?: string,
+    @Query('source') source?: string,
+    @Res({ passthrough: true }) response?: Response,
+  ) {
+    this.assertMemberAccess(request);
+
+    const result = await this.moderationService.getMember360Summary({
+      userId: request.user.sub,
+      permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+      workspaceId: workspaceId || undefined,
+    });
+
+    const items = this.filterMember360Items(
+      result.items as Member360SummaryItem[],
+      search,
+      group,
+      source,
+    );
+
+    if (format === 'xlsx' && response) {
+      const workbook = XLSX.utils.book_new();
+      const rows = items.map((item) => ({
+        'Display Name': item.displayName,
+        Username: item.username,
+        'External ID': item.externalId,
+        'Phone Number': item.phoneNumber,
+        'Customer Source': item.customerSource,
+        'Current Groups': item.currentGroups
+          .map((entry) => entry.groupTitle)
+          .join(', '),
+        'Latest Campaign':
+          item.currentGroups.find((entry) => entry.campaignLabel)
+            ?.campaignLabel || 'Chua gan campaign',
+        'Active Groups': item.groupsActiveCount,
+        'Total Groups': item.groupsTotalCount,
+        'Join Count': item.joinCount,
+        'Left Count': item.leftCount,
+        'Warning Total': item.warningTotal,
+        Owner: item.ownerName,
+        Note: item.note,
+        'Last Activity At': item.lastActivityAt,
+      }));
+      const sheet = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(workbook, sheet, 'Member360');
+
+      const buffer = XLSX.write(workbook, {
+        type: 'buffer',
+        bookType: 'xlsx',
+      }) as Buffer;
+
+      response.setHeader(
+        'Content-Disposition',
+        'attachment; filename="member360-customers.xlsx"',
+      );
+      response.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+
+      return new StreamableFile(buffer);
+    }
+
+    return { items };
   }
 
   @Get('member360/:externalId')

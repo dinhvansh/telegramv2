@@ -201,6 +201,7 @@ export class ContactImportProcessorService {
         itemId: item.id,
         batchId,
         status: 'FAILED',
+        phoneNumber: null,
         displayName: item.displayName,
         errorMessage: 'Missing phone number',
       });
@@ -218,6 +219,7 @@ export class ContactImportProcessorService {
         itemId: item.id,
         batchId,
         status: 'SKIPPED',
+        phoneNumber: phone,
         telegramExternalId: existing.externalId,
         telegramUsername: existing.username,
         displayName: existing.displayName,
@@ -248,6 +250,7 @@ export class ContactImportProcessorService {
         itemId: item.id,
         batchId,
         status: 'FAILED',
+        phoneNumber: phone,
         displayName,
         errorMessage: 'User not found on Telegram',
         debugRequest:
@@ -258,13 +261,20 @@ export class ContactImportProcessorService {
       return;
     }
 
-    const displayName = this.contactsService.buildDisplayName(fallbackContact, {
-      firstName: resolvedUser.firstName,
-      username: resolvedUser.username,
-    });
+    const resolvedPhone = this.contactsService.normalizePhone(
+      resolvedUser.phone || phone,
+    );
+    const displayName = this.contactsService.buildTelegramDisplayName(
+      {
+        firstName: resolvedUser.firstName,
+        lastName: resolvedUser.lastName,
+        username: resolvedUser.username,
+      },
+      fallbackContact,
+    );
 
     const telegramUser = await this.contactsService.upsertTelegramUser({
-      phoneNumber: phone,
+      phoneNumber: resolvedPhone,
       externalId: resolvedUser.userId,
       username: resolvedUser.username,
       displayName,
@@ -273,7 +283,7 @@ export class ContactImportProcessorService {
     await this.contactsService.upsertTelegramUserWorkspaceMeta({
       telegramUserId: telegramUser.id,
       workspaceId,
-      phoneNumber: phone,
+      phoneNumber: resolvedPhone,
       customerSource: 'Contacts import',
     });
 
@@ -281,6 +291,7 @@ export class ContactImportProcessorService {
       itemId: item.id,
       batchId,
       status: 'RESOLVED',
+      phoneNumber: resolvedPhone,
       telegramExternalId: resolvedUser.userId,
       telegramUsername: resolvedUser.username,
       displayName,

@@ -71,6 +71,37 @@ export class ContactsService {
     return sanitized ? `+${sanitized}` : '';
   }
 
+  buildTelegramDisplayName(
+    telegramUser?: {
+      firstName?: string | null;
+      lastName?: string | null;
+      username?: string | null;
+    },
+    fallbackContact?: ContactInput,
+  ): string {
+    const telegramName = [
+      telegramUser?.firstName?.trim(),
+      telegramUser?.lastName?.trim(),
+    ]
+      .filter((part): part is string => Boolean(part))
+      .join(' ')
+      .trim();
+
+    if (telegramName) {
+      return telegramName;
+    }
+
+    if (telegramUser?.username?.trim()) {
+      return telegramUser.username.trim();
+    }
+
+    if (fallbackContact) {
+      return this.buildDisplayName(fallbackContact);
+    }
+
+    return 'Telegram user';
+  }
+
   buildDisplayName(
     contact: ContactInput,
     fallback?: { firstName?: string; username?: string },
@@ -238,7 +269,7 @@ export class ContactsService {
     const contactItems = input.contacts.map((contact) => ({
       kind: 'CONTACT' as ContactImportItemKindValue,
       status: 'PENDING' as ContactImportItemStatusValue,
-      phoneNumber: contact.phone_number || null,
+      phoneNumber: this.normalizePhone(contact.phone_number) || null,
       firstName: contact.first_name || null,
       lastName: contact.last_name || null,
       displayName: this.buildDisplayName(contact),
@@ -576,6 +607,7 @@ export class ContactsService {
     itemId: string;
     batchId: string;
     status: ContactImportItemStatusValue;
+    phoneNumber?: string | null;
     telegramExternalId?: string | null;
     telegramUsername?: string | null;
     displayName?: string | null;
@@ -620,6 +652,7 @@ export class ContactsService {
         where: { id: args.itemId },
         data: {
           status: args.status,
+          phoneNumber: args.phoneNumber ?? undefined,
           telegramExternalId: args.telegramExternalId ?? undefined,
           telegramUsername: args.telegramUsername ?? undefined,
           displayName: args.displayName ?? undefined,

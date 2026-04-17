@@ -1,8 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  MtprotoService,
-  ResolvedUser,
-} from '../telegram-mtproto/mtproto.service';
+import { MtprotoService } from '../telegram-mtproto/mtproto.service';
 import { ContactsService, ResolvedContact } from './contacts.service';
 import { ContactInput } from './import-payload';
 
@@ -113,17 +110,28 @@ export class TelegramResolverService {
           });
           failed++;
         } else {
+          const resolvedPhone = this.contactsService.normalizePhone(
+            resolvedUser.phone || phone,
+          );
+          const displayName = this.contactsService.buildTelegramDisplayName(
+            {
+              firstName: resolvedUser.firstName,
+              lastName: resolvedUser.lastName,
+              username: resolvedUser.username,
+            },
+            contact,
+          );
           await this.contactsService.upsertTelegramUser({
-            phoneNumber: phone,
+            phoneNumber: resolvedPhone,
             externalId: resolvedUser.userId,
             username: resolvedUser.username,
-            displayName: this.buildDisplayName(contact, resolvedUser),
+            displayName,
           });
           results.push({
-            phone_number: phone,
+            phone_number: resolvedPhone,
             externalId: resolvedUser.userId,
             username: resolvedUser.username,
-            displayName: this.buildDisplayName(contact, resolvedUser),
+            displayName,
             status: 'resolved',
           });
           resolved++;
@@ -151,17 +159,6 @@ export class TelegramResolverService {
       results,
     };
   }
-
-  private buildDisplayName(
-    contact: ContactInput,
-    resolved?: ResolvedUser,
-  ): string {
-    return this.contactsService.buildDisplayName(contact, {
-      firstName: resolved?.firstName,
-      username: resolved?.username,
-    });
-  }
-
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
