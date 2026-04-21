@@ -18,7 +18,10 @@ export interface ResolvedUser {
 export interface ResolvePhoneDebugRequest {
   rawPhone: string;
   normalizedPhone: string;
-  importContacts: {
+  resolvePhone?: {
+    phone: string;
+  };
+  importContacts?: {
     contacts: Array<{
       clientId: string;
       phone: string;
@@ -29,6 +32,7 @@ export interface ResolvePhoneDebugRequest {
 }
 
 export interface ResolvePhoneDebugResponse {
+  source: 'resolvePhone' | 'importContacts';
   importedCount: number;
   usersCount: number;
   retryContactsCount: number;
@@ -42,6 +46,11 @@ export interface ResolvePhoneDebugResponse {
   }>;
   retryContacts: string[];
   matchedUserId: string | null;
+  cleanup?: {
+    attempted: boolean;
+    succeeded: boolean;
+    error: string | null;
+  };
 }
 
 export interface ResolvePhoneToUserResult {
@@ -88,6 +97,7 @@ type TelegramAuthUser = {
 type ImportedTelegramUser = {
   _: string;
   id?: string | number | bigint;
+  accessHash?: string | number | bigint | bigInt.BigInteger | null;
   username?: string | null;
   firstName?: string | null;
   lastName?: string | null;
@@ -97,6 +107,11 @@ type ImportedTelegramUser = {
 type ImportedContactRef = {
   clientId?: string | number | bigint | bigInt.BigInteger;
   userId?: string | number | bigint | bigInt.BigInteger;
+};
+
+type ResolvePhoneOptions = {
+  firstName?: string | null;
+  lastName?: string | null;
 };
 
 type PendingPhoneAuth = {
@@ -451,41 +466,76 @@ export class MtprotoService {
     return { userId: String(me.id), username: me.username };
   }
 
-  async resolvePhoneToUserId(phone: string): Promise<ResolvedUser | null> {
-    const result = await this.resolvePhoneToUserIdWithDebug(phone);
+  async resolvePhoneToUserId(
+    phone: string,
+    options: ResolvePhoneOptions = {},
+  ): Promise<ResolvedUser | null> {
+    const result = await this.resolvePhoneToUserIdWithDebug(phone, options);
     return result.user;
   }
 
   async resolvePhoneToUserIdWithDebug(
     phone: string,
+    options: ResolvePhoneOptions = {},
   ): Promise<ResolvePhoneToUserResult> {
     const client = await this.getClient();
     const normalized = this.normalizePhone(phone);
+    const resolvePhone = normalized.replace(/^\+/, '');
     const clientId = bigInt(Date.now());
+    const importFirstName =
+      this.sanitizeImportedContactName(options.firstName) ||
+      this.sanitizeImportedContactName(options.lastName) ||
+      normalized;
+    const importLastName = this.sanitizeImportedContactName(options.lastName);
     const debugRequest: ResolvePhoneDebugRequest = {
       rawPhone: phone,
       normalizedPhone: normalized,
+      resolvePhone: {
+        phone: resolvePhone,
+      },
       importContacts: {
         contacts: [
           {
             clientId: String(clientId),
             phone: normalized,
-            firstName: 'Temp',
-            lastName: '',
+            firstName: importFirstName,
+            lastName: importLastName,
           },
         ],
       },
     };
 
     try {
+      const resolvedByPhone = await this.tryResolvePhone(client, resolvePhone);
+
+      if (resolvedByPhone) {
+        return {
+          user: this.toResolvedUser(resolvedByPhone),
+          debugRequest,
+          debugResponse: {
+            source: 'resolvePhone',
+            importedCount: 0,
+            usersCount: 1,
+            retryContactsCount: 0,
+            imported: [],
+            users: [this.toDebugUser(resolvedByPhone)],
+            retryContacts: [],
+            matchedUserId:
+              resolvedByPhone.id === undefined
+                ? null
+                : String(resolvedByPhone.id),
+          },
+        };
+      }
+
       const importResult = await client.invoke(
         new Api.contacts.ImportContacts({
           contacts: [
             new Api.InputPhoneContact({
               clientId,
               phone: normalized,
-              firstName: 'Temp',
-              lastName: '',
+              firstName: importFirstName,
+              lastName: importLastName,
             }),
           ],
         }),
@@ -504,7 +554,11 @@ export class MtprotoService {
           candidate.id !== undefined &&
           String(candidate.id) === String(importedUserId),
       );
+      const cleanup = await this.cleanupImportedContact(client, user);
+      const refreshedUser = await this.refreshUserById(client, user);
+      const resolvedUser = refreshedUser ?? user;
       const debugResponse: ResolvePhoneDebugResponse = {
+        source: 'importContacts',
         importedCount: imported.length,
         usersCount: users.length,
         retryContactsCount: retryContacts.length,
@@ -523,6 +577,7 @@ export class MtprotoService {
         retryContacts: retryContacts.map((entry) => String(entry)),
         matchedUserId:
           importedUserId === undefined ? null : String(importedUserId),
+        cleanup,
       };
 
       if (!user) {
@@ -534,13 +589,7 @@ export class MtprotoService {
       }
 
       return {
-        user: {
-          userId: String(user.id),
-          username: user.username || undefined,
-          firstName: user.firstName || undefined,
-          lastName: user.lastName || undefined,
-          phone: user.phone || undefined,
-        },
+        user: this.toResolvedUser(resolvedUser ?? user),
         debugRequest,
         debugResponse,
       };
@@ -555,6 +604,137 @@ export class MtprotoService {
       }
       throw new Error(getSessionRecoveryMessage(message));
     }
+  }
+
+  private async tryResolvePhone(
+    client: TelegramClient,
+    phone: string,
+  ): Promise<ImportedTelegramUser | null> {
+    try {
+      const result = await client.invoke(
+        new Api.contacts.ResolvePhone({
+          phone,
+        }),
+      );
+      const users = (result.users ?? []) as unknown as ImportedTelegramUser[];
+      const peer = result.peer as { userId?: string | number | bigint };
+      const peerUserId = peer?.userId;
+
+      return (
+        users.find(
+          (candidate) =>
+            peerUserId !== undefined &&
+            candidate.id !== undefined &&
+            String(candidate.id) === String(peerUserId),
+        ) ??
+        users.find((candidate) => candidate.id !== undefined) ??
+        null
+      );
+    } catch (error: unknown) {
+      const message = getTelegramErrorMessage(error);
+      this.logger.warn(
+        `resolvePhone direct lookup failed for ${phone}: ${message}`,
+      );
+      return null;
+    }
+  }
+
+  private async cleanupImportedContact(
+    client: TelegramClient,
+    user?: ImportedTelegramUser,
+  ): Promise<ResolvePhoneDebugResponse['cleanup']> {
+    const inputUser = this.toInputUser(user);
+    if (!inputUser) {
+      return {
+        attempted: false,
+        succeeded: false,
+        error: null,
+      };
+    }
+
+    try {
+      await client.invoke(
+        new Api.contacts.DeleteContacts({
+          id: [inputUser],
+        }),
+      );
+      return {
+        attempted: true,
+        succeeded: true,
+        error: null,
+      };
+    } catch (error: unknown) {
+      const message = getTelegramErrorMessage(error);
+      this.logger.warn(
+        `cleanup imported contact failed for ${String(user?.id)}: ${message}`,
+      );
+      return {
+        attempted: true,
+        succeeded: false,
+        error: message,
+      };
+    }
+  }
+
+  private async refreshUserById(
+    client: TelegramClient,
+    user?: ImportedTelegramUser,
+  ): Promise<ImportedTelegramUser | null> {
+    const inputUser = this.toInputUser(user);
+    if (!inputUser) {
+      return null;
+    }
+
+    try {
+      const users = (await client.invoke(
+        new Api.users.GetUsers({
+          id: [inputUser],
+        }),
+      )) as unknown as ImportedTelegramUser[];
+
+      return users.find((candidate) => candidate.id !== undefined) ?? null;
+    } catch (error: unknown) {
+      const message = getTelegramErrorMessage(error);
+      this.logger.warn(
+        `refresh user by id failed for ${String(user?.id)}: ${message}`,
+      );
+      return null;
+    }
+  }
+
+  private toInputUser(user?: ImportedTelegramUser): Api.InputUser | null {
+    if (!user?.id || !user.accessHash) {
+      return null;
+    }
+
+    return new Api.InputUser({
+      userId: bigInt(String(user.id)),
+      accessHash: bigInt(String(user.accessHash)),
+    });
+  }
+
+  private toResolvedUser(user: ImportedTelegramUser): ResolvedUser {
+    return {
+      userId: String(user.id),
+      username: user.username || undefined,
+      firstName: user.firstName || undefined,
+      lastName: user.lastName || undefined,
+      phone: user.phone || undefined,
+    };
+  }
+
+  private toDebugUser(user: ImportedTelegramUser) {
+    return {
+      id: user.id === undefined ? null : String(user.id),
+      username: user.username ?? null,
+      firstName: user.firstName ?? null,
+      lastName: user.lastName ?? null,
+      phone: user.phone ?? null,
+    };
+  }
+
+  private sanitizeImportedContactName(value?: string | null) {
+    return value?.trim().slice(0, 64) ?? '';
   }
 
   async isAuthenticated(): Promise<boolean> {

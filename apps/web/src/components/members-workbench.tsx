@@ -536,7 +536,7 @@ export function MembersWorkbench({
               <thead>
                 <tr className="text-xs uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
                   <th className="px-5 py-4 font-semibold">User</th>
-                  <th className="px-5 py-4 font-semibold">ID s???</th>
+                  <th className="px-5 py-4 font-semibold">ID Tele</th>
                   <th className="px-5 py-4 font-semibold">Campaign</th>
                   <th className="px-5 py-4 font-semibold">Group</th>
                   <th className="px-5 py-4 font-semibold">Ngày vào</th>

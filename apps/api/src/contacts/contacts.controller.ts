@@ -142,7 +142,7 @@ export class ContactsController {
   @Post('auth/qr/start')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('contacts.manage')
+  @Permissions('contacts.manage', 'workspace.manage')
   async startQr(): Promise<QrCodeResult> {
     return this.mtprotoService.startQrLogin();
   }
@@ -150,7 +150,7 @@ export class ContactsController {
   @Post('auth/phone/start')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('contacts.manage')
+  @Permissions('contacts.manage', 'workspace.manage')
   async startPhoneLogin(
     @Body() body: PhoneLoginStartBody,
   ): Promise<PhoneLoginStartResult> {
@@ -160,7 +160,7 @@ export class ContactsController {
   @Post('auth/phone/verify')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('contacts.manage')
+  @Permissions('contacts.manage', 'workspace.manage')
   async verifyPhoneCode(
     @Body() body: PhoneCodeVerifyBody,
   ): Promise<PhoneLoginVerifyResult> {
@@ -170,7 +170,7 @@ export class ContactsController {
   @Post('auth/phone/password')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('contacts.manage')
+  @Permissions('contacts.manage', 'workspace.manage')
   async verifyPassword(
     @Body() body: PasswordVerifyBody,
   ): Promise<PhoneLoginVerifyResult> {
@@ -179,14 +179,14 @@ export class ContactsController {
 
   @Get('auth/qr/poll')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('contacts.manage')
+  @Permissions('contacts.manage', 'workspace.manage')
   async pollQr(): Promise<QrPollResult> {
     return this.mtprotoService.pollQrCode();
   }
 
   @Get('auth/qr/confirm')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('contacts.manage')
+  @Permissions('contacts.manage', 'workspace.manage')
   async confirmQr(): Promise<{
     success: boolean;
     userId: string;
@@ -198,7 +198,7 @@ export class ContactsController {
 
   @Get('auth/status')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('contacts.manage')
+  @Permissions('contacts.manage', 'workspace.manage')
   async authStatus(): Promise<{ authenticated: boolean }> {
     const authenticated = await this.mtprotoService.isAuthenticated();
     return { authenticated };
@@ -207,7 +207,7 @@ export class ContactsController {
   @Post('auth/session/reset')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('contacts.manage')
+  @Permissions('contacts.manage', 'workspace.manage')
   async resetSession(): Promise<{ success: boolean }> {
     await this.mtprotoService.resetSession();
     return { success: true };
@@ -216,7 +216,7 @@ export class ContactsController {
   @Post('import')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('contacts.manage')
+  @Permissions('contacts.manage', 'workspace.manage')
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: 100 * 1024 * 1024 },
@@ -271,7 +271,7 @@ export class ContactsController {
 
   @Get('import-batches')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('contacts.manage')
+  @Permissions('contacts.manage', 'workspace.manage')
   getImportBatches(@Req() request: AuthenticatedRequest) {
     return this.contactsService.listImportBatches({
       workspaceIds: request.user.workspaceIds ?? [],
@@ -283,7 +283,7 @@ export class ContactsController {
 
   @Get('import-batches/:batchId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('contacts.manage')
+  @Permissions('contacts.manage', 'workspace.manage')
   getImportBatch(
     @Req() request: AuthenticatedRequest,
     @Param('batchId') batchId: string,
@@ -298,7 +298,7 @@ export class ContactsController {
 
   @Post('import-batches/:batchId/retry')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('contacts.manage')
+  @Permissions('contacts.manage', 'workspace.manage')
   async retryFailedBatchItems(
     @Req() request: AuthenticatedRequest,
     @Param('batchId') batchId: string,
@@ -322,7 +322,7 @@ export class ContactsController {
 
   @Post('import-batches/:batchId/cancel')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('contacts.manage')
+  @Permissions('contacts.manage', 'workspace.manage')
   async cancelImportBatch(
     @Req() request: AuthenticatedRequest,
     @Param('batchId') batchId: string,
@@ -346,7 +346,7 @@ export class ContactsController {
 
   @Get('import-batches/:batchId/items')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('contacts.manage')
+  @Permissions('contacts.manage', 'workspace.manage')
   getImportBatchItems(
     @Req() request: AuthenticatedRequest,
     @Param('batchId') batchId: string,
@@ -365,7 +365,7 @@ export class ContactsController {
 
   @Get('import-batches/:batchId/export')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('contacts.manage')
+  @Permissions('contacts.manage', 'workspace.manage')
   async exportImportBatch(
     @Req() request: AuthenticatedRequest,
     @Param('batchId') batchId: string,

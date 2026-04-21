@@ -577,13 +577,29 @@ export function Member360Workbench({
       </section>
 
       <section className="rounded-[32px] border border-white/70 bg-white/88 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-col gap-4">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.35em] text-[color:var(--on-surface-variant)]">Bảng thành viên</p>
             <h3 className="mt-3 text-2xl font-semibold tracking-tight text-[color:var(--on-surface)]">Show hết cột rồi thao tác nhanh ở cột cuối</h3>
           </div>
-          <div className="flex w-full flex-col gap-3 sm:flex-row xl:max-w-3xl">
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm theo tên, @username, ID số, owner hoặc group" className="min-w-0 flex-1 rounded-[18px] border border-transparent bg-[color:var(--surface-low)] px-5 py-3 text-sm outline-none transition focus:border-[color:var(--primary)]" />
+          <div className="rounded-[24px] bg-[color:var(--surface-low)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[color:var(--on-surface-variant)]">Tìm thành viên</p>
+            <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+              <div className="relative min-w-0 flex-1">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--on-surface-variant)]">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m20 20-3.5-3.5" />
+                </svg>
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm theo tên, @username, ID số, owner, SĐT hoặc group" className="w-full rounded-[18px] border border-transparent bg-white pl-11 pr-4 py-3 text-sm outline-none transition focus:border-[color:var(--primary)]" />
+              </div>
+              {search.trim() ? (
+                <button type="button" onClick={() => setSearch("")} className="rounded-[18px] bg-white px-5 py-3 text-sm font-semibold text-[color:var(--on-surface)]">
+                  Xóa search
+                </button>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex w-full flex-col gap-3 sm:flex-row">
             <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} className="rounded-[18px] border border-transparent bg-[color:var(--surface-low)] px-5 py-3 text-sm outline-none transition focus:border-[color:var(--primary)]">
               <option value="all">Tất cả nguồn</option>
               <option value="contacts-import">Contacts import</option>

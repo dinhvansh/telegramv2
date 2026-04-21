@@ -972,6 +972,9 @@ async function main() {
     prisma.permission.create({
       data: { code: 'autopost.execute', description: 'Manage autopost schedules and logs' },
     }),
+    prisma.permission.create({
+      data: { code: 'contacts.manage', description: 'Import contacts and resolve Telegram IDs' },
+    }),
   ]);
 
   await prisma.rolePermission.createMany({
@@ -1009,6 +1012,10 @@ async function main() {
       {
         roleId: operatorRole.id,
         permissionId: permissions[6].id,
+      },
+      {
+        roleId: operatorRole.id,
+        permissionId: permissions[7].id,
       },
     ],
   });

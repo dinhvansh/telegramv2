@@ -6,6 +6,7 @@ import {
   decryptSecretValue,
   encryptSecretValue,
 } from '../settings/settings-security';
+import { normalizeVietnameseText } from '../common/vietnamese-normalizer';
 
 export const DEFAULT_ORGANIZATION_SLUG = 'default-organization';
 export const DEFAULT_WORKSPACE_SLUG = 'default-workspace';
@@ -146,14 +147,20 @@ export class WorkspaceBootstrapService implements OnApplicationBootstrap {
         });
       }
 
-      const legacyRoles = await this.prisma.role.findMany({
-        where: {
-          name: {
-            in: spec.aliases.filter((alias) => alias !== spec.name),
-          },
-        },
-        select: { id: true, name: true },
-      });
+      const normalizedAliases = new Set(
+        [spec.name, ...spec.aliases].map((alias) =>
+          normalizeVietnameseText(alias),
+        ),
+      );
+      const legacyRoles = (
+        await this.prisma.role.findMany({
+          select: { id: true, name: true },
+        })
+      ).filter(
+        (role) =>
+          role.id !== canonicalRole.id &&
+          normalizedAliases.has(normalizeVietnameseText(role.name)),
+      );
 
       for (const legacyRole of legacyRoles) {
         const [legacyUserRoles, legacyMemberships] = await Promise.all([

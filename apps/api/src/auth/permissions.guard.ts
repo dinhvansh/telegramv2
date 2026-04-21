@@ -28,11 +28,11 @@ export class PermissionsGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<{ user?: RequestUser }>();
     const userPermissions = request.user?.permissions ?? [];
-    const hasAllPermissions = requiredPermissions.every((permission) =>
+    const hasRequiredPermission = requiredPermissions.some((permission) =>
       userPermissions.includes(permission),
     );
 
-    if (!hasAllPermissions) {
+    if (!hasRequiredPermission) {
       throw new ForbiddenException('Missing required permission');
     }
 

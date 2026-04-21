@@ -113,6 +113,56 @@ function describeBotRights(group: GroupItem | null) {
   return rights.length ? rights.join(" · ") : "Bot chưa có quyền quản trị nào.";
 }
 
+function buildDefaultModerationPreset(groupId: string): GroupModerationSettings {
+  return {
+    found: true,
+    groupId,
+    moderationEnabled: true,
+    lockUrl: true,
+    lockInvitelink: true,
+    lockForward: false,
+    lockEmail: true,
+    lockPhone: true,
+    lockBot: true,
+    lockPhoto: false,
+    lockVideo: false,
+    lockDocument: false,
+    lockSticker: false,
+    lockInlineButtons: true,
+    lockInlineButtonUrls: true,
+    trustedUsernames: "",
+    trustedExternalIds: "",
+    exemptAdmins: true,
+    exemptOwners: true,
+    lockWarns: true,
+    warnLimit: 2,
+    warnAction: "tmute",
+    warnActionDurationSeconds: 3600,
+    warningExpirySeconds: 86400,
+    antifloodEnabled: true,
+    antifloodLimit: 6,
+    antifloodWindowSeconds: 12,
+    antifloodAction: "tmute",
+    antifloodActionDurationSeconds: 1800,
+    antifloodDeleteAll: true,
+    resetAntifloodOnRejoin: true,
+    probationEnabled: true,
+    probationSeconds: 900,
+    probationAction: "tmute",
+    probationActionDurationSeconds: 900,
+    antiRaidEnabled: true,
+    antiRaidAction: "kick",
+    antiRaidActionDurationSeconds: null,
+    aiModerationEnabled: true,
+    aiMode: "suspicious_only",
+    aiConfidenceThreshold: 0.82,
+    aiOverrideAction: false,
+    silentActions: false,
+    rawLoggingEnabled: false,
+    detailedLoggingEnabled: true,
+  };
+}
+
 export function TelegramGroupModerationSettings({
   groupId,
 }: {
@@ -228,6 +278,26 @@ export function TelegramGroupModerationSettings({
     } finally {
       setIsSaving(false);
     }
+  }
+
+  function handleApplyDefaultPreset() {
+    setForm((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const preset = buildDefaultModerationPreset(groupId);
+      return {
+        ...current,
+        ...preset,
+        found: current.found,
+        groupId: current.groupId,
+        trustedUsernames: current.trustedUsernames,
+        trustedExternalIds: current.trustedExternalIds,
+      };
+    });
+    setError(null);
+    setNotice("Da ap bo mac dinh moderation cho group nay. Bam luu de cap nhat he thong.");
   }
 
   async function refreshRuleScope(currentToken: string) {
@@ -459,12 +529,21 @@ export function TelegramGroupModerationSettings({
                 Quy?n bot: {describeBotRights(group)}
               </p>
             </div>
-            <Link
-              href="/telegram"
-              className="inline-flex rounded-full bg-[color:var(--surface-low)] px-4 py-3 text-sm font-semibold"
-            >
-              Quay lại danh sách group
-            </Link>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={handleApplyDefaultPreset}
+                className="inline-flex rounded-full bg-[color:var(--primary-soft)] px-4 py-3 text-sm font-semibold text-[color:var(--primary)]"
+              >
+                Ap bo mac dinh
+              </button>
+              <Link
+                href="/telegram"
+                className="inline-flex rounded-full bg-[color:var(--surface-low)] px-4 py-3 text-sm font-semibold"
+              >
+                Quay lại danh sách group
+              </Link>
+            </div>
           </div>
 
           <div className="mt-6 rounded-[24px] bg-[color:var(--surface-low)] p-5">
@@ -474,6 +553,9 @@ export function TelegramGroupModerationSettings({
                 <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">
                   Đây là công tắc tổng của group. Khi tắt, bot sẽ không áp các logic chặn spam,
                   cảnh báo, AI hay anti-raid bên dưới.
+                </p>
+                <p className="mt-2 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--primary)]">
+                  Bo mac dinh moi se bat san moderation va bo khoa rule de dung ngay.
                 </p>
               </div>
               <label className="inline-flex items-center gap-3 rounded-full bg-white px-4 py-3 text-sm font-semibold">

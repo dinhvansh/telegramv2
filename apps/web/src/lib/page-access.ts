@@ -22,7 +22,7 @@ export const pagePermissionMap: Record<DashboardPage, string[]> = {
   telegram: ["settings.manage"],
   settings: ["settings.manage"],
   workspaces: ["organization.manage"],
-  contacts: ["contacts.manage"],
+  contacts: ["contacts.manage", "workspace.manage"],
 };
 
 export function canAccessPage(

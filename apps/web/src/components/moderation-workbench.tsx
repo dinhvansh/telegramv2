@@ -1,8 +1,6 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { TelegramControlCenter } from "@/components/telegram-control-center";
 import { useToast } from "@/context/toast-context";
 
 const apiBaseUrl = "/api";
@@ -247,14 +245,6 @@ export function ModerationWorkbench({
   const [selectedScopeKey, setSelectedScopeKey] = useState("global");
   const [manualDecision, setManualDecision] = useState<SpamDecision>("REVIEW");
   const [manualNote, setManualNote] = useState("");
-  const [scopeForm, setScopeForm] = useState({
-    autoBanSpam: true,
-    muteNewMembers: true,
-    muteDurationHours: 24,
-  });
-  const [keywordInput, setKeywordInput] = useState("");
-  const [domainInput, setDomainInput] = useState("");
-  const [domainMode, setDomainMode] = useState<"BLOCK" | "ALLOW">("BLOCK");
   const [simulateForm, setSimulateForm] = useState({
     groupTitle: "Nexus Global",
     campaignLabel: "Summer Growth 2026",
@@ -274,7 +264,6 @@ export function ModerationWorkbench({
   const [simulateResult, setSimulateResult] = useState<AnalyzeResponse | null>(null);
   const [commandResult, setCommandResult] = useState<CommandExecutionResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSavingScope, setIsSavingScope] = useState(false);
   const [isApplyingAction, setIsApplyingAction] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
   const [isRunningCommand, setIsRunningCommand] = useState(false);
@@ -401,29 +390,6 @@ export function ModerationWorkbench({
     await loadAll(token);
   }
 
-  async function handleSaveScope() {
-    setIsSavingScope(true);
-    toast({ message: "Khối policy cũ đã bị vô hiệu hóa. Hãy dùng Telegram Group Moderation.", type: "info" });
-    setTimeout(() => setIsSavingScope(false), 0);
-  }
-
-  async function handleAddKeyword() {
-    toast({ message: "Hãy thêm từ khóa trong Telegram Group Moderation.", type: "info" });
-  }
-
-  async function handleRemoveKeyword(_keywordId?: string) {
-    void _keywordId;
-    toast({ message: "Hãy xóa từ khóa trong Telegram Group Moderation.", type: "info" });
-  }
-
-  async function handleAddDomain() {
-    toast({ message: "Hãy thêm domain trong Telegram Group Moderation.", type: "info" });
-  }
-
-  async function handleRemoveDomain(_domainId?: string) {
-    void _domainId;
-    toast({ message: "Hãy xóa domain trong Telegram Group Moderation.", type: "info" });
-  }
 
   async function handleApplyAction() {
     if (!token || !selectedEvent) {
@@ -583,8 +549,6 @@ export function ModerationWorkbench({
           </article>
         ))}
       </div>
-
-      <TelegramControlCenter embedded workspaceId={workspaceId} />
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
@@ -901,207 +865,7 @@ export function ModerationWorkbench({
         </aside>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-        <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">
-                Cấu hình rule
-              </p>
-              <h3 className="mt-2 text-2xl font-black tracking-tight">
-                Quản lý policy theo từng group hoặc toàn hệ thống
-              </h3>
-            </div>
-            <select
-              value={selectedScopeKey}
-              onChange={(event) => setSelectedScopeKey(event.target.value)}
-              className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-3 text-sm outline-none"
-            >
-              {config?.scopes.map((scope) => (
-                <option key={scope.scopeKey} value={scope.scopeKey}>
-                  {scope.scopeLabel}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {selectedScope ? (
-            false ? (
-            <div className="mt-6 space-y-5">
-              <div className="grid gap-4 md:grid-cols-3">
-                <label className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4">
-                  <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                    Auto ban
-                  </span>
-                  <select
-                    value={scopeForm.autoBanSpam ? "true" : "false"}
-                    onChange={(event) =>
-                      setScopeForm((current) => ({
-                        ...current,
-                        autoBanSpam: event.target.value === "true",
-                      }))
-                    }
-                    className="mt-3 w-full bg-transparent text-sm outline-none"
-                  >
-                    <option value="true">Bật</option>
-                    <option value="false">Tắt</option>
-                  </select>
-                </label>
-
-                <label className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4">
-                  <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                    Siết join request
-                  </span>
-                  <select
-                    value={scopeForm.muteNewMembers ? "true" : "false"}
-                    onChange={(event) =>
-                      setScopeForm((current) => ({
-                        ...current,
-                        muteNewMembers: event.target.value === "true",
-                      }))
-                    }
-                    className="mt-3 w-full bg-transparent text-sm outline-none"
-                  >
-                    <option value="true">Bật</option>
-                    <option value="false">Tắt</option>
-                  </select>
-                  <p className="mt-2 text-xs leading-5 text-[color:var(--on-surface-variant)]">
-                    Chỉ làm policy chặt hơn cho join request hoặc luồng review, không phải auto mute mọi user mới.
-                  </p>
-                </label>
-
-                <label className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4">
-                  <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                    Thời lượng restrict mặc định
-                  </span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={168}
-                    value={scopeForm.muteDurationHours}
-                    onChange={(event) =>
-                      setScopeForm((current) => ({
-                        ...current,
-                        muteDurationHours: Number(event.target.value || 24),
-                      }))
-                    }
-                    className="mt-3 w-full bg-transparent text-sm outline-none"
-                  />
-                  <p className="mt-2 text-xs leading-5 text-[color:var(--on-surface-variant)]">
-                    Dùng khi policy hoặc manual action cần thời lượng mà chưa có cấu hình riêng.
-                  </p>
-                </label>
-              </div>
-
-              <button
-                onClick={() => void handleSaveScope()}
-                disabled={isSavingScope}
-                className="rounded-[18px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white disabled:opacity-60"
-              >
-                {isSavingScope ? "Đang lưu..." : "Lưu policy"}
-              </button>
-
-              <div className="grid gap-5 xl:grid-cols-2">
-                <div className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4">
-                  <p className="text-sm font-bold">Từ khóa bổ sung</p>
-                  <div className="mt-3 flex gap-3">
-                    <input
-                      value={keywordInput}
-                      onChange={(event) => setKeywordInput(event.target.value)}
-                      className="flex-1 rounded-[16px] bg-white/80 px-4 py-3 text-sm outline-none"
-                      placeholder="Ví dụ: fake support"
-                    />
-                    <button
-                      onClick={() => void handleAddKeyword()}
-                      className="rounded-[16px] bg-[color:var(--primary)] px-4 py-3 text-sm font-semibold text-white"
-                    >
-                      Thêm
-                    </button>
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {(selectedScope?.keywords ?? []).map((keyword) => (
-                      <button
-                        key={keyword.id}
-                        onClick={() => void handleRemoveKeyword(keyword.id)}
-                        className="rounded-full bg-white/80 px-3 py-2 text-xs font-semibold text-[color:var(--on-surface)]"
-                      >
-                        {keyword.value} ×
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-4">
-                  <p className="text-sm font-bold">Domain allow / block</p>
-                  <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_140px] xl:grid-cols-[minmax(0,1fr)_140px_100px]">
-                    <input
-                      value={domainInput}
-                      onChange={(event) => setDomainInput(event.target.value)}
-                      className="rounded-[16px] bg-white/80 px-4 py-3 text-sm outline-none"
-                      placeholder="Ví dụ: tinyurl.com"
-                    />
-                    <select
-                      value={domainMode}
-                      onChange={(event) => setDomainMode(event.target.value as "BLOCK" | "ALLOW")}
-                      className="rounded-[16px] bg-white/80 px-4 py-3 text-sm outline-none"
-                    >
-                      <option value="BLOCK">Block</option>
-                      <option value="ALLOW">Allow</option>
-                    </select>
-                    <button
-                      onClick={() => void handleAddDomain()}
-                      className="rounded-[16px] bg-[color:var(--primary)] px-4 py-3 text-sm font-semibold text-white md:col-span-2 xl:col-span-1"
-                    >
-                      Thêm
-                    </button>
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {(selectedScope?.domains ?? []).map((domain) => (
-                      <button
-                        key={domain.id}
-                        onClick={() => void handleRemoveDomain(domain.id)}
-                        className={`rounded-full px-3 py-2 text-xs font-semibold ${
-                          domain.mode === "ALLOW"
-                            ? "bg-[color:var(--success-soft)] text-[color:var(--success)]"
-                            : "bg-[color:var(--danger-soft)] text-[color:var(--danger)]"
-                        }`}
-                      >
-                        {domain.mode}: {domain.value} ×
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-            ) : null
-          ) : null}
-
-          <div className="mt-6 rounded-[22px] bg-[color:var(--surface-low)] px-5 py-5">
-            <p className="text-sm font-bold">Khối policy cũ đã được gỡ khỏi màn này</p>
-            <p className="mt-3 text-sm leading-6 text-[color:var(--on-surface-variant)]">
-              Để tránh chồng chéo rule, toàn bộ keyword, domain, antiflood, warning ladder,
-              probation và anti-raid nên chỉnh tập trung trong Telegram Group Moderation.
-            </p>
-            {selectedScope?.scopeType === "GROUP" && selectedScope.telegramGroupId ? (
-              <div className="mt-4 flex flex-wrap gap-3">
-                <Link
-                  href={`/telegram/groups/${selectedScope.telegramGroupId}/moderation`}
-                  className="rounded-[18px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-3 text-sm font-bold text-white"
-                >
-                  Mở cấu hình group này
-                </Link>
-                <span className="inline-flex items-center rounded-[18px] bg-white/80 px-4 py-3 text-sm font-semibold text-[color:var(--on-surface)]">
-                  {selectedScope.scopeLabel}
-                </span>
-              </div>
-            ) : (
-              <p className="mt-4 text-sm text-[color:var(--on-surface-variant)]">
-                Scope toàn hệ thống không còn là nơi chỉnh rule chính. Hãy mở từng group để cấu
-                hình đúng hành vi moderation.
-              </p>
-            )}
-          </div>
-        </section>
+      <div className="grid gap-6">
 
         <section className="rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--on-surface-variant)]">

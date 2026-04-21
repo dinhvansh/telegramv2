@@ -37,6 +37,10 @@ const fallbackPermissionCatalog = [
     code: 'autopost.execute',
     description: 'Manage autopost schedules and logs',
   },
+  {
+    code: 'contacts.manage',
+    description: 'Import contacts and resolve Telegram IDs',
+  },
 ] as const;
 
 type RolesViewer = {
@@ -89,6 +93,7 @@ export class RolesService {
                     'moderation.review',
                     'settings.manage',
                     'autopost.execute',
+                    'contacts.manage',
                   ]
                 : role.title === 'Kiểm duyệt viên' || role.title === 'Moderator'
                   ? ['moderation.review']
@@ -99,6 +104,7 @@ export class RolesService {
                         'moderation.review',
                         'settings.manage',
                         'autopost.execute',
+                        'contacts.manage',
                       ],
         }));
     }

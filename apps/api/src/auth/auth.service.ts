@@ -26,6 +26,7 @@ const fallbackUsers = [
       'autopost.execute',
       'workspace.manage',
       'organization.manage',
+      'contacts.manage',
     ],
   },
   {
@@ -49,6 +50,7 @@ const fallbackUsers = [
       'moderation.review',
       'settings.manage',
       'autopost.execute',
+      'contacts.manage',
     ],
   },
   {
@@ -62,6 +64,7 @@ const fallbackUsers = [
       'moderation.review',
       'settings.manage',
       'autopost.execute',
+      'contacts.manage',
     ],
   },
 ] as const;

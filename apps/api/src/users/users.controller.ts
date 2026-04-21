@@ -31,6 +31,7 @@ type UpdateUserBody = {
   username?: string;
   department?: string;
   roleId?: string;
+  workspaceId?: string;
   status?: string;
 };
 

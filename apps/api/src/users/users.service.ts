@@ -40,6 +40,7 @@ const fallbackRoleCatalog = [
       'moderation.review',
       'settings.manage',
       'autopost.execute',
+      'contacts.manage',
     ],
   },
   {
@@ -57,6 +58,7 @@ const fallbackRoleCatalog = [
       'moderation.review',
       'settings.manage',
       'autopost.execute',
+      'contacts.manage',
     ],
   },
   {
@@ -72,6 +74,7 @@ const fallbackRoleCatalog = [
       'moderation.review',
       'settings.manage',
       'autopost.execute',
+      'contacts.manage',
     ],
   },
 ] as const;
@@ -453,11 +456,13 @@ export class UsersService {
       username?: string;
       department?: string;
       roleId?: string;
+      workspaceId?: string;
       status?: string;
     },
     viewer?: UserViewer,
   ) {
     const normalizedRoleId = input.roleId?.trim();
+    const normalizedWorkspaceId = input.workspaceId?.trim();
     const normalizedStatus = input.status?.trim().toUpperCase() as
       | keyof typeof UserStatus
       | undefined;
@@ -507,9 +512,38 @@ export class UsersService {
             permissions: [...fallbackRole.permissions],
           },
         ];
+
+        if (target.workspaces?.length) {
+          target.workspaces = target.workspaces.map((workspace) => ({
+            ...workspace,
+            roleName: fallbackRole.name,
+          }));
+        }
+      }
+
+      if (normalizedWorkspaceId) {
+        const activeRole = target.roles[0] ?? fallbackRoleCatalog[2];
+        target.workspaces = [
+          {
+            id: normalizedWorkspaceId,
+            name: 'Workspace đã chọn',
+            roleName: activeRole.name,
+          },
+        ];
       }
 
       return this.normalizeUserRecord(this.serializeFallbackUser(target));
+    }
+
+    if (normalizedWorkspaceId) {
+      const existingWorkspace = await this.prisma.workspace.findUnique({
+        where: { id: normalizedWorkspaceId },
+        select: { id: true },
+      });
+
+      if (!existingWorkspace) {
+        throw new NotFoundException('Workspace not found');
+      }
     }
 
     if (normalizedRoleId) {
@@ -568,6 +602,53 @@ export class UsersService {
             roleId: normalizedRoleId,
           },
         });
+      }
+
+      if (normalizedWorkspaceId || normalizedRoleId) {
+        const activeMemberships = await transaction.workspaceMembership.findMany({
+          where: {
+            userId,
+            isActive: true,
+          },
+          orderBy: {
+            assignedAt: 'asc',
+          },
+        });
+
+        const targetWorkspaceId =
+          normalizedWorkspaceId ?? activeMemberships[0]?.workspaceId;
+        const targetRoleId = normalizedRoleId ?? activeMemberships[0]?.roleId;
+
+        if (targetWorkspaceId && targetRoleId) {
+          await transaction.workspaceMembership.updateMany({
+            where: {
+              userId,
+              isActive: true,
+            },
+            data: {
+              isActive: false,
+            },
+          });
+
+          await transaction.workspaceMembership.upsert({
+            where: {
+              userId_workspaceId_roleId: {
+                userId,
+                workspaceId: targetWorkspaceId,
+                roleId: targetRoleId,
+              },
+            },
+            update: {
+              isActive: true,
+            },
+            create: {
+              userId,
+              workspaceId: targetWorkspaceId,
+              roleId: targetRoleId,
+              isActive: true,
+            },
+          });
+        }
       }
     });
 

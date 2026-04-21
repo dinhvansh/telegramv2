@@ -1,5 +1,5 @@
-import { ContactsWorkbench } from "@/components/contacts-workbench";
+import { PlatformDashboard } from "@/components/platform-dashboard";
 
 export default function ContactsPage() {
-  return <ContactsWorkbench />;
+  return <PlatformDashboard page="contacts" />;
 }

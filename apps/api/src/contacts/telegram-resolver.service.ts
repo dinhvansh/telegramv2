@@ -94,8 +94,13 @@ export class TelegramResolverService {
       }
 
       try {
-        const resolvedUser =
-          await this.mtprotoService.resolvePhoneToUserId(phone);
+        const resolvedUser = await this.mtprotoService.resolvePhoneToUserId(
+          phone,
+          {
+            firstName: contact.first_name,
+            lastName: contact.last_name,
+          },
+        );
 
         if (!resolvedUser) {
           await this.contactsService.upsertTelegramUser({

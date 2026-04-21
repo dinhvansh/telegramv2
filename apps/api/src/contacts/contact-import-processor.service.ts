@@ -218,7 +218,10 @@ export class ContactImportProcessorService {
 
     if (existing?.externalId && !existing.externalId.startsWith('temp_')) {
       const resolveResult =
-        await this.mtprotoService.resolvePhoneToUserIdWithDebug(phone);
+        await this.mtprotoService.resolvePhoneToUserIdWithDebug(phone, {
+          firstName: item.firstName,
+          lastName: item.lastName,
+        });
       const resolvedUser = resolveResult.user;
 
       const displayName = resolvedUser
@@ -229,10 +232,11 @@ export class ContactImportProcessorService {
               username: resolvedUser.username,
             },
             {
+              phone_number: phone,
               first_name: phone,
             },
           )
-        : existing.displayName ?? phone;
+        : (existing.displayName ?? phone);
 
       const telegramUser = await this.contactsService.upsertTelegramUser({
         externalId: existing.externalId,
@@ -267,7 +271,10 @@ export class ContactImportProcessorService {
     };
 
     const resolveResult =
-      await this.mtprotoService.resolvePhoneToUserIdWithDebug(phone);
+      await this.mtprotoService.resolvePhoneToUserIdWithDebug(phone, {
+        firstName: fallbackContact.first_name,
+        lastName: fallbackContact.last_name,
+      });
     const resolvedUser = resolveResult.user;
 
     if (!resolvedUser) {

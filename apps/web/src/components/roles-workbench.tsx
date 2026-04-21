@@ -5,6 +5,16 @@ import { useToast } from "@/context/toast-context";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
+const departmentOptions = [
+  "Vận hành",
+  "Kinh doanh",
+  "Marketing",
+  "Chăm sóc khách hàng",
+  "Cộng đồng",
+  "Kỹ thuật",
+  "Kế toán",
+  "Quản trị",
+];
 
 type RoleItem = {
   id: string;
@@ -46,6 +56,10 @@ type SessionProfile = {
   workspaces: WorkspaceCatalogItem[];
 };
 
+type WorkspaceCatalogResponse = {
+  workspaces: WorkspaceCatalogItem[];
+};
+
 type CreateUserForm = {
   name: string;
   email: string;
@@ -63,6 +77,7 @@ type EditUserForm = {
   email: string;
   username: string;
   department: string;
+  workspaceId: string;
   roleId: string;
   status: "ACTIVE" | "DISABLED";
   resetPassword?: string;
@@ -180,7 +195,7 @@ export function RolesWorkbench({
   const [form, setForm] = useState<CreateUserForm>({
     name: "Người dùng mới",
     email: "new.user@nexus.local",
-    username: "new_user",
+    username: "",
     password: "ChangeMe123!",
     department: "Vận hành",
     workspaceId: "",
@@ -231,6 +246,11 @@ export function RolesWorkbench({
           fetchJson<PermissionItem[]>(`${apiBaseUrl}/roles/catalog`, { headers }),
           fetchJson<SessionProfile>(`${apiBaseUrl}/auth/me`, { headers }),
         ]);
+        const workspaceResponse = canEditRolePermissions
+          ? await fetchJson<WorkspaceCatalogResponse>(`${apiBaseUrl}/workspaces/catalog`, {
+              headers,
+            })
+          : null;
 
         if (!active) {
           return;
@@ -239,11 +259,19 @@ export function RolesWorkbench({
         setRoles(rolesResponse);
         setUsers(usersResponse);
         setPermissionCatalog(permissionResponse);
-        setWorkspaceCatalog(profileResponse.workspaces ?? []);
+        setWorkspaceCatalog(
+          workspaceResponse?.workspaces?.length
+            ? workspaceResponse.workspaces
+            : (profileResponse.workspaces ?? []),
+        );
         setForm((current) => ({
           ...current,
           roleId: current.roleId || rolesResponse[0]?.id || "",
-          workspaceId: current.workspaceId || profileResponse.workspaces?.[0]?.id || "",
+          workspaceId:
+            current.workspaceId ||
+            workspaceResponse?.workspaces?.[0]?.id ||
+            profileResponse.workspaces?.[0]?.id ||
+            "",
         }));
       } catch (loadError) {
         if (!active) {
@@ -275,7 +303,7 @@ export function RolesWorkbench({
     return () => {
       active = false;
     };
-  }, [token, toast]);
+  }, [canEditRolePermissions, token, toast]);
 
   async function refreshData() {
     if (!token) {
@@ -289,11 +317,20 @@ export function RolesWorkbench({
       fetchJson<PermissionItem[]>(`${apiBaseUrl}/roles/catalog`, { headers }),
       fetchJson<SessionProfile>(`${apiBaseUrl}/auth/me`, { headers }),
     ]);
+    const workspaceResponse = canEditRolePermissions
+      ? await fetchJson<WorkspaceCatalogResponse>(`${apiBaseUrl}/workspaces/catalog`, {
+          headers,
+        })
+      : null;
 
     setRoles(rolesResponse);
     setUsers(usersResponse);
     setPermissionCatalog(permissionResponse);
-    setWorkspaceCatalog(profileResponse.workspaces ?? []);
+    setWorkspaceCatalog(
+      workspaceResponse?.workspaces?.length
+        ? workspaceResponse.workspaces
+        : (profileResponse.workspaces ?? []),
+    );
   }
 
   async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
@@ -306,10 +343,11 @@ export function RolesWorkbench({
     setIsCreating(true);
 
     try {
+      const { username: _username, ...createPayload } = form;
       await fetchJson(`${apiBaseUrl}/users`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify(form),
+        body: JSON.stringify(createPayload),
       });
       await refreshData();
       toast({ message: `Đã tạo user ${form.email}.`, type: "success" });
@@ -317,7 +355,6 @@ export function RolesWorkbench({
         ...current,
         name: "",
         email: "",
-        username: "",
         password: "",
         department: "Vận hành",
         status: "ACTIVE",
@@ -390,6 +427,7 @@ export function RolesWorkbench({
           name: editingUser.name,
           username: editingUser.username,
           department: editingUser.department,
+          workspaceId: editingUser.workspaceId,
           roleId: editingUser.roleId,
           status: editingUser.status,
         }),
@@ -582,35 +620,32 @@ export function RolesWorkbench({
               />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <input
-                value={form.username}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, username: event.target.value }))
-                }
-                className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
-                placeholder="Username"
-              />
+            <div>
               <input
                 value={form.password}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, password: event.target.value }))
                 }
-                className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
-                placeholder="Mật khẩu"
+                className="w-full rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
+                placeholder="Mật khẩu tạm"
                 type="password"
               />
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
-              <input
+              <select
                 value={form.department}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, department: event.target.value }))
                 }
                 className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
-                placeholder="Phòng ban"
-              />
+              >
+                {departmentOptions.map((department) => (
+                  <option key={department} value={department}>
+                    {department}
+                  </option>
+                ))}
+              </select>
               <select
                 value={form.workspaceId}
                 onChange={(event) =>
@@ -716,9 +751,6 @@ export function RolesWorkbench({
                     <p className="mt-1 text-sm text-[color:var(--on-surface-variant)]">
                       {user.email}
                     </p>
-                    <p className="mt-1 text-xs text-[color:var(--on-surface-variant)]">
-                      @{text(user.username ?? "chưa gán username")}
-                    </p>
                   </td>
                   <td className="px-5 py-4 align-top text-sm text-[color:var(--on-surface-variant)]">
                     {text(user.department)}
@@ -765,6 +797,7 @@ export function RolesWorkbench({
                               email: user.email,
                               username: user.username ?? "",
                               department: user.department,
+                              workspaceId: user.workspaces?.[0]?.id || workspaceCatalog[0]?.id || "",
                               roleId: user.roles[0]?.id || roles[0]?.id || "",
                               status: user.status,
                             })
@@ -893,7 +926,7 @@ export function RolesWorkbench({
 
       {editingUser ? (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/35 px-4">
-          <div className="w-full max-w-xl rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
+          <div className="w-full max-w-2xl rounded-[32px] bg-[color:var(--surface-card)] p-7 shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">
@@ -918,7 +951,7 @@ export function RolesWorkbench({
                 <p className="font-semibold">{editingUser.email}</p>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div>
                 <input
                   value={editingUser.name}
                   onChange={(event) =>
@@ -929,20 +962,10 @@ export function RolesWorkbench({
                   className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
                   placeholder="Họ tên"
                 />
-                <input
-                  value={editingUser.username}
-                  onChange={(event) =>
-                    setEditingUser((current) =>
-                      current ? { ...current, username: event.target.value } : current,
-                    )
-                  }
-                  className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
-                  placeholder="Username"
-                />
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
-                <input
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <select
                   value={editingUser.department}
                   onChange={(event) =>
                     setEditingUser((current) =>
@@ -950,8 +973,29 @@ export function RolesWorkbench({
                     )
                   }
                   className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
-                  placeholder="Phòng ban"
-                />
+                >
+                  {departmentOptions.map((department) => (
+                    <option key={department} value={department}>
+                      {department}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={editingUser.workspaceId}
+                  onChange={(event) =>
+                    setEditingUser((current) =>
+                      current ? { ...current, workspaceId: event.target.value } : current,
+                    )
+                  }
+                  className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-4 text-sm outline-none"
+                >
+                  <option value="">Workspace</option>
+                  {workspaceCatalog.map((ws) => (
+                    <option key={ws.id} value={ws.id}>
+                      {ws.name}
+                    </option>
+                  ))}
+                </select>
                 <select
                   value={editingUser.roleId}
                   onChange={(event) =>

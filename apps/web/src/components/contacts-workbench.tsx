@@ -72,21 +72,21 @@ function formatDateTime(value?: string | null) {
 function displayStatus(status: ContactImportBatch["status"] | ContactImportItem["status"]) {
   switch (status) {
     case "QUEUED":
-      return "Queued";
+      return "Đang chờ";
     case "PROCESSING":
-      return "Processing";
+      return "Đang xử lý";
     case "COMPLETED":
-      return "Completed";
+      return "Hoàn tất";
     case "FAILED":
-      return "Failed";
+      return "Lỗi";
     case "CANCELLED":
-      return "Cancelled";
+      return "Đã hủy";
     case "PENDING":
-      return "Pending";
+      return "Chờ xử lý";
     case "RESOLVED":
-      return "Resolved";
+      return "Đã resolve";
     case "SKIPPED":
-      return "Skipped";
+      return "Đã bỏ qua";
     default:
       return status;
   }
@@ -176,7 +176,7 @@ export function ContactsWorkbench() {
       setItemsPage(page);
       itemsPageRef.current = page;
     } catch (error) {
-      toast({ message: getErrorMessage(error, "Không tải được chi tiết batch"), type: "error" });
+      toast({ message: getErrorMessage(error, "Không tải được chi tiết lô import"), type: "error" });
     } finally {
       if (!options?.silent) {
         setItemsLoading(false);
@@ -246,7 +246,7 @@ export function ContactsWorkbench() {
         setLoginSuccess(null);
         setTab("auth");
         if (previousAuth && !options?.silent) {
-          toast({ message: "Session Telegram đã hết hạn. Hãy đăng nhập lại để tiếp tục.", type: "warning" });
+          toast({ message: "Phiên Telegram đã hết hạn. Hãy đăng nhập lại để tiếp tục.", type: "warning" });
         }
       }
       return data.authenticated;
@@ -378,7 +378,7 @@ export function ContactsWorkbench() {
       setQrExpires(data.expiresIn);
       startQrPolling();
     } catch (error) {
-      setLoginError(getErrorMessage(error, "Không thể tạo QR code"));
+      setLoginError(getErrorMessage(error, "Không thể tạo mã QR"));
     } finally {
       setQrLoading(false);
     }
@@ -478,7 +478,7 @@ export function ContactsWorkbench() {
       if (!fileInput.files?.[0]) return;
       const authenticated = await checkAuthStatus({ silent: true });
       if (!authenticated) {
-        toast({ message: "Session Telegram đã hết hạn. Đăng nhập lại rồi import tiếp.", type: "warning" });
+        toast({ message: "Phiên Telegram đã hết hạn. Đăng nhập lại rồi import tiếp.", type: "warning" });
         setTab("auth");
         return;
       }
@@ -487,7 +487,7 @@ export function ContactsWorkbench() {
       try {
         parsedPayload = JSON.parse(await file.text()) as unknown;
       } catch {
-        throw new Error("Uploaded file must be valid JSON");
+        throw new Error("File tải lên phải là JSON hợp lệ");
       }
       const res = await fetch(`${apiBaseUrl}/contacts/import`, {
         method: "POST",
@@ -505,7 +505,7 @@ export function ContactsWorkbench() {
       form.reset();
       await loadBatches(false);
     } catch (error) {
-      toast({ message: getErrorMessage(error, "Import thất bại"), type: "error" });
+      toast({ message: getErrorMessage(error, "Nhập dữ liệu thất bại"), type: "error" });
     } finally {
       setImportLoading(false);
     }
@@ -524,7 +524,7 @@ export function ContactsWorkbench() {
       toast({ message: data.message || "Đã đưa các item lỗi về hàng chờ.", type: "success" });
       await loadBatches(false);
     } catch (error) {
-      toast({ message: getErrorMessage(error, "Retry thất bại"), type: "error" });
+      toast({ message: getErrorMessage(error, "Chạy lại thất bại"), type: "error" });
     } finally {
       setActionLoading(null);
     }
@@ -543,7 +543,7 @@ export function ContactsWorkbench() {
       toast({ message: data.message || "Đã hủy batch.", type: "success" });
       await loadBatches(false);
     } catch (error) {
-      toast({ message: getErrorMessage(error, "Hủy batch thất bại"), type: "error" });
+      toast({ message: getErrorMessage(error, "Hủy lô import thất bại"), type: "error" });
     } finally {
       setActionLoading(null);
     }
@@ -565,7 +565,7 @@ export function ContactsWorkbench() {
       URL.revokeObjectURL(url);
       toast({ message: "Đã tải JSON kết quả batch.", type: "success" });
     } catch (error) {
-      toast({ message: getErrorMessage(error, "Export thất bại"), type: "error" });
+      toast({ message: getErrorMessage(error, "Xuất file thất bại"), type: "error" });
     } finally {
       setActionLoading(null);
     }
@@ -587,7 +587,7 @@ export function ContactsWorkbench() {
       URL.revokeObjectURL(url);
       toast({ message: "Đã tải Excel kết quả batch.", type: "success" });
     } catch (error) {
-      toast({ message: getErrorMessage(error, "Export Excel thất bại"), type: "error" });
+      toast({ message: getErrorMessage(error, "Xuất Excel thất bại"), type: "error" });
     } finally {
       setActionLoading(null);
     }
@@ -599,7 +599,7 @@ export function ContactsWorkbench() {
     return (
       <Image
         src={qrApiUrl}
-        alt="Telegram QR Code"
+        alt="Mã QR Telegram"
         width={220}
         height={220}
         unoptimized
@@ -609,18 +609,18 @@ export function ContactsWorkbench() {
   };
 
   const authPanel = authStatus?.authenticated ? (
-    <section className="rounded-[32px] border border-white/70 bg-white/88 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur xl:p-8">
+    <section className="w-full rounded-[24px] bg-[color:var(--surface-card)] p-6 shadow-[0_8px_32px_rgba(42,52,57,0.04)] xl:p-8">
       <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
         <div className="max-w-3xl">
           <span className="inline-flex rounded-full bg-[color:var(--success-soft)] px-3 py-1 text-xs font-semibold text-[color:var(--success)]">
-            Telegram session active
+            Phiên Telegram đang hoạt động
           </span>
           <h2 className="mt-4 text-2xl font-black tracking-tight text-[color:var(--on-surface)]">
-            Contacts resolver is ready
+            Bộ resolve danh bạ đã sẵn sàng
           </h2>
           <p className="mt-3 text-sm leading-6 text-[color:var(--on-surface-variant)]">
-            The current MTProto session is already stored. Every import batch in this screen reuses it to resolve
-            phone numbers into Telegram IDs.
+            Phiên MTProto hiện tại đã được lưu. Mọi lô import trên màn hình này sẽ dùng lại phiên đó để resolve
+            số điện thoại thành Telegram ID.
           </p>
         </div>
         <button
@@ -628,44 +628,44 @@ export function ContactsWorkbench() {
           onClick={handleLogout}
           className="inline-flex rounded-full border border-[color:var(--outline)]/70 bg-white px-4 py-2 text-sm font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)]"
         >
-          Create new session
+          Tạo phiên mới
         </button>
       </div>
       <div className="mt-6 grid gap-4 md:grid-cols-4">
         <div className="rounded-[24px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-low)] p-4">
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">Batches</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">Lô import</p>
           <p className="mt-3 text-3xl font-black tracking-tight text-[color:var(--on-surface)]">{totals.total}</p>
         </div>
         <div className="rounded-[24px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-low)] p-4">
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">Running</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">Đang chạy</p>
           <p className="mt-3 text-3xl font-black tracking-tight text-sky-700">{totals.running}</p>
         </div>
         <div className="rounded-[24px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-low)] p-4">
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">Resolved</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">Đã resolve</p>
           <p className="mt-3 text-3xl font-black tracking-tight text-[color:var(--success)]">{totals.resolved}</p>
         </div>
         <div className="rounded-[24px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-low)] p-4">
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">Failed</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">Lỗi</p>
           <p className="mt-3 text-3xl font-black tracking-tight text-[color:var(--danger)]">{totals.failed}</p>
         </div>
       </div>
     </section>
   ) : (
-    <section className="mx-auto max-w-5xl rounded-[32px] border border-white/70 bg-white/88 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur xl:p-8">
+    <section className="w-full rounded-[24px] bg-[color:var(--surface-card)] p-6 shadow-[0_8px_32px_rgba(42,52,57,0.04)] xl:p-8">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="max-w-2xl">
           <span className="inline-flex rounded-full bg-[color:var(--primary-soft)] px-3 py-1 text-xs font-semibold text-[color:var(--primary)]">
-            Telegram auth
+            Đăng nhập Telegram
           </span>
           <h2 className="mt-4 text-2xl font-black tracking-tight text-[color:var(--on-surface)]">
-            Connect Telegram inside Contacts
+            Kết nối Telegram trong Danh bạ
           </h2>
           <p className="mt-3 text-sm leading-6 text-[color:var(--on-surface-variant)]">
-            Login and import now live in the same workspace screen. No separate settings flow is required.
+            Đăng nhập và import nằm ngay trong cùng màn hình workspace. Không cần mở luồng cài đặt riêng.
           </p>
         </div>
         <span className="inline-flex rounded-full bg-[color:var(--surface-low)] px-3 py-1 text-xs font-semibold text-[color:var(--on-surface-variant)]">
-          Session required
+          Cần phiên đăng nhập
         </span>
       </div>
 
@@ -674,69 +674,69 @@ export function ContactsWorkbench() {
           loginMethod === 'phone'
             ? 'bg-[color:var(--primary)] text-white shadow-sm'
             : 'text-[color:var(--on-surface-variant)] hover:text-[color:var(--on-surface)]'
-        }`}>Phone</button>
+        }`}>Số điện thoại</button>
         <button type="button" onClick={() => setLoginMethod('qr')} className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
           loginMethod === 'qr'
             ? 'bg-[color:var(--primary)] text-white shadow-sm'
             : 'text-[color:var(--on-surface-variant)] hover:text-[color:var(--on-surface)]'
-        }`}>QR code</button>
+        }`}>Mã QR</button>
       </div>
 
-      {loginSuccess ? <div className="mt-5 rounded-[20px] border border-[color:var(--success)]/20 bg-[color:var(--success-soft)] px-4 py-3 text-sm text-[color:var(--success)]">{loginSuccess} Redirecting to batches...</div> : null}
+      {loginSuccess ? <div className="mt-5 rounded-[20px] border border-[color:var(--success)]/20 bg-[color:var(--success-soft)] px-4 py-3 text-sm text-[color:var(--success)]">{loginSuccess} Đang chuyển sang danh sách lô...</div> : null}
       {loginError ? <div className="mt-5 rounded-[20px] border border-[color:var(--danger)]/20 bg-[color:var(--danger-soft)] px-4 py-3 text-sm text-[color:var(--danger)]">{loginError}</div> : null}
 
       {loginMethod === 'phone' ? (
-        <div className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-          <div className="rounded-[28px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-low)] p-5">
-            <p className="text-sm font-semibold text-[color:var(--on-surface)]">Login with phone number</p>
-            <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">Use this flow when QR is unavailable. OTP and 2FA are handled directly in this screen.</p>
+        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+          <div className="rounded-[22px] bg-[color:var(--surface-low)] p-5">
+            <p className="text-sm font-semibold text-[color:var(--on-surface)]">Đăng nhập bằng số điện thoại</p>
+            <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">Dùng luồng này khi không quét được QR. Mã OTP và 2FA được xử lý trực tiếp tại đây.</p>
             <div className="mt-5 space-y-4">
               <div>
-                <label className="mb-2 block text-sm font-medium text-[color:var(--on-surface)]">Telegram phone number</label>
-                <input type="text" value={phoneAuthForm.phoneNumber} onChange={(event) => setPhoneAuthForm((current) => ({ ...current, phoneNumber: event.target.value }))} placeholder="+84901234567" className="w-full rounded-[18px] border border-[color:var(--outline)]/70 bg-white px-4 py-3 text-sm text-[color:var(--on-surface)] outline-none transition focus:border-[color:var(--primary)]" />
+                <label className="mb-2 block text-sm font-medium text-[color:var(--on-surface)]">Số điện thoại Telegram</label>
+                <input type="text" value={phoneAuthForm.phoneNumber} onChange={(event) => setPhoneAuthForm((current) => ({ ...current, phoneNumber: event.target.value }))} placeholder="+84901234567" className="w-full rounded-[18px] border border-[color:var(--outline)]/70 bg-white px-4 py-4 text-sm text-[color:var(--on-surface)] outline-none transition focus:border-[color:var(--primary)]" />
               </div>
-              <button type="button" onClick={() => void startPhoneLogin()} disabled={phoneAuthLoading || !phoneAuthForm.phoneNumber.trim() || phoneAuthStep !== 'phone'} className="w-full rounded-[18px] bg-[color:var(--primary)] px-5 py-3 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">{phoneAuthLoading && phoneAuthStep === 'phone' ? 'Sending OTP...' : 'Send OTP'}</button>
+              <button type="button" onClick={() => void startPhoneLogin()} disabled={phoneAuthLoading || !phoneAuthForm.phoneNumber.trim() || phoneAuthStep !== 'phone'} className="w-full rounded-[18px] bg-[color:var(--primary)] px-5 py-4 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">{phoneAuthLoading && phoneAuthStep === 'phone' ? 'Đang gửi OTP...' : 'Gửi OTP'}</button>
               {(phoneAuthStep === 'code' || phoneAuthStep === 'password') ? (
                 <div className="rounded-[22px] border border-[color:var(--outline)]/60 bg-white p-4">
-                  <label className="mb-2 block text-sm font-medium text-[color:var(--on-surface)]">Verification code</label>
-                  <input type="text" value={phoneAuthForm.phoneCode} onChange={(event) => setPhoneAuthForm((current) => ({ ...current, phoneCode: event.target.value }))} placeholder="Enter OTP" className="w-full rounded-[16px] border border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-3 text-sm text-[color:var(--on-surface)] outline-none transition focus:border-[color:var(--primary)]" />
-                  <button type="button" onClick={() => void verifyPhoneCode()} disabled={phoneAuthLoading || !phoneAuthForm.phoneCode.trim() || phoneAuthStep !== 'code'} className="mt-3 w-full rounded-[16px] border border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-5 py-3 text-sm font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)] disabled:cursor-not-allowed disabled:opacity-50">{phoneAuthLoading && phoneAuthStep === 'code' ? 'Verifying...' : 'Confirm OTP'}</button>
+                  <label className="mb-2 block text-sm font-medium text-[color:var(--on-surface)]">Mã xác thực</label>
+                  <input type="text" value={phoneAuthForm.phoneCode} onChange={(event) => setPhoneAuthForm((current) => ({ ...current, phoneCode: event.target.value }))} placeholder="Nhập OTP" className="w-full rounded-[16px] border border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-3 text-sm text-[color:var(--on-surface)] outline-none transition focus:border-[color:var(--primary)]" />
+                  <button type="button" onClick={() => void verifyPhoneCode()} disabled={phoneAuthLoading || !phoneAuthForm.phoneCode.trim() || phoneAuthStep !== 'code'} className="mt-3 w-full rounded-[16px] border border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-5 py-3 text-sm font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)] disabled:cursor-not-allowed disabled:opacity-50">{phoneAuthLoading && phoneAuthStep === 'code' ? 'Đang xác thực...' : 'Xác nhận OTP'}</button>
                 </div>
               ) : null}
               {phoneAuthStep === 'password' ? (
                 <div className="rounded-[22px] border border-[color:var(--warning)]/20 bg-[color:var(--warning-soft)] p-4">
-                  <label className="mb-2 block text-sm font-medium text-[color:var(--warning)]">2FA password</label>
-                  <input type="password" value={phoneAuthForm.password} onChange={(event) => setPhoneAuthForm((current) => ({ ...current, password: event.target.value }))} placeholder="Enter your password" className="w-full rounded-[16px] border border-[color:var(--warning)]/25 bg-white px-4 py-3 text-sm text-[color:var(--on-surface)] outline-none transition focus:border-[color:var(--warning)]" />
-                  <button type="button" onClick={() => void verifyPhonePassword()} disabled={phoneAuthLoading || !phoneAuthForm.password.trim()} className="mt-3 w-full rounded-[16px] bg-[color:var(--warning)] px-5 py-3 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">{phoneAuthLoading ? 'Checking 2FA...' : 'Finish login'}</button>
+                  <label className="mb-2 block text-sm font-medium text-[color:var(--warning)]">Mật khẩu 2FA</label>
+                  <input type="password" value={phoneAuthForm.password} onChange={(event) => setPhoneAuthForm((current) => ({ ...current, password: event.target.value }))} placeholder="Nhập mật khẩu" className="w-full rounded-[16px] border border-[color:var(--warning)]/25 bg-white px-4 py-3 text-sm text-[color:var(--on-surface)] outline-none transition focus:border-[color:var(--warning)]" />
+                  <button type="button" onClick={() => void verifyPhonePassword()} disabled={phoneAuthLoading || !phoneAuthForm.password.trim()} className="mt-3 w-full rounded-[16px] bg-[color:var(--warning)] px-5 py-3 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">{phoneAuthLoading ? 'Đang kiểm tra 2FA...' : 'Hoàn tất đăng nhập'}</button>
                 </div>
               ) : null}
             </div>
           </div>
-          <div className="rounded-[28px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-low)] p-5">
-            <p className="text-sm font-semibold text-[color:var(--on-surface)]">Notes</p>
+          <div className="rounded-[22px] bg-[color:var(--surface-low)] p-5">
+            <p className="text-sm font-semibold text-[color:var(--on-surface)]">Lưu ý</p>
             <ul className="mt-3 space-y-3 text-sm leading-6 text-[color:var(--on-surface-variant)]">
-              <li>OTP can arrive in Telegram app first, not necessarily by SMS.</li>
-              <li>If the account uses 2FA, the password step appears in the same panel.</li>
-              <li>After login completes, this page switches straight to batch import.</li>
+              <li>OTP có thể gửi vào app Telegram trước, không nhất thiết gửi qua SMS.</li>
+              <li>Nếu tài khoản bật 2FA, bước nhập mật khẩu sẽ hiện ngay trong khung này.</li>
+              <li>Sau khi đăng nhập xong, trang sẽ chuyển thẳng sang phần import.</li>
             </ul>
           </div>
         </div>
       ) : (
-        <div className="mt-6 grid gap-6 xl:grid-cols-[0.95fr_1.05fr] xl:items-center">
-          <div className="rounded-[28px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-low)] p-5">
-            <p className="text-sm font-semibold text-[color:var(--on-surface)]">Login with QR</p>
-            <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">Scan the code from Telegram to store the session quickly. If QR has issues, switch back to phone login above.</p>
+        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(360px,0.85fr)_minmax(0,1.15fr)] xl:items-center">
+          <div className="rounded-[22px] bg-[color:var(--surface-low)] p-5">
+            <p className="text-sm font-semibold text-[color:var(--on-surface)]">Đăng nhập bằng QR</p>
+            <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">Quét mã từ Telegram để lưu phiên nhanh. Nếu QR lỗi, chuyển lại đăng nhập bằng số điện thoại ở trên.</p>
           </div>
           {!qrToken ? (
             <div className="flex justify-center">
-              <button onClick={startQrLogin} disabled={qrLoading} className="rounded-full bg-[color:var(--primary)] px-6 py-3 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">{qrLoading ? 'Generating QR...' : 'Generate QR code'}</button>
+              <button onClick={startQrLogin} disabled={qrLoading} className="rounded-full bg-[color:var(--primary)] px-6 py-3 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">{qrLoading ? 'Đang tạo QR...' : 'Tạo mã QR'}</button>
             </div>
           ) : (
-            <div className="rounded-[28px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-low)] p-6 text-center">
+            <div className="rounded-[22px] bg-[color:var(--surface-low)] p-6 text-center">
               <div className="flex justify-center"><div className="rounded-[24px] bg-white p-4 shadow-[0_18px_48px_rgba(15,23,42,0.08)]">{renderQrImage(qrToken)}</div></div>
-              <p className="mt-4 text-sm text-[color:var(--on-surface-variant)]">Expires in <span className="font-mono font-semibold text-[color:var(--on-surface)]">{qrExpires}s</span></p>
-              {qrReady ? <div className="mt-4 rounded-[18px] border border-[color:var(--success)]/20 bg-[color:var(--success-soft)] px-4 py-3 text-sm text-[color:var(--success)]">QR scanned. Confirming session...</div> : null}
-              <button onClick={() => { setQrToken(null); void startQrLogin(); }} className="mt-4 text-sm font-semibold text-[color:var(--primary)] transition hover:opacity-80">Regenerate QR code</button>
+              <p className="mt-4 text-sm text-[color:var(--on-surface-variant)]">Hết hạn sau <span className="font-mono font-semibold text-[color:var(--on-surface)]">{qrExpires}s</span></p>
+              {qrReady ? <div className="mt-4 rounded-[18px] border border-[color:var(--success)]/20 bg-[color:var(--success-soft)] px-4 py-3 text-sm text-[color:var(--success)]">Đã quét QR. Đang xác nhận phiên...</div> : null}
+              <button onClick={() => { setQrToken(null); void startQrLogin(); }} className="mt-4 text-sm font-semibold text-[color:var(--primary)] transition hover:opacity-80">Tạo lại mã QR</button>
             </div>
           )}
         </div>
@@ -746,41 +746,41 @@ export function ContactsWorkbench() {
 
   const importPanel = (
     <div className="space-y-6">
-      <section className="rounded-[28px] border border-white/70 bg-white/88 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_280px]">
+      <section className="rounded-[24px] bg-[color:var(--surface-card)] p-5 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_340px]">
           <div>
-            <span className="inline-flex rounded-full bg-[color:var(--primary-soft)] px-3 py-1 text-xs font-semibold text-[color:var(--primary)]">New import</span>
-            <h2 className="mt-3 text-xl font-black tracking-tight text-[color:var(--on-surface)]">Create a new batch</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--on-surface-variant)]">Upload the original Telegram export JSON, then track the resolve run below in the same screen.</p>
+            <span className="inline-flex rounded-full bg-[color:var(--primary-soft)] px-3 py-1 text-xs font-semibold text-[color:var(--primary)]">Nhập dữ liệu mới</span>
+            <h2 className="mt-3 text-xl font-black tracking-tight text-[color:var(--on-surface)]">Tạo lô import mới</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--on-surface-variant)]">Tải file JSON export gốc từ Telegram lên, sau đó theo dõi tiến trình resolve ngay bên dưới.</p>
             <form onSubmit={handleImport} className="mt-4 space-y-3">
               <div>
-                <label className="mb-2 block text-sm font-medium text-[color:var(--on-surface)]">JSON file</label>
+                <label className="mb-2 block text-sm font-medium text-[color:var(--on-surface)]">File JSON</label>
                 <input type="file" name="contactsFile" accept=".json" className="block w-full cursor-pointer rounded-[16px] border border-dashed border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-3 text-sm text-[color:var(--on-surface-variant)] file:mr-4 file:cursor-pointer file:rounded-full file:border-0 file:bg-[color:var(--primary)] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" />
               </div>
-              <button type="submit" disabled={importLoading} className="inline-flex rounded-[16px] bg-[color:var(--primary)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">{importLoading ? 'Creating batch...' : 'Create import batch'}</button>
+              <button type="submit" disabled={importLoading} className="inline-flex rounded-[16px] bg-[color:var(--primary)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">{importLoading ? 'Đang tạo lô...' : 'Tạo lô import'}</button>
             </form>
           </div>
           <div className="rounded-[22px] bg-[color:var(--surface-low)] p-4 text-sm leading-6 text-[color:var(--on-surface-variant)]">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">Flow</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">Quy trình</p>
             <div className="mt-2 space-y-1.5">
-              <p>1. Upload the original Telegram export JSON.</p>
-              <p>2. Server creates one import batch and resolves rows in background.</p>
-              <p>3. Review status, retry failures, and export result files below.</p>
+              <p>1. Tải file JSON export gốc từ Telegram.</p>
+              <p>2. Server tạo một lô import và resolve từng dòng ở nền.</p>
+              <p>3. Xem trạng thái, chạy lại dòng lỗi và xuất file kết quả bên dưới.</p>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="rounded-[28px] border border-white/70 bg-white/88 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
+      <section className="rounded-[24px] bg-[color:var(--surface-card)] p-5 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <h2 className="text-xl font-black tracking-tight text-[color:var(--on-surface)]">Recent batches</h2>
-            <p className="mt-1 text-sm leading-6 text-[color:var(--on-surface-variant)]">Pick a batch to inspect progress and result rows.</p>
+            <h2 className="text-xl font-black tracking-tight text-[color:var(--on-surface)]">Lô import gần đây</h2>
+            <p className="mt-1 text-sm leading-6 text-[color:var(--on-surface-variant)]">Chọn một lô để xem tiến trình và các dòng kết quả.</p>
           </div>
-          <button type="button" onClick={() => void loadBatches(false)} className="rounded-full border border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-2 text-xs font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)]">Refresh</button>
+          <button type="button" onClick={() => void loadBatches(false)} className="rounded-full border border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-2 text-xs font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)]">Làm mới</button>
         </div>
         <div className="mt-4 grid gap-3 xl:grid-cols-3">
-          {batches.length === 0 ? <p className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)] xl:col-span-2 2xl:col-span-3">No import batch yet.</p> : batches.map((batch) => (
+          {batches.length === 0 ? <p className="rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)] xl:col-span-2 2xl:col-span-3">Chưa có lô import nào.</p> : batches.map((batch) => (
             <button key={batch.id} type="button" onClick={() => { setSelectedBatchId(batch.id); void loadBatchItems(batch.id, 1); }} className={`w-full rounded-[22px] border p-3.5 text-left transition ${
               selectedBatchId === batch.id
                 ? 'border-[color:var(--primary)] bg-[color:var(--primary-soft)]/60'
@@ -794,87 +794,87 @@ export function ContactsWorkbench() {
                 <span className={`rounded-full px-3 py-1 text-[11px] font-semibold ${statusTone(batch.status)}`}>{displayStatus(batch.status)}</span>
               </div>
               <div className="mt-3">
-                <div className="mb-2 flex items-center justify-between text-xs text-[color:var(--on-surface-variant)]"><span>{batch.processedCount}/{batch.totalCount} rows</span><span>{progressPercent(batch)}%</span></div>
+                <div className="mb-2 flex items-center justify-between text-xs text-[color:var(--on-surface-variant)]"><span>{batch.processedCount}/{batch.totalCount} dòng</span><span>{progressPercent(batch)}%</span></div>
                 <div className="h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-gradient-to-r from-[color:var(--primary)] to-sky-400" style={{ width: `${progressPercent(batch)}%` }} /></div>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-[color:var(--on-surface-variant)]">
-                <div>Contacts: <span className="font-semibold text-[color:var(--on-surface)]">{batch.contactsCount}</span></div>
-                <div>Frequent: <span className="font-semibold text-[color:var(--on-surface)]">{batch.frequentCount}</span></div>
-                <div>Resolved: <span className="font-semibold text-[color:var(--success)]">{batch.resolvedCount}</span></div>
-                <div>Failed: <span className="font-semibold text-[color:var(--danger)]">{batch.failedCount}</span></div>
+                <div>Danh bạ: <span className="font-semibold text-[color:var(--on-surface)]">{batch.contactsCount}</span></div>
+                <div>Thường gặp: <span className="font-semibold text-[color:var(--on-surface)]">{batch.frequentCount}</span></div>
+                <div>Đã resolve: <span className="font-semibold text-[color:var(--success)]">{batch.resolvedCount}</span></div>
+                <div>Lỗi: <span className="font-semibold text-[color:var(--danger)]">{batch.failedCount}</span></div>
               </div>
             </button>
           ))}
         </div>
       </section>
 
-      <section className="rounded-[28px] border border-white/70 bg-white/88 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
+      <section className="rounded-[24px] bg-[color:var(--surface-card)] p-5 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div>
-              <h2 className="text-xl font-black tracking-tight text-[color:var(--on-surface)]">Batch details</h2>
-              <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">Progress, source info, and batch actions stay in one panel.</p>
+              <h2 className="text-xl font-black tracking-tight text-[color:var(--on-surface)]">Chi tiết lô import</h2>
+              <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">Tiến trình, nguồn dữ liệu và thao tác lô nằm chung trong một khung.</p>
             </div>
             {selectedBatch ? (
               <div className="flex flex-wrap items-center gap-2">
                 <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusTone(selectedBatch.status)}`}>{displayStatus(selectedBatch.status)}</span>
-                <button type="button" onClick={() => void handleExportBatch()} disabled={actionLoading !== null} className="rounded-full border border-[color:var(--outline)]/70 bg-white px-4 py-2 text-xs font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)] disabled:cursor-not-allowed disabled:opacity-40">{actionLoading === 'export' ? 'Exporting...' : 'Export JSON'}</button>
-                <button type="button" onClick={() => void handleExportBatchExcel()} disabled={actionLoading !== null || !['COMPLETED', 'FAILED', 'CANCELLED'].includes(selectedBatch.status)} className="rounded-full bg-[color:var(--success-soft)] px-4 py-2 text-xs font-semibold text-[color:var(--success)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">{actionLoading === 'export' ? 'Exporting...' : 'Export Excel'}</button>
-                <button type="button" onClick={() => void handleRetryFailed()} disabled={actionLoading !== null || selectedBatch.failedCount === 0} className="rounded-full bg-[color:var(--warning-soft)] px-4 py-2 text-xs font-semibold text-[color:var(--warning)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">{actionLoading === 'retry' ? 'Retrying...' : 'Retry failed'}</button>
-                <button type="button" onClick={() => void handleCancelBatch()} disabled={actionLoading !== null || !['QUEUED', 'PROCESSING'].includes(selectedBatch.status)} className="rounded-full bg-[color:var(--danger-soft)] px-4 py-2 text-xs font-semibold text-[color:var(--danger)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">{actionLoading === 'cancel' ? 'Cancelling...' : 'Cancel batch'}</button>
+                <button type="button" onClick={() => void handleExportBatch()} disabled={actionLoading !== null} className="rounded-full border border-[color:var(--outline)]/70 bg-white px-4 py-2 text-xs font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)] disabled:cursor-not-allowed disabled:opacity-40">{actionLoading === 'export' ? 'Đang xuất...' : 'Xuất JSON'}</button>
+                <button type="button" onClick={() => void handleExportBatchExcel()} disabled={actionLoading !== null || !['COMPLETED', 'FAILED', 'CANCELLED'].includes(selectedBatch.status)} className="rounded-full bg-[color:var(--success-soft)] px-4 py-2 text-xs font-semibold text-[color:var(--success)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">{actionLoading === 'export' ? 'Đang xuất...' : 'Xuất Excel'}</button>
+                <button type="button" onClick={() => void handleRetryFailed()} disabled={actionLoading !== null || selectedBatch.failedCount === 0} className="rounded-full bg-[color:var(--warning-soft)] px-4 py-2 text-xs font-semibold text-[color:var(--warning)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">{actionLoading === 'retry' ? 'Đang chạy lại...' : 'Chạy lại dòng lỗi'}</button>
+                <button type="button" onClick={() => void handleCancelBatch()} disabled={actionLoading !== null || !['QUEUED', 'PROCESSING'].includes(selectedBatch.status)} className="rounded-full bg-[color:var(--danger-soft)] px-4 py-2 text-xs font-semibold text-[color:var(--danger)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">{actionLoading === 'cancel' ? 'Đang hủy...' : 'Hủy lô'}</button>
               </div>
             ) : null}
           </div>
-          {!selectedBatch ? <div className="mt-6 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)]">Select a batch from the list above to see details.</div> : (
+          {!selectedBatch ? <div className="mt-6 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)]">Chọn một lô ở danh sách bên trên để xem chi tiết.</div> : (
             <>
               <div className="mt-5 grid gap-3 md:grid-cols-4">
-                <div className="rounded-[18px] bg-[color:var(--surface-low)] p-3 text-center"><div className="text-2xl font-black tracking-tight text-[color:var(--on-surface)]">{selectedBatch.totalCount}</div><div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Total</div></div>
-                <div className="rounded-[18px] bg-[color:var(--surface-low)] p-3 text-center"><div className="text-2xl font-black tracking-tight text-sky-700">{selectedBatch.processedCount}</div><div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Processed</div></div>
-                <div className="rounded-[18px] bg-[color:var(--surface-low)] p-3 text-center"><div className="text-2xl font-black tracking-tight text-[color:var(--success)]">{selectedBatch.resolvedCount}</div><div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Resolved</div></div>
-                <div className="rounded-[18px] bg-[color:var(--surface-low)] p-3 text-center"><div className="text-2xl font-black tracking-tight text-[color:var(--danger)]">{selectedBatch.failedCount}</div><div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Failed</div></div>
+                <div className="rounded-[18px] bg-[color:var(--surface-low)] p-3 text-center"><div className="text-2xl font-black tracking-tight text-[color:var(--on-surface)]">{selectedBatch.totalCount}</div><div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Tổng</div></div>
+                <div className="rounded-[18px] bg-[color:var(--surface-low)] p-3 text-center"><div className="text-2xl font-black tracking-tight text-sky-700">{selectedBatch.processedCount}</div><div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Đã xử lý</div></div>
+                <div className="rounded-[18px] bg-[color:var(--surface-low)] p-3 text-center"><div className="text-2xl font-black tracking-tight text-[color:var(--success)]">{selectedBatch.resolvedCount}</div><div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Đã resolve</div></div>
+                <div className="rounded-[18px] bg-[color:var(--surface-low)] p-3 text-center"><div className="text-2xl font-black tracking-tight text-[color:var(--danger)]">{selectedBatch.failedCount}</div><div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Lỗi</div></div>
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-3 text-sm"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Workspace</p><p className="mt-1.5 font-medium text-[color:var(--on-surface)]">{selectedBatch.workspaceName || '-'}</p></div>
-                <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-3 text-sm"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">File</p><p className="mt-1.5 font-medium text-[color:var(--on-surface)]">{selectedBatch.sourceFileName || '-'}</p></div>
-                <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-3 text-sm"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Started at</p><p className="mt-1.5 font-medium text-[color:var(--on-surface)]">{formatDateTime(selectedBatch.startedAt)}</p></div>
-                <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-3 text-sm"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Finished at</p><p className="mt-1.5 font-medium text-[color:var(--on-surface)]">{formatDateTime(selectedBatch.finishedAt)}</p></div>
+                <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-3 text-sm"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">WP</p><p className="mt-1.5 font-medium text-[color:var(--on-surface)]">{selectedBatch.workspaceName || '-'}</p></div>
+                <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-3 text-sm"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Tệp</p><p className="mt-1.5 font-medium text-[color:var(--on-surface)]">{selectedBatch.sourceFileName || '-'}</p></div>
+                <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-3 text-sm"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Bắt đầu</p><p className="mt-1.5 font-medium text-[color:var(--on-surface)]">{formatDateTime(selectedBatch.startedAt)}</p></div>
+                <div className="rounded-[18px] bg-[color:var(--surface-low)] px-4 py-3 text-sm"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">Kết thúc</p><p className="mt-1.5 font-medium text-[color:var(--on-surface)]">{formatDateTime(selectedBatch.finishedAt)}</p></div>
               </div>
-              {selectedBatch.errorMessage ? <div className="mt-4 rounded-[22px] border border-[color:var(--danger)]/20 bg-[color:var(--danger-soft)] px-4 py-4 text-sm text-[color:var(--danger)]">Batch error: {selectedBatch.errorMessage}</div> : null}
+              {selectedBatch.errorMessage ? <div className="mt-4 rounded-[22px] border border-[color:var(--danger)]/20 bg-[color:var(--danger-soft)] px-4 py-4 text-sm text-[color:var(--danger)]">Lỗi lô import: {selectedBatch.errorMessage}</div> : null}
             </>
           )}
         </section>
 
-      <section className="rounded-[32px] border border-white/70 bg-white/88 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
+      <section className="rounded-[24px] bg-[color:var(--surface-card)] p-5 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-xl font-black tracking-tight text-[color:var(--on-surface)]">Batch items</h2>
-            <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">Review contact rows and Telegram resolution output.</p>
+            <h2 className="text-xl font-black tracking-tight text-[color:var(--on-surface)]">Dòng trong lô</h2>
+            <p className="mt-2 text-sm leading-6 text-[color:var(--on-surface-variant)]">Kiểm tra từng dòng contact và kết quả resolve từ Telegram.</p>
           </div>
           {selectedBatchItems ? (
             <div className="flex items-center gap-2">
-              <button type="button" disabled={itemsPage <= 1 || itemsLoading || !selectedBatchId} onClick={() => selectedBatchId && void loadBatchItems(selectedBatchId, itemsPage - 1)} className="rounded-full border border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-2 text-xs font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)] disabled:cursor-not-allowed disabled:opacity-40">Prev</button>
-              <span className="text-xs font-medium text-[color:var(--on-surface-variant)]">Page {selectedBatchItems.page}/{selectedBatchItems.totalPages}</span>
-              <button type="button" disabled={itemsPage >= selectedBatchItems.totalPages || itemsLoading || !selectedBatchId} onClick={() => selectedBatchId && void loadBatchItems(selectedBatchId, itemsPage + 1)} className="rounded-full border border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-2 text-xs font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)] disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+              <button type="button" disabled={itemsPage <= 1 || itemsLoading || !selectedBatchId} onClick={() => selectedBatchId && void loadBatchItems(selectedBatchId, itemsPage - 1)} className="rounded-full border border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-2 text-xs font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)] disabled:cursor-not-allowed disabled:opacity-40">Trước</button>
+              <span className="text-xs font-medium text-[color:var(--on-surface-variant)]">Trang {selectedBatchItems.page}/{selectedBatchItems.totalPages}</span>
+              <button type="button" disabled={itemsPage >= selectedBatchItems.totalPages || itemsLoading || !selectedBatchId} onClick={() => selectedBatchId && void loadBatchItems(selectedBatchId, itemsPage + 1)} className="rounded-full border border-[color:var(--outline)]/70 bg-[color:var(--surface-low)] px-4 py-2 text-xs font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)] disabled:cursor-not-allowed disabled:opacity-40">Sau</button>
             </div>
           ) : null}
         </div>
-        {itemsLoading ? <div className="mt-6 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)]">Loading items...</div> : !selectedBatchItems || selectedBatchItems.items.length === 0 ? <div className="mt-6 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)]">No items to display.</div> : (
+        {itemsLoading ? <div className="mt-6 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)]">Đang tải các dòng...</div> : !selectedBatchItems || selectedBatchItems.items.length === 0 ? <div className="mt-6 rounded-[22px] bg-[color:var(--surface-low)] px-4 py-5 text-sm text-[color:var(--on-surface-variant)]">Chưa có dòng để hiển thị.</div> : (
           <div className="mt-6 overflow-x-auto rounded-[24px] border border-[color:var(--outline)]/60 bg-[color:var(--surface-low)]">
             <table className="w-full min-w-[860px] text-sm">
               <thead>
                 <tr className="border-b border-[color:var(--outline)]/60 text-left text-xs uppercase tracking-[0.14em] text-[color:var(--on-surface-variant)]">
-                  <th className="px-4 py-3 font-semibold">Type</th>
-                  <th className="px-4 py-3 font-semibold">Phone</th>
+                  <th className="px-4 py-3 font-semibold">Loại</th>
+                  <th className="px-4 py-3 font-semibold">Số điện thoại</th>
                   <th className="px-4 py-3 font-semibold">Telegram ID</th>
-                  <th className="px-4 py-3 font-semibold">Name</th>
+                  <th className="px-4 py-3 font-semibold">Tên</th>
                   <th className="px-4 py-3 font-semibold">Username</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold">Error</th>
+                  <th className="px-4 py-3 font-semibold">Trạng thái</th>
+                  <th className="px-4 py-3 font-semibold">Lỗi</th>
                 </tr>
               </thead>
               <tbody>
                 {selectedBatchItems.items.map((item) => (
                   <tr key={item.id} className="border-b border-[color:var(--outline)]/50 align-top last:border-b-0">
-                    <td className="px-4 py-3"><span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[color:var(--on-surface)]">{item.kind === 'FREQUENT' ? 'Frequent' : 'Contact'}</span></td>
+                    <td className="px-4 py-3"><span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[color:var(--on-surface)]">{item.kind === 'FREQUENT' ? 'Thường gặp' : 'Danh bạ'}</span></td>
                     <td className="px-4 py-3 font-mono text-xs text-[color:var(--on-surface)]">{item.phoneNumber || '-'}</td>
                     <td className="px-4 py-3 font-mono text-xs text-sky-700">{item.telegramExternalId || '-'}</td>
                     <td className="px-4 py-3 text-[color:var(--on-surface)]">{item.displayName || '-'}</td>
@@ -892,35 +892,50 @@ export function ContactsWorkbench() {
   );
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#fff2d8_0%,#f7f5ef_32%,#eef3f8_100%)] text-[color:var(--on-surface)]">
-      <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-        <div className="rounded-[36px] border border-white/70 bg-white/58 p-4 shadow-[0_32px_120px_rgba(15,23,42,0.08)] backdrop-blur sm:p-6">
-          <div className="flex flex-col gap-4 border-b border-[color:var(--outline)]/50 pb-6 lg:flex-row lg:items-start lg:justify-between">
-            <div className="max-w-3xl">
-              <a href="/dashboard" className="inline-flex items-center gap-2 rounded-full border border-[color:var(--outline)]/70 bg-white px-4 py-2 text-sm font-semibold text-[color:var(--on-surface)] transition hover:border-[color:var(--primary)] hover:text-[color:var(--primary)]">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4"><path d="M15 18l-6-6 6-6" /></svg>
-                Back to dashboard
-              </a>
-              <h1 className="mt-5 text-3xl font-black tracking-tight text-[color:var(--on-surface)] sm:text-4xl">Contacts Resolver</h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-[color:var(--on-surface-variant)]">Login to Telegram, import export JSON, monitor resolve progress, and inspect batch items in one workspace.</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${authStatus?.authenticated ? 'bg-[color:var(--success-soft)] text-[color:var(--success)]' : 'bg-[color:var(--warning-soft)] text-[color:var(--warning)]'}`}>{authStatus?.authenticated ? 'Session connected' : 'Session missing'}</span>
-              {hasRunningBatch ? <span className="rounded-full bg-[color:var(--primary-soft)] px-3 py-1 text-xs font-semibold text-[color:var(--primary)]">Batch processing</span> : null}
-            </div>
+    <div className="space-y-6 text-[color:var(--on-surface)]">
+      <section className="rounded-[24px] bg-[color:var(--surface-card)] px-5 py-5 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">
+              Danh bạ
+            </p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-[color:var(--on-surface)]">
+              Resolve danh bạ Telegram
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--on-surface-variant)]">
+              Đăng nhập Telegram, import JSON, theo dõi tiến trình resolve và kiểm tra batch trong cùng workspace.
+            </p>
           </div>
-          {hasRunningBatch ? <div className="mt-6 rounded-[24px] border border-[color:var(--primary)]/15 bg-[color:var(--primary-soft)] px-4 py-4 text-sm text-[color:var(--primary)]">A batch is still running in the background. You can leave this page and processing will continue.</div> : null}
-          {authStatus?.authenticated ? (
-            <>
-              <div className="mt-6 inline-flex rounded-full border border-[color:var(--outline)]/70 bg-white p-1">
-                <button onClick={() => setTab('import')} className={`rounded-full px-4 py-2 text-sm font-semibold transition ${tab === 'import' ? 'bg-[color:var(--primary)] text-white shadow-sm' : 'text-[color:var(--on-surface-variant)] hover:text-[color:var(--on-surface)]'}`}>Import & batches</button>
-                <button onClick={() => setTab('auth')} className={`rounded-full px-4 py-2 text-sm font-semibold transition ${tab === 'auth' ? 'bg-[color:var(--primary)] text-white shadow-sm' : 'text-[color:var(--on-surface-variant)] hover:text-[color:var(--on-surface)]'}`}>Telegram session</button>
-              </div>
-              <div className="mt-6">{tab === 'auth' ? authPanel : importPanel}</div>
-            </>
-          ) : <div className="mt-6">{authPanel}</div>}
+          <div className="flex flex-wrap items-center gap-3">
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${authStatus?.authenticated ? 'bg-[color:var(--success-soft)] text-[color:var(--success)]' : 'bg-[color:var(--warning-soft)] text-[color:var(--warning)]'}`}>
+              {authStatus?.authenticated ? 'Đã kết nối phiên' : 'Thiếu phiên Telegram'}
+            </span>
+            {hasRunningBatch ? (
+              <span className="rounded-full bg-[color:var(--primary-soft)] px-3 py-1 text-xs font-semibold text-[color:var(--primary)]">
+                Lô đang xử lý
+              </span>
+            ) : null}
+          </div>
         </div>
-      </div>
+      </section>
+
+      {hasRunningBatch ? (
+        <div className="rounded-[20px] border border-[color:var(--primary)]/15 bg-[color:var(--primary-soft)] px-4 py-4 text-sm text-[color:var(--primary)]">
+          Lô vẫn đang chạy nền. Bạn có thể rời trang, hệ thống vẫn tiếp tục xử lý.
+        </div>
+      ) : null}
+
+      {authStatus?.authenticated ? (
+        <>
+          <div className="inline-flex rounded-full border border-[color:var(--outline)]/70 bg-[color:var(--surface-card)] p-1">
+            <button onClick={() => setTab('import')} className={`rounded-full px-4 py-2 text-sm font-semibold transition ${tab === 'import' ? 'bg-[color:var(--primary)] text-white shadow-sm' : 'text-[color:var(--on-surface-variant)] hover:text-[color:var(--on-surface)]'}`}>Nhập dữ liệu & lô xử lý</button>
+            <button onClick={() => setTab('auth')} className={`rounded-full px-4 py-2 text-sm font-semibold transition ${tab === 'auth' ? 'bg-[color:var(--primary)] text-white shadow-sm' : 'text-[color:var(--on-surface-variant)] hover:text-[color:var(--on-surface)]'}`}>Phiên Telegram</button>
+          </div>
+          {tab === 'auth' ? authPanel : importPanel}
+        </>
+      ) : (
+        authPanel
+      )}
     </div>
   );
 }

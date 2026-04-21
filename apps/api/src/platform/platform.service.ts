@@ -114,7 +114,6 @@ export class PlatformService {
       });
 
       const [
-        metrics,
         eventFeed,
         moderationRules,
         roadmap,
@@ -126,7 +125,6 @@ export class PlatformService {
         communityMembers,
         activityEvents,
       ] = await Promise.all([
-        this.prisma.metricCard.findMany({ orderBy: { label: 'asc' } }),
         this.prisma.eventFeedItem.findMany({ orderBy: { createdAt: 'desc' } }),
         this.prisma.moderationRule.findMany({ orderBy: { sortOrder: 'asc' } }),
         this.prisma.roadmapPhase.findMany({
@@ -239,33 +237,34 @@ export class PlatformService {
           ? `${Math.round((joinedTotal / targetTotal) * 100)}%`
           : '0%';
 
-      const scopedMetrics = this.canViewAllCampaigns(viewer)
-        ? metrics.map((metric) => ({
-            label: metric.label,
-            value: metric.value,
-            trend: metric.trend,
-            tone: toneMap[metric.tone],
-          }))
-        : [
-            {
-              label: 'Campaign được giao',
-              value: String(scopedCampaigns.length),
-              trend: 'Theo user hiện tại',
-              tone: 'primary' as const,
-            },
-            {
-              label: 'Khách đã tham gia',
-              value: String(joinedTotal),
-              trend: progressValue,
-              tone: 'success' as const,
-            },
-            {
-              label: 'Khách đang ở lại',
-              value: String(activeTotal),
-              trend: `${leftTotal} đã rời`,
-              tone: 'warning' as const,
-            },
-          ];
+      const scopedMetrics = [
+        {
+          label: this.canViewAllCampaigns(viewer)
+            ? 'Campaign trong WP'
+            : 'Campaign được giao',
+          value: String(scopedCampaigns.length),
+          trend: workspaceId ? 'Theo workspace' : 'Tất cả workspace được phép',
+          tone: 'primary' as const,
+        },
+        {
+          label: 'Khách đã tham gia',
+          value: String(joinedTotal),
+          trend: progressValue,
+          tone: 'success' as const,
+        },
+        {
+          label: 'Khách đang ở lại',
+          value: String(activeTotal),
+          trend: `${leftTotal} đã rời`,
+          tone: 'warning' as const,
+        },
+        {
+          label: 'Hoạt động 30 ngày',
+          value: String(activityEvents.length),
+          trend: 'Message events',
+          tone: 'danger' as const,
+        },
+      ];
 
       const allowedGroupTitles =
         this.canViewAllCampaigns(viewer) || campaigns.length === 0

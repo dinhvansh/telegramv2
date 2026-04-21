@@ -176,6 +176,10 @@ export function DashboardShell({
 }: DashboardShellProps) {
   const hasMultipleBots = availableBots.length > 1;
   const showBotSelector = selectedWorkspaceId && (hasMultipleBots || availableBots.length === 1);
+  const currentWorkspaceName =
+    availableWorkspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.name ??
+    availableWorkspaces[0]?.name ??
+    null;
   const userPermissions = user?.permissions ?? [];
   const canSwitchWorkspace = userPermissions.includes("organization.manage");
   const canManageCampaigns =
@@ -289,8 +293,8 @@ export function DashboardShell({
     {
       key: "contacts",
       href: "/contacts",
-      label: "Contacts",
-      description: "Import contacts and resolve Telegram IDs.",
+      label: "Danh bạ",
+      description: "Nhập danh bạ và resolve Telegram IDs.",
       icon: (
         <>
           <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
@@ -332,8 +336,8 @@ export function DashboardShell({
     },
   ] as const;
 
-  const visibleNavigation = navigation.filter((item) =>
-    canAccessPage(userPermissions, item.key),
+  const visibleNavigation = navigation.filter(
+    (item) => item.key !== "moderation" && canAccessPage(userPermissions, item.key),
   );
 
   const groupMemberValues = snapshot.groupInsights.slice(0, 6).map((group) => group.memberCount);
@@ -391,8 +395,24 @@ export function DashboardShell({
       <main className="2xl:ml-72">
         <header className="sticky top-0 z-30 bg-white/80 px-5 py-3 backdrop-blur-xl 2xl:px-10">
           <div className="rounded-[28px] bg-[color:var(--surface-card)] px-5 py-4 shadow-[0_8px_32px_rgba(42,52,57,0.04)]">
-            <div className="flex items-center justify-end">
-              <div className="flex shrink-0 items-center gap-2 xl:hidden 2xl:flex">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0 sm:flex-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[color:var(--on-surface-variant)]">
+                  Workspace
+                </p>
+                <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                  <h2 className="truncate text-lg font-black tracking-tight text-[color:var(--on-surface)]">
+                    {currentWorkspaceName ? text(currentWorkspaceName) : "Workspace"}
+                  </h2>
+                  {user ? (
+                    <span className="inline-flex max-w-[260px] items-center gap-1 rounded-full bg-[color:var(--surface-low)] px-3 py-1.5 text-xs font-bold text-[color:var(--on-surface)]">
+                      <span className="text-[color:var(--on-surface-variant)]">User</span>
+                      <span className="truncate">{text(user.name)}</span>
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 sm:shrink-0 xl:hidden 2xl:flex">
                 <div
                   className={`rounded-full px-3 py-2 text-xs font-semibold ${
                     status === "connected"
@@ -431,25 +451,17 @@ export function DashboardShell({
                   </select>
                 ) : null}
                 {user ? (
-                  <div className="max-w-[160px] truncate rounded-full bg-[color:var(--surface-low)] px-3 py-2 text-xs text-[color:var(--on-surface-variant)]">
+                  <div className="max-w-[260px] truncate rounded-full bg-[color:var(--surface-low)] px-3 py-2 text-xs text-[color:var(--on-surface-variant)]">
                     {text(user.name)}
+                    {currentWorkspaceName ? ` · ${text(currentWorkspaceName)}` : ""}
                   </div>
                 ) : null}
                 {onLogout ? (
                   <button
                     onClick={onLogout}
-                    className="rounded-full bg-[color:var(--surface-low)] px-3 py-2 text-xs font-bold text-[color:var(--on-surface)]"
+                    className="rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-4 py-2 text-xs font-bold text-white shadow-[0_16px_40px_rgba(0,83,219,0.24)]"
                   >
                     Thoát
-                  </button>
-                ) : null}
-                {canCreateCampaign ? (
-                  <button
-                    onClick={onCreateCampaign}
-                    disabled={isCreatingCampaign}
-                    className="rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-4 py-2 text-xs font-bold text-white shadow-[0_16px_40px_rgba(0,83,219,0.24)] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isCreatingCampaign ? "Đang xử lý..." : "Tạo mới"}
                   </button>
                 ) : null}
               </div>
@@ -517,25 +529,17 @@ export function DashboardShell({
                   </select>
                 ) : null}
                 {user ? (
-                  <div className="max-w-[140px] truncate rounded-full bg-[color:var(--surface-low)] px-3 py-2 text-xs text-[color:var(--on-surface-variant)]">
+                  <div className="max-w-[240px] truncate rounded-full bg-[color:var(--surface-low)] px-3 py-2 text-xs text-[color:var(--on-surface-variant)]">
                     {text(user.name)}
+                    {currentWorkspaceName ? ` · ${text(currentWorkspaceName)}` : ""}
                   </div>
                 ) : null}
                 {onLogout ? (
                   <button
                     onClick={onLogout}
-                    className="rounded-full bg-[color:var(--surface-low)] px-3 py-2 text-xs font-bold text-[color:var(--on-surface)]"
+                    className="rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-4 py-2 text-xs font-bold text-white shadow-[0_16px_40px_rgba(0,83,219,0.24)]"
                   >
                     Thoát
-                  </button>
-                ) : null}
-                {canCreateCampaign ? (
-                  <button
-                    onClick={onCreateCampaign}
-                    disabled={isCreatingCampaign}
-                    className="rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-4 py-2 text-xs font-bold text-white shadow-[0_16px_40px_rgba(0,83,219,0.24)] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isCreatingCampaign ? "Đang xử lý..." : "Tạo mới"}
                   </button>
                 ) : null}
               </div>
@@ -749,6 +753,8 @@ export function DashboardShell({
               canManageCampaigns={canManageCampaigns}
               workspaceId={selectedWorkspaceId}
               telegramBotId={selectedBotId}
+              onCreateCampaign={onCreateCampaign}
+              isCreatingCampaign={isCreatingCampaign}
             />
           ) : null}
 

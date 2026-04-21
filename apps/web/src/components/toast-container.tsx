@@ -46,7 +46,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
         type="button"
         onClick={onDismiss}
         className="ml-2 shrink-0 rounded-full px-1.5 py-0.5 text-xs opacity-60 transition-opacity hover:opacity-100"
-        aria-label="Dismiss"
+        aria-label="Đóng thông báo"
       >
         ✕
       </button>
@@ -62,8 +62,8 @@ export function ToastContainer() {
   return createPortal(
     <div
       aria-live="polite"
-      aria-label="Notifications"
-      className="fixed bottom-5 right-5 z-[9999] flex flex-col gap-2"
+      aria-label="Thông báo"
+      className="fixed right-5 top-24 z-[9999] flex flex-col gap-2"
       style={{ pointerEvents: "none" }}
     >
       {toasts.map((t) => (

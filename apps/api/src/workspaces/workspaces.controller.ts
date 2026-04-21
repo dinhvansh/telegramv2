@@ -143,6 +143,11 @@ export class WorkspacesController {
     return this.workspacesService.updateWorkspace(workspaceId, body);
   }
 
+  @Delete(':workspaceId/permanent')
+  deleteWorkspacePermanently(@Param('workspaceId') workspaceId: string) {
+    return this.workspacesService.deleteWorkspacePermanently(workspaceId);
+  }
+
   @Delete(':workspaceId')
   deleteWorkspace(@Param('workspaceId') workspaceId: string) {
     return this.workspacesService.deleteWorkspace(workspaceId);

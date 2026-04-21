@@ -210,8 +210,8 @@ export class ContactsService {
     const telegramUser = await this.prisma.telegramUser.upsert({
       where: { externalId: identity },
       update: {
-        ...(data.username ? { username: data.username } : {}),
-        ...(data.displayName ? { displayName: data.displayName } : {}),
+        ...(data.username !== undefined ? { username: data.username } : {}),
+        ...(data.displayName !== undefined ? { displayName: data.displayName } : {}),
         lastSeenAt: new Date(),
       },
       create: {
@@ -249,10 +249,10 @@ export class ContactsService {
         },
       },
       update: {
-        phoneNumber: data.phoneNumber ?? null,
-        customerSource: data.customerSource ?? null,
-        ownerName: data.ownerName ?? null,
-        note: data.note ?? null,
+        ...(data.phoneNumber !== undefined ? { phoneNumber: data.phoneNumber } : {}),
+        ...(data.customerSource !== undefined ? { customerSource: data.customerSource } : {}),
+        ...(data.ownerName !== undefined ? { ownerName: data.ownerName } : {}),
+        ...(data.note !== undefined ? { note: data.note } : {}),
       },
       create: {
         telegramUserId: data.telegramUserId,

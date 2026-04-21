@@ -877,6 +877,37 @@ export class WorkspacesService {
     });
   }
 
+  async deleteWorkspacePermanently(workspaceId: string) {
+    if (!process.env.DATABASE_URL) {
+      throw new UnauthorizedException(
+        'Workspace management requires database mode',
+      );
+    }
+
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException('Workspace khÃ´ng tá»“n táº¡i');
+    }
+
+    await this.prisma.workspace.delete({
+      where: { id: workspace.id },
+    });
+
+    return {
+      deleted: true,
+      permanent: true,
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+    };
+  }
+
   async createBot(
     workspaceId: string,
     input: {

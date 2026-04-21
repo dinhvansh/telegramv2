@@ -94,11 +94,15 @@ export function CampaignsWorkbench({
   canManageCampaigns = true,
   workspaceId = null,
   telegramBotId = null,
+  onCreateCampaign,
+  isCreatingCampaign = false,
 }: {
   isAssignedCampaignView?: boolean;
   canManageCampaigns?: boolean;
   workspaceId?: string | null;
   telegramBotId?: string | null;
+  onCreateCampaign?: () => void;
+  isCreatingCampaign?: boolean;
 }) {
   const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
   const [assignees, setAssignees] = useState<CampaignAssigneeOption[]>([]);
@@ -396,8 +400,20 @@ export function CampaignsWorkbench({
               </div>
             ) : null}
           </div>
-          <div className="rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold text-[color:var(--on-surface-variant)]">
-            {campaigns.length} campaign
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="rounded-full bg-[color:var(--surface-low)] px-4 py-2 text-sm font-semibold text-[color:var(--on-surface-variant)]">
+              {campaigns.length} campaign
+            </div>
+            {canManageCampaigns && onCreateCampaign ? (
+              <button
+                type="button"
+                onClick={onCreateCampaign}
+                disabled={isCreatingCampaign}
+                className="rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-5 py-2.5 text-sm font-bold text-white shadow-[0_16px_40px_rgba(0,83,219,0.24)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isCreatingCampaign ? "Đang xử lý..." : "Tạo campaign"}
+              </button>
+            ) : null}
           </div>
         </div>
 

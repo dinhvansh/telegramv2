@@ -90,6 +90,7 @@ function injectBridgeScript(html: string, page: StitchPageKey) {
     spam: ['moderation.review', 'settings.manage'],
     autopost: ['autopost.execute'],
     roles: ['workspace.manage'],
+    contacts: ['contacts.manage', 'workspace.manage'],
     settings: ['settings.manage'],
   };
   const eventIconMap = {
@@ -137,6 +138,7 @@ function injectBridgeScript(html: string, page: StitchPageKey) {
     { code: 'moderation.review', label: 'Review spam và moderation' },
     { code: 'settings.manage', label: 'Quản lý cấu hình và bảo mật' },
     { code: 'autopost.execute', label: 'Điều phối autopost và logs' },
+    { code: 'contacts.manage', label: 'Import contacts va resolve Telegram IDs' },
   ];
 
   function getToken() {
