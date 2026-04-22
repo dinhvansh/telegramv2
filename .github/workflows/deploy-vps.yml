@@ -15,7 +15,6 @@ env:
   APP_ROOT: /opt/telegramv3
   APP_DIR: /opt/telegramv3/app
   SHARED_DIR: /opt/telegramv3/shared
-  DEPLOY_REPO: https://github.com/dinhvansh/telegramv3.git
   DEPLOY_DOMAIN: crm.blogthethao.org
   API_HOST_PORT: "4001"
   WEB_HOST_PORT: "3002"
@@ -102,13 +101,24 @@ jobs:
           test -n "$TELEGRAM_VPS_USER"
           test -n "$TELEGRAM_VPS_SSH_KEY"
 
+      - name: Create Release Archive
+        run: tar --exclude=.git --exclude=.secrets --exclude='demo_telegram - Copy' --exclude='demo_telegram - Copy.rar' --exclude=telegramv3-release.tar.gz -czf telegramv3-release.tar.gz .
+
+      - name: Upload Release Archive
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.TELEGRAM_VPS_HOST }}
+          username: ${{ secrets.TELEGRAM_VPS_USER }}
+          key: ${{ secrets.TELEGRAM_VPS_SSH_KEY }}
+          source: telegramv3-release.tar.gz
+          target: /tmp
+
       - name: Deploy On VPS
         uses: appleboy/ssh-action@v1.2.0
         env:
           APP_ROOT: ${{ env.APP_ROOT }}
           APP_DIR: ${{ env.APP_DIR }}
           SHARED_DIR: ${{ env.SHARED_DIR }}
-          DEPLOY_REPO: ${{ env.DEPLOY_REPO }}
           DEPLOY_DOMAIN: ${{ env.DEPLOY_DOMAIN }}
           API_HOST_PORT: ${{ env.API_HOST_PORT }}
           WEB_HOST_PORT: ${{ env.WEB_HOST_PORT }}
@@ -131,23 +141,16 @@ jobs:
           host: ${{ secrets.TELEGRAM_VPS_HOST }}
           username: ${{ secrets.TELEGRAM_VPS_USER }}
           key: ${{ secrets.TELEGRAM_VPS_SSH_KEY }}
-          envs: APP_ROOT,APP_DIR,SHARED_DIR,DEPLOY_REPO,DEPLOY_DOMAIN,API_HOST_PORT,WEB_HOST_PORT,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,JWT_SECRET,SETTINGS_ENCRYPTION_KEY,AI_DEFAULT_BASE_URL,AI_DEFAULT_MODEL,AI_DEFAULT_API_TOKEN,AI_DEFAULT_PROMPT,TELEGRAM_BOT_TOKEN,TELEGRAM_BOT_USERNAME,TELEGRAM_WEBHOOK_SECRET,TELEGRAM_PUBLIC_BASE_URL,TELEGRAM_API_ID,TELEGRAM_API_HASH
+          envs: APP_ROOT,APP_DIR,SHARED_DIR,DEPLOY_DOMAIN,API_HOST_PORT,WEB_HOST_PORT,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,JWT_SECRET,SETTINGS_ENCRYPTION_KEY,AI_DEFAULT_BASE_URL,AI_DEFAULT_MODEL,AI_DEFAULT_API_TOKEN,AI_DEFAULT_PROMPT,TELEGRAM_BOT_TOKEN,TELEGRAM_BOT_USERNAME,TELEGRAM_WEBHOOK_SECRET,TELEGRAM_PUBLIC_BASE_URL,TELEGRAM_API_ID,TELEGRAM_API_HASH
           script: |
             set -eu
             mkdir -p "$APP_ROOT" "$SHARED_DIR"
 
-            if [ ! -d "$APP_DIR/.git" ]; then
-              rm -rf "$APP_DIR"
-              git clone --depth 1 "$DEPLOY_REPO" "$APP_DIR"
-            fi
+            test -f /tmp/telegramv3-release.tar.gz
+            rm -rf "$APP_DIR"
+            mkdir -p "$APP_DIR"
+            tar -xzf /tmp/telegramv3-release.tar.gz -C "$APP_DIR"
             cd "$APP_DIR"
-            git remote set-url origin "$DEPLOY_REPO"
-            git fetch --depth 1 origin main
-            git reset --hard
-            git clean -fd
-            git checkout -f main || git checkout -B main origin/main
-            git reset --hard origin/main
-            git clean -fd
 
             if [ ! -f "$SHARED_DIR/.env.production" ]; then
               test -n "$POSTGRES_PASSWORD"

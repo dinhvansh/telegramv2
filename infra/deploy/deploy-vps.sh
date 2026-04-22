@@ -48,6 +48,8 @@ if [[ -d "$APP_DIR/.git" ]]; then
   else
     should_push_prisma_schema=true
   fi
+else
+  should_push_prisma_schema=true
 fi
 
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d postgres redis
