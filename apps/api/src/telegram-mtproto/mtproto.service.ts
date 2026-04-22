@@ -18,6 +18,10 @@ export interface ResolvedUser {
 export interface ResolvePhoneDebugRequest {
   rawPhone: string;
   normalizedPhone: string;
+  requestedName?: {
+    firstName: string | null;
+    lastName: string | null;
+  };
   resolvePhone?: {
     phone: string;
   };
@@ -491,6 +495,10 @@ export class MtprotoService {
     const debugRequest: ResolvePhoneDebugRequest = {
       rawPhone: phone,
       normalizedPhone: normalized,
+      requestedName: {
+        firstName: options.firstName?.trim() || null,
+        lastName: options.lastName?.trim() || null,
+      },
       resolvePhone: {
         phone: resolvePhone,
       },

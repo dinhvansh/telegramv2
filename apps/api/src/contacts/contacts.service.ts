@@ -42,6 +42,18 @@ export class ContactsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private readJsonScalarString(value: unknown): string | null {
+    if (
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'bigint'
+    ) {
+      return String(value);
+    }
+
+    return null;
+  }
+
   normalizePhone(phone: string): string {
     const raw = String(phone ?? '').trim();
     if (!raw) {
@@ -777,13 +789,13 @@ export class ContactsService {
             }
 
             const userId =
-              'id' in candidate && candidate.id !== null
-                ? String(candidate.id)
+              'id' in candidate
+                ? this.readJsonScalarString(candidate.id)
                 : null;
             const matchedUserId =
               'matchedUserId' in debugResponse &&
               debugResponse.matchedUserId !== null
-                ? String(debugResponse.matchedUserId)
+                ? this.readJsonScalarString(debugResponse.matchedUserId)
                 : null;
 
             if (matchedUserId) {

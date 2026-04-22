@@ -265,7 +265,7 @@ export class UsersService {
     };
   }
 
-  private async assertWorkspaceInScope(
+  private assertWorkspaceInScope(
     workspaceId: string | undefined,
     viewer?: UserViewer,
   ) {
