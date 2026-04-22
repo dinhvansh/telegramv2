@@ -1,14 +1,14 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: telegramv2-postgres
+    container_name: telegramv3-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - telegramv2_postgres_data:/var/lib/postgresql/data
+      - telegramv3_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -17,11 +17,11 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: telegramv2-redis
+    container_name: telegramv3-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
-      - telegramv2_redis_data:/data
+      - telegramv3_redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -32,7 +32,7 @@ services:
     build:
       context: .
       dockerfile: ./apps/api/Dockerfile
-    container_name: telegramv2-api
+    container_name: telegramv3-api
     command: ["sh", "-c", "node prisma/seed.js --if-empty && node dist/main"]
     restart: unless-stopped
     environment:
@@ -57,13 +57,13 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "127.0.0.1:4000:4000"
+      - "127.0.0.1:${API_HOST_PORT:-4001}:4000"
 
   web:
     build:
       context: .
       dockerfile: ./apps/web/Dockerfile
-    container_name: telegramv2-web
+    container_name: telegramv3-web
     restart: unless-stopped
     environment:
       API_PROXY_TARGET: http://api:4000/api
@@ -71,8 +71,8 @@ services:
       api:
         condition: service_started
     ports:
-      - "127.0.0.1:3001:3000"
+      - "127.0.0.1:${WEB_HOST_PORT:-3002}:3000"
 
 volumes:
-  telegramv2_postgres_data:
-  telegramv2_redis_data:
+  telegramv3_postgres_data:
+  telegramv3_redis_data:

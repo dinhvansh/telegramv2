@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_ROOT="${APP_ROOT:-/opt/telegramv2}"
+APP_ROOT="${APP_ROOT:-/opt/telegramv3}"
 APP_DIR="${APP_DIR:-$APP_ROOT/app}"
 SHARED_DIR="${SHARED_DIR:-$APP_ROOT/shared}"
 RELEASE_ARCHIVE="${1:-}"
 ENV_FILE="$SHARED_DIR/.env.production"
 LAST_DEPLOYED_SHA_FILE="$SHARED_DIR/.last_deployed_sha"
 PRISMA_SCHEMA_PATH="apps/api/prisma/schema.prisma"
+API_HEALTH_URL="${API_HEALTH_URL:-http://127.0.0.1:${API_HOST_PORT:-4001}/api/health}"
 should_push_prisma_schema=false
 current_deploy_sha=""
 
@@ -59,13 +60,13 @@ fi
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d api web
 
 for _ in $(seq 1 30); do
-  if curl -fsS http://127.0.0.1:4000/api/health >/dev/null; then
+  if curl -fsS "$API_HEALTH_URL" >/dev/null; then
     break
   fi
   sleep 2
 done
 
-curl -fsS http://127.0.0.1:4000/api/health
+curl -fsS "$API_HEALTH_URL"
 
 if [[ -n "$current_deploy_sha" ]]; then
   printf '%s' "$current_deploy_sha" > "$LAST_DEPLOYED_SHA_FILE"
