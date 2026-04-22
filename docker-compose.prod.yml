@@ -75,4 +75,6 @@ services:
 
 volumes:
   telegramv3_postgres_data:
+    name: app_telegramv3_postgres_data
   telegramv3_redis_data:
+    name: app_telegramv3_redis_data
