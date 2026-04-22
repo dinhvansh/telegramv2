@@ -171,7 +171,7 @@ function SearchField({
 
 // ─── Organization Tab ─────────────────────────────────────────────────────────
 
-function OrganizationTab({
+export function OrganizationTab({
   token,
   overview,
   onCreated,
@@ -740,7 +740,7 @@ function WorkspaceTab({
 
 // ─── Bots Tab ─────────────────────────────────────────────────────────────────
 
-function BotsTab({
+export function BotsTab({
   token,
   overview,
   catalog,
@@ -882,7 +882,7 @@ function BotsTab({
 
 // ─── Memberships Tab ──────────────────────────────────────────────────────────
 
-function MembershipsTab({
+export function MembershipsTab({
   token,
   overview,
   catalog,

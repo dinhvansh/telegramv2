@@ -63,7 +63,6 @@ type WorkspaceCatalogResponse = {
 type CreateUserForm = {
   name: string;
   email: string;
-  username: string;
   password: string;
   department: string;
   workspaceId: string;
@@ -75,7 +74,6 @@ type EditUserForm = {
   id: string;
   name: string;
   email: string;
-  username: string;
   department: string;
   workspaceId: string;
   roleId: string;
@@ -195,7 +193,6 @@ export function RolesWorkbench({
   const [form, setForm] = useState<CreateUserForm>({
     name: "Người dùng mới",
     email: "new.user@nexus.local",
-    username: "",
     password: "ChangeMe123!",
     department: "Vận hành",
     workspaceId: "",
@@ -343,11 +340,10 @@ export function RolesWorkbench({
     setIsCreating(true);
 
     try {
-      const { username: _username, ...createPayload } = form;
       await fetchJson(`${apiBaseUrl}/users`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify(createPayload),
+        body: JSON.stringify(form),
       });
       await refreshData();
       toast({ message: `Đã tạo user ${form.email}.`, type: "success" });
@@ -425,7 +421,6 @@ export function RolesWorkbench({
         headers: { Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           name: editingUser.name,
-          username: editingUser.username,
           department: editingUser.department,
           workspaceId: editingUser.workspaceId,
           roleId: editingUser.roleId,
@@ -795,7 +790,6 @@ export function RolesWorkbench({
                               id: user.id,
                               name: user.name,
                               email: user.email,
-                              username: user.username ?? "",
                               department: user.department,
                               workspaceId: user.workspaces?.[0]?.id || workspaceCatalog[0]?.id || "",
                               roleId: user.roles[0]?.id || roles[0]?.id || "",

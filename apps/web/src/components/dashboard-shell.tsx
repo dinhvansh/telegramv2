@@ -169,7 +169,6 @@ export function DashboardShell({
   availableBots = [],
   onBotChange,
   onLogout,
-  canCreateCampaign = false,
   canViewCampaignData = false,
   onCreateCampaign,
   isCreatingCampaign = false,
