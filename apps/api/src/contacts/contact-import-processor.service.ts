@@ -260,6 +260,10 @@ export class ContactImportProcessorService {
         telegramExternalId: existing.externalId,
         telegramUsername: resolvedUser?.username ?? existing.username,
         displayName,
+        debugRequest:
+          resolveResult.debugRequest as unknown as Prisma.InputJsonValue,
+        debugResponse:
+          resolveResult.debugResponse as unknown as Prisma.InputJsonValue,
       });
       return;
     }

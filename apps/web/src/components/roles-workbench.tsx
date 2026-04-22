@@ -106,6 +106,13 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+function buildHeaders(currentToken: string, workspaceId?: string | null) {
+  return {
+    Authorization: `Bearer ${currentToken}`,
+    ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
+  };
+}
+
 function decodeLegacyString(value: string) {
   const exactMap = new Map<string, string>([
     ["Qu?n tr? workspace", "Quản trị workspace"],
@@ -168,6 +175,7 @@ function getToneClass(tone: UserItem["statusTone"]) {
 
 export function RolesWorkbench({
   currentUser,
+  workspaceId,
 }: {
   currentUser?: {
     name: string;
@@ -175,6 +183,7 @@ export function RolesWorkbench({
     roles: string[];
     permissions?: string[];
   };
+  workspaceId?: string | null;
 }) {
   const { toast } = useToast();
   const [token, setToken] = useState<string | null>(null);
@@ -232,11 +241,15 @@ export function RolesWorkbench({
   }, []);
 
   useEffect(() => {
+    setFilterWorkspaceId(workspaceId ?? "");
+  }, [workspaceId]);
+
+  useEffect(() => {
     let active = true;
 
     async function load(currentToken: string) {
       try {
-        const headers = { Authorization: `Bearer ${currentToken}` };
+        const headers = buildHeaders(currentToken, workspaceId);
         const [rolesResponse, usersResponse, permissionResponse, profileResponse] = await Promise.all([
           fetchJson<RoleItem[]>(`${apiBaseUrl}/roles`, { headers }),
           fetchJson<UserItem[]>(`${apiBaseUrl}/users`, { headers }),
@@ -300,14 +313,14 @@ export function RolesWorkbench({
     return () => {
       active = false;
     };
-  }, [canEditRolePermissions, token, toast]);
+  }, [canEditRolePermissions, token, toast, workspaceId]);
 
   async function refreshData() {
     if (!token) {
       return;
     }
 
-    const headers = { Authorization: `Bearer ${token}` };
+    const headers = buildHeaders(token, workspaceId);
     const [rolesResponse, usersResponse, permissionResponse, profileResponse] = await Promise.all([
       fetchJson<RoleItem[]>(`${apiBaseUrl}/roles`, { headers }),
       fetchJson<UserItem[]>(`${apiBaseUrl}/users`, { headers }),
@@ -342,7 +355,7 @@ export function RolesWorkbench({
     try {
       await fetchJson(`${apiBaseUrl}/users`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: buildHeaders(token, workspaceId),
         body: JSON.stringify(form),
       });
       await refreshData();
@@ -388,7 +401,7 @@ export function RolesWorkbench({
     try {
       await fetchJson(`${apiBaseUrl}/users/${user.id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: buildHeaders(token, workspaceId),
       });
       await refreshData();
       toast({ message: `Đã xóa user ${user.email}.`, type: "success" });
@@ -418,7 +431,7 @@ export function RolesWorkbench({
     try {
       await fetchJson(`${apiBaseUrl}/users/${editingUser.id}`, {
         method: "PATCH",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: buildHeaders(token, workspaceId),
         body: JSON.stringify({
           name: editingUser.name,
           department: editingUser.department,
@@ -435,7 +448,7 @@ export function RolesWorkbench({
           temporaryPassword: string;
         }>(`${apiBaseUrl}/users/${editingUser.id}/reset-password`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
+          headers: buildHeaders(token, workspaceId),
           body: JSON.stringify({
             password: editingUser.resetPassword.trim() || undefined,
           }),

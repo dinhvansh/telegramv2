@@ -114,6 +114,8 @@ type ResolvePhoneOptions = {
   lastName?: string | null;
 };
 
+const IMPORT_CONTACT_PLACEHOLDER_FIRST_NAME = 'Resolve';
+
 type PendingPhoneAuth = {
   client: TelegramClient;
   phoneNumber: string;
@@ -482,11 +484,10 @@ export class MtprotoService {
     const normalized = this.normalizePhone(phone);
     const resolvePhone = normalized.replace(/^\+/, '');
     const clientId = bigInt(Date.now());
-    const importFirstName =
-      this.sanitizeImportedContactName(options.firstName) ||
-      this.sanitizeImportedContactName(options.lastName) ||
-      normalized;
-    const importLastName = this.sanitizeImportedContactName(options.lastName);
+    // ImportContacts requires a non-empty first name, but that value should
+    // never be treated as the matched user's real Telegram profile name.
+    const importFirstName = IMPORT_CONTACT_PLACEHOLDER_FIRST_NAME;
+    const importLastName = '';
     const debugRequest: ResolvePhoneDebugRequest = {
       rawPhone: phone,
       normalizedPhone: normalized,

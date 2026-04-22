@@ -42,6 +42,8 @@ type ContactImportItem = {
   firstName: string | null;
   lastName: string | null;
   displayName: string | null;
+  telegramFirstName?: string | null;
+  telegramLastName?: string | null;
   telegramExternalId: string | null;
   telegramUsername: string | null;
   telegramType: string | null;
@@ -873,7 +875,7 @@ export function ContactsWorkbench({
                   <th className="px-4 py-3 font-semibold">Loại</th>
                   <th className="px-4 py-3 font-semibold">Số điện thoại</th>
                   <th className="px-4 py-3 font-semibold">Telegram ID</th>
-                  <th className="px-4 py-3 font-semibold">Tên</th>
+                  <th className="px-4 py-3 font-semibold">First name</th>
                   <th className="px-4 py-3 font-semibold">Username</th>
                   <th className="px-4 py-3 font-semibold">Trạng thái</th>
                   <th className="px-4 py-3 font-semibold">Lỗi</th>
@@ -885,7 +887,7 @@ export function ContactsWorkbench({
                     <td className="px-4 py-3"><span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[color:var(--on-surface)]">{item.kind === 'FREQUENT' ? 'Thường gặp' : 'Danh bạ'}</span></td>
                     <td className="px-4 py-3 font-mono text-xs text-[color:var(--on-surface)]">{item.phoneNumber || '-'}</td>
                     <td className="px-4 py-3 font-mono text-xs text-sky-700">{item.telegramExternalId || '-'}</td>
-                    <td className="px-4 py-3 text-[color:var(--on-surface)]">{item.displayName || '-'}</td>
+                    <td className="px-4 py-3 text-[color:var(--on-surface)]">{item.telegramFirstName || item.firstName || item.displayName || '-'}</td>
                     <td className="px-4 py-3 text-[color:var(--on-surface-variant)]">{item.telegramUsername || item.telegramType || '-'}</td>
                     <td className="px-4 py-3"><span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusTone(item.status)}`}>{displayStatus(item.status)}</span></td>
                     <td className="px-4 py-3 text-xs text-[color:var(--danger)]">{item.errorMessage || '-'}</td>

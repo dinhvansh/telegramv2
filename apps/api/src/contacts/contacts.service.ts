@@ -765,6 +765,48 @@ export class ContactsService {
       'response' in debugPayload
         ? debugPayload.response
         : null;
+    const matchedTelegramUser =
+      debugResponse &&
+      typeof debugResponse === 'object' &&
+      !Array.isArray(debugResponse) &&
+      'users' in debugResponse &&
+      Array.isArray(debugResponse.users)
+        ? debugResponse.users.find((candidate) => {
+            if (!candidate || typeof candidate !== 'object') {
+              return false;
+            }
+
+            const userId =
+              'id' in candidate && candidate.id !== null
+                ? String(candidate.id)
+                : null;
+            const matchedUserId =
+              'matchedUserId' in debugResponse &&
+              debugResponse.matchedUserId !== null
+                ? String(debugResponse.matchedUserId)
+                : null;
+
+            if (matchedUserId) {
+              return userId === matchedUserId;
+            }
+
+            return Boolean(userId);
+          }) ?? null
+        : null;
+    const telegramFirstName =
+      matchedTelegramUser &&
+      typeof matchedTelegramUser === 'object' &&
+      'firstName' in matchedTelegramUser &&
+      typeof matchedTelegramUser.firstName === 'string'
+        ? matchedTelegramUser.firstName
+        : null;
+    const telegramLastName =
+      matchedTelegramUser &&
+      typeof matchedTelegramUser === 'object' &&
+      'lastName' in matchedTelegramUser &&
+      typeof matchedTelegramUser.lastName === 'string'
+        ? matchedTelegramUser.lastName
+        : null;
 
     return {
       id: item.id,
@@ -774,6 +816,8 @@ export class ContactsService {
       firstName: item.firstName,
       lastName: item.lastName,
       displayName: item.displayName,
+      telegramFirstName,
+      telegramLastName,
       telegramExternalId: item.telegramExternalId,
       telegramUsername: item.telegramUsername,
       telegramType: item.telegramType,

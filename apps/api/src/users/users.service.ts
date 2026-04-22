@@ -1,11 +1,13 @@
 import {
+  BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
-import { UserStatus } from '@prisma/client';
+import { Prisma, UserStatus } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizeVietnameseText } from '../common/vietnamese-normalizer';
@@ -26,6 +28,7 @@ type UserViewer = {
   userId: string;
   permissions: string[];
   workspaceIds?: string[];
+  workspaceId?: string;
 };
 
 const fallbackRoleCatalog = [
@@ -227,6 +230,90 @@ export class UsersService {
     return Boolean(viewer?.permissions.includes('organization.manage'));
   }
 
+  private resolveWorkspaceScope(viewer?: UserViewer) {
+    const requestedWorkspaceId = viewer?.workspaceId?.trim();
+
+    if (this.isOrganizationManager(viewer)) {
+      return requestedWorkspaceId || undefined;
+    }
+
+    const allowedWorkspaceIds = viewer?.workspaceIds ?? [];
+
+    if (requestedWorkspaceId) {
+      if (allowedWorkspaceIds.includes(requestedWorkspaceId)) {
+        return requestedWorkspaceId;
+      }
+
+      throw new ForbiddenException('Workspace is outside your scope');
+    }
+
+    const defaultWorkspaceId = allowedWorkspaceIds[0];
+
+    if (!defaultWorkspaceId) {
+      throw new ForbiddenException('Workspace access is required');
+    }
+
+    return defaultWorkspaceId;
+  }
+
+  private buildWorkspaceMembershipWhere(viewer?: UserViewer) {
+    const workspaceId = this.resolveWorkspaceScope(viewer);
+
+    return {
+      isActive: true,
+      ...(workspaceId ? { workspaceId } : {}),
+    };
+  }
+
+  private async assertWorkspaceInScope(
+    workspaceId: string | undefined,
+    viewer?: UserViewer,
+  ) {
+    const normalizedWorkspaceId = workspaceId?.trim();
+
+    if (!normalizedWorkspaceId) {
+      if (this.isOrganizationManager(viewer)) {
+        return undefined;
+      }
+
+      throw new ForbiddenException('Workspace access is required');
+    }
+
+    if (!this.isOrganizationManager(viewer)) {
+      this.resolveWorkspaceScope({
+        userId: viewer?.userId ?? '',
+        permissions: viewer?.permissions ?? [],
+        workspaceIds: viewer?.workspaceIds ?? [],
+        workspaceId: normalizedWorkspaceId,
+      });
+    }
+
+    return normalizedWorkspaceId;
+  }
+
+  private async assertUserInScope(userId: string, viewer?: UserViewer) {
+    if (this.isOrganizationManager(viewer) && !viewer?.workspaceId?.trim()) {
+      return;
+    }
+
+    const workspaceId = this.resolveWorkspaceScope(viewer);
+
+    const membership = await this.prisma.workspaceMembership.findFirst({
+      where: {
+        userId,
+        workspaceId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!membership) {
+      throw new ForbiddenException('User is outside your workspace scope');
+    }
+  }
+
   private isSystemSuperadminRole(roleName: string) {
     const normalizedRoleName = normalizeVietnameseText(roleName)
       .trim()
@@ -236,6 +323,40 @@ export class UsersService {
       normalizedRoleName === 'superadmin' ||
       normalizedRoleName === 'quản trị hệ thống'
     );
+  }
+
+  private rethrowKnownPrismaError(error: unknown): never {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') {
+        const targets = Array.isArray(error.meta?.target)
+          ? error.meta.target.map(String)
+          : [];
+
+        if (targets.includes('email')) {
+          throw new ConflictException('Email already exists');
+        }
+
+        if (targets.includes('username')) {
+          throw new ConflictException('Username already exists');
+        }
+
+        throw new ConflictException('User data already exists');
+      }
+    }
+
+    throw error;
+  }
+
+  private normalizeOptionalString(value: unknown, fieldName: string) {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+
+    if (typeof value !== 'string') {
+      throw new BadRequestException(`${fieldName} must be a string`);
+    }
+
+    return value.trim();
   }
 
   async findAll(viewer?: UserViewer) {
@@ -254,10 +375,21 @@ export class UsersService {
         );
     }
 
+    const membershipWhere = this.buildWorkspaceMembershipWhere(viewer);
+
     const users = await this.prisma.user.findMany({
       where: this.isOrganizationManager(viewer)
-        ? undefined
+        ? membershipWhere.workspaceId
+          ? {
+              workspaceMemberships: {
+                some: membershipWhere,
+              },
+            }
+          : undefined
         : {
+            workspaceMemberships: {
+              some: membershipWhere,
+            },
             userRoles: {
               none: {
                 role: {
@@ -284,9 +416,7 @@ export class UsersService {
           },
         },
         workspaceMemberships: {
-          where: {
-            isActive: true,
-          },
+          where: membershipWhere,
           include: {
             workspace: true,
             role: true,
@@ -316,16 +446,28 @@ export class UsersService {
     },
     viewer?: UserViewer,
   ) {
-    const name = input.name?.trim();
-    const email = input.email?.trim().toLowerCase();
-    const password = input.password ?? '';
-    const roleId = input.roleId?.trim();
-    const workspaceId = input.workspaceId?.trim();
-    const department = input.department?.trim() || 'Chưa gán';
-    const username = input.username?.trim() || email?.split('@')[0] || null;
+    const name = this.normalizeOptionalString(input.name, 'name');
+    const email =
+      this.normalizeOptionalString(input.email, 'email')?.toLowerCase();
+    const password =
+      typeof input.password === 'string' ? input.password : input.password ?? '';
+    const roleId = this.normalizeOptionalString(input.roleId, 'roleId');
+    const workspaceId = await this.assertWorkspaceInScope(
+      this.normalizeOptionalString(input.workspaceId, 'workspaceId'),
+      viewer,
+    );
+    const department =
+      this.normalizeOptionalString(input.department, 'department') ||
+      'Chưa gán';
+    const username =
+      this.normalizeOptionalString(input.username, 'username') ||
+      email?.split('@')[0] ||
+      null;
     const normalizedDepartment = normalizeVietnameseText(department);
-    const status = (input.status?.trim().toUpperCase() ||
-      'ACTIVE') as keyof typeof UserStatus;
+    const status = (
+      this.normalizeOptionalString(input.status, 'status')?.toUpperCase() ||
+      'ACTIVE'
+    ) as keyof typeof UserStatus;
 
     if (!name || !email || !password || !roleId) {
       throw new UnauthorizedException('Missing user payload');
@@ -392,59 +534,63 @@ export class UsersService {
       );
     }
 
-    const created = await this.prisma.user.create({
-      data: {
-        name,
-        email,
-        username,
-        department: normalizedDepartment,
-        status: UserStatus[status] || UserStatus.ACTIVE,
-        passwordHash: await bcrypt.hash(password, 10),
-        userRoles: {
-          create: {
-            roleId: existingRole.id,
+    let created;
+
+    try {
+      created = await this.prisma.user.create({
+        data: {
+          name,
+          email,
+          username,
+          department: normalizedDepartment,
+          status: UserStatus[status] || UserStatus.ACTIVE,
+          passwordHash: await bcrypt.hash(password, 10),
+          userRoles: {
+            create: {
+              roleId: existingRole.id,
+            },
           },
-        },
-        ...(workspaceId
-          ? {
-              workspaceMemberships: {
-                create: {
-                  workspaceId,
-                  roleId: existingRole.id,
-                  isActive: true,
+          ...(workspaceId
+            ? {
+                workspaceMemberships: {
+                  create: {
+                    workspaceId,
+                    roleId: existingRole.id,
+                    isActive: true,
+                  },
                 },
-              },
-            }
-          : {}),
-      },
-      include: {
-        userRoles: {
-          include: {
-            role: {
-              include: {
-                rolePermissions: {
-                  include: {
-                    permission: true,
+              }
+            : {}),
+        },
+        include: {
+          userRoles: {
+            include: {
+              role: {
+                include: {
+                  rolePermissions: {
+                    include: {
+                      permission: true,
+                    },
                   },
                 },
               },
             },
           },
-        },
-        workspaceMemberships: {
-          where: {
-            isActive: true,
-          },
-          include: {
-            workspace: true,
-            role: true,
-          },
-          orderBy: {
-            assignedAt: 'asc',
+          workspaceMemberships: {
+            where: this.buildWorkspaceMembershipWhere(viewer),
+            include: {
+              workspace: true,
+              role: true,
+            },
+            orderBy: {
+              assignedAt: 'asc',
+            },
           },
         },
-      },
-    });
+      });
+    } catch (error) {
+      this.rethrowKnownPrismaError(error);
+    }
 
     return this.normalizeUserRecord(this.serializeDatabaseUser(created));
   }
@@ -461,11 +607,18 @@ export class UsersService {
     },
     viewer?: UserViewer,
   ) {
-    const normalizedRoleId = input.roleId?.trim();
-    const normalizedWorkspaceId = input.workspaceId?.trim();
-    const normalizedStatus = input.status?.trim().toUpperCase() as
-      | keyof typeof UserStatus
-      | undefined;
+    const normalizedRoleId = this.normalizeOptionalString(input.roleId, 'roleId');
+    const requestedWorkspaceId = this.normalizeOptionalString(
+      input.workspaceId,
+      'workspaceId',
+    );
+    const normalizedWorkspaceId = requestedWorkspaceId
+      ? await this.assertWorkspaceInScope(requestedWorkspaceId, viewer)
+      : undefined;
+    const normalizedStatus = this.normalizeOptionalString(
+      input.status,
+      'status',
+    )?.toUpperCase() as keyof typeof UserStatus | undefined;
 
     if (!process.env.DATABASE_URL) {
       const target = this.fallbackUsers.find((user) => user.id === userId);
@@ -534,6 +687,8 @@ export class UsersService {
 
       return this.normalizeUserRecord(this.serializeFallbackUser(target));
     }
+
+    await this.assertUserInScope(userId, viewer);
 
     if (normalizedWorkspaceId) {
       const existingWorkspace = await this.prisma.workspace.findUnique({
@@ -724,6 +879,8 @@ export class UsersService {
       };
     }
 
+    await this.assertUserInScope(userId, viewer);
+
     const existingUser = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -770,7 +927,11 @@ export class UsersService {
     };
   }
 
-  async resetPassword(userId: string, nextPassword?: string) {
+  async resetPassword(
+    userId: string,
+    nextPassword?: string,
+    viewer?: UserViewer,
+  ) {
     const normalizedPassword = nextPassword?.trim();
     const temporaryPassword =
       normalizedPassword || `Temp${randomBytes(4).toString('hex')}!`;
@@ -788,6 +949,8 @@ export class UsersService {
         temporaryPassword,
       };
     }
+
+    await this.assertUserInScope(userId, viewer);
 
     const existingUser = await this.prisma.user.findUnique({
       where: { id: userId },

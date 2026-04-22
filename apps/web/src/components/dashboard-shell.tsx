@@ -788,7 +788,9 @@ export function DashboardShell({
               telegramBotId={selectedBotId}
             />
           ) : null}
-          {page === "roles" ? <RolesWorkbench currentUser={user} /> : null}
+          {page === "roles" ? (
+            <RolesWorkbench currentUser={user} workspaceId={selectedWorkspaceId} />
+          ) : null}
           {page === "telegram" ? (
             <TelegramControlCenter
               embedded
