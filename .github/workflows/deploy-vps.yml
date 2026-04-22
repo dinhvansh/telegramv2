@@ -102,7 +102,7 @@ jobs:
           test -n "$TELEGRAM_VPS_SSH_KEY"
 
       - name: Create Release Archive
-        run: tar --exclude=.git --exclude=.secrets --exclude='demo_telegram - Copy' --exclude='demo_telegram - Copy.rar' --exclude=telegramv3-release.tar.gz -czf telegramv3-release.tar.gz .
+        run: tar --exclude=.git --exclude=.secrets --exclude='demo_telegram - Copy' --exclude='demo_telegram - Copy.rar' -czf /tmp/telegramv3-release.tar.gz .
 
       - name: Upload Release Archive
         uses: appleboy/scp-action@v1.0.0
@@ -110,8 +110,8 @@ jobs:
           host: ${{ secrets.TELEGRAM_VPS_HOST }}
           username: ${{ secrets.TELEGRAM_VPS_USER }}
           key: ${{ secrets.TELEGRAM_VPS_SSH_KEY }}
-          source: telegramv3-release.tar.gz
-          target: /tmp
+          source: /tmp/telegramv3-release.tar.gz
+          target: /
 
       - name: Deploy On VPS
         uses: appleboy/ssh-action@v1.2.0
