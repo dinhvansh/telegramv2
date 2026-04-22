@@ -8,6 +8,8 @@ type JwtPayload = {
   email: string;
   roles: string[];
   permissions: string[];
+  workspaceIds?: string[];
+  organizationIds?: string[];
 };
 
 @Injectable()

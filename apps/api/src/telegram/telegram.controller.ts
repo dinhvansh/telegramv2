@@ -2,13 +2,16 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Headers,
   Param,
   Post,
   Put,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -108,34 +111,86 @@ type TelegramGroupModerationBody = {
   detailedLoggingEnabled?: boolean;
 };
 
+type AuthenticatedRequest = Request & {
+  user: {
+    sub: string;
+    email: string;
+    roles: string[];
+    permissions: string[];
+    workspaceIds?: string[];
+  };
+};
+
 @Controller('telegram')
 export class TelegramController {
   constructor(private readonly telegramService: TelegramService) {}
 
+  private resolveWorkspaceId(
+    request: AuthenticatedRequest,
+    requestedWorkspaceId?: string,
+  ) {
+    const permissions = request.user.permissions ?? [];
+    const workspaceIds = request.user.workspaceIds ?? [];
+    const canManageOrganization = permissions.includes('organization.manage');
+
+    if (requestedWorkspaceId) {
+      if (
+        canManageOrganization ||
+        workspaceIds.includes(requestedWorkspaceId)
+      ) {
+        return requestedWorkspaceId;
+      }
+
+      throw new ForbiddenException('Workspace is outside your scope');
+    }
+
+    if (canManageOrganization) {
+      return undefined;
+    }
+
+    const defaultWorkspaceId = workspaceIds[0];
+    if (!defaultWorkspaceId) {
+      throw new ForbiddenException('Workspace access is required');
+    }
+
+    return defaultWorkspaceId;
+  }
+
   @Get('status')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
-  getStatus(@Headers('x-workspace-id') workspaceId?: string) {
-    return this.telegramService.getStatus(workspaceId);
+  getStatus(
+    @Req() request: AuthenticatedRequest,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
+    return this.telegramService.getStatus(
+      this.resolveWorkspaceId(request, workspaceId),
+    );
   }
 
   @Get('groups')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('campaign.manage')
-  getGroups(@Headers('x-workspace-id') workspaceId?: string) {
-    return this.telegramService.getGroups(workspaceId);
+  getGroups(
+    @Req() request: AuthenticatedRequest,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
+    return this.telegramService.getGroups(
+      this.resolveWorkspaceId(request, workspaceId),
+    );
   }
 
   @Get('groups/:groupId/moderation')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
   getGroupModeration(
+    @Req() request: AuthenticatedRequest,
     @Param('groupId') groupId: string,
     @Headers('x-workspace-id') workspaceId?: string,
   ) {
     return this.telegramService.getGroupModerationSettings(
       groupId,
-      workspaceId,
+      this.resolveWorkspaceId(request, workspaceId),
     );
   }
 
@@ -143,44 +198,70 @@ export class TelegramController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
   updateConfig(
+    @Req() request: AuthenticatedRequest,
     @Body() body: TelegramConfigBody,
     @Headers('x-workspace-id') workspaceId?: string,
   ) {
-    return this.telegramService.updateConfig(body, workspaceId);
+    return this.telegramService.updateConfig(
+      body,
+      this.resolveWorkspaceId(request, workspaceId),
+    );
   }
 
   @Post('verify-bot')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
-  verifyBot(@Headers('x-workspace-id') workspaceId?: string) {
-    return this.telegramService.verifyBot(workspaceId);
+  verifyBot(
+    @Req() request: AuthenticatedRequest,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
+    return this.telegramService.verifyBot(
+      this.resolveWorkspaceId(request, workspaceId),
+    );
   }
 
   @Post('register-webhook')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
-  registerWebhook(@Headers('x-workspace-id') workspaceId?: string) {
-    return this.telegramService.registerWebhook(workspaceId);
+  registerWebhook(
+    @Req() request: AuthenticatedRequest,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
+    return this.telegramService.registerWebhook(
+      this.resolveWorkspaceId(request, workspaceId),
+    );
   }
 
   @Post('discover-groups')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
-  discoverGroups(@Headers('x-workspace-id') workspaceId?: string) {
-    return this.telegramService.discoverGroups(workspaceId);
+  discoverGroups(
+    @Req() request: AuthenticatedRequest,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
+    return this.telegramService.discoverGroups(
+      this.resolveWorkspaceId(request, workspaceId),
+    );
   }
 
   @Post('refresh-rights')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
-  refreshRights(@Headers('x-workspace-id') workspaceId?: string) {
-    return this.telegramService.refreshBotRights(undefined, workspaceId);
+  refreshRights(
+    @Req() request: AuthenticatedRequest,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
+    return this.telegramService.refreshBotRights(
+      undefined,
+      this.resolveWorkspaceId(request, workspaceId),
+    );
   }
 
   @Put('groups/:groupId/moderation')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
   updateGroupModeration(
+    @Req() request: AuthenticatedRequest,
     @Param('groupId') groupId: string,
     @Body() body: TelegramGroupModerationBody,
     @Headers('x-workspace-id') workspaceId?: string,
@@ -188,7 +269,7 @@ export class TelegramController {
     return this.telegramService.updateGroupModerationSettings(
       groupId,
       body,
-      workspaceId,
+      this.resolveWorkspaceId(request, workspaceId),
     );
   }
 
@@ -196,26 +277,35 @@ export class TelegramController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
   deleteGroup(
+    @Req() request: AuthenticatedRequest,
     @Param('groupId') groupId: string,
     @Headers('x-workspace-id') workspaceId?: string,
   ) {
-    return this.telegramService.deleteGroup(groupId, workspaceId);
+    return this.telegramService.deleteGroup(
+      groupId,
+      this.resolveWorkspaceId(request, workspaceId),
+    );
   }
 
   @Post('groups/:groupId/refresh-rights')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('settings.manage')
   refreshGroupRights(
+    @Req() request: AuthenticatedRequest,
     @Param('groupId') groupId: string,
     @Headers('x-workspace-id') workspaceId?: string,
   ) {
-    return this.telegramService.refreshBotRights(groupId, workspaceId);
+    return this.telegramService.refreshBotRights(
+      groupId,
+      this.resolveWorkspaceId(request, workspaceId),
+    );
   }
 
   @Post('invite-links')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('campaign.manage')
   createInviteLink(
+    @Req() request: AuthenticatedRequest,
     @Body() body: TelegramInviteLinkBody,
     @Headers('x-workspace-id') workspaceId?: string,
   ) {
@@ -229,7 +319,7 @@ export class TelegramController {
         createsJoinRequest: body.createsJoinRequest,
         expireHours: body.expireHours,
       },
-      workspaceId,
+      this.resolveWorkspaceId(request, workspaceId),
     );
   }
 

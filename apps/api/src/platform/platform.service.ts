@@ -1,4 +1,4 @@
-﻿import { Injectable } from '@nestjs/common';
+﻿import { ForbiddenException, Injectable } from '@nestjs/common';
 import { CampaignStatus, EventTone } from '@prisma/client';
 import { fallbackSnapshot } from './fallback-snapshot';
 import { PrismaService } from '../prisma/prisma.service';
@@ -52,20 +52,31 @@ export class PlatformService {
   }
 
   private resolveWorkspaceScope(viewer?: SnapshotViewer) {
-    if (!viewer?.workspaceId) {
+    if (!viewer) {
       return undefined;
     }
 
-    if (
-      viewer.permissions.includes('settings.manage') ||
-      viewer.permissions.includes('organization.manage')
-    ) {
-      return viewer.workspaceId;
+    if (viewer.workspaceId) {
+      if (
+        viewer.permissions.includes('organization.manage') ||
+        viewer.workspaceIds?.includes(viewer.workspaceId)
+      ) {
+        return viewer.workspaceId;
+      }
+
+      throw new ForbiddenException('Workspace is outside your scope');
     }
 
-    return viewer.workspaceIds?.includes(viewer.workspaceId)
-      ? viewer.workspaceId
-      : undefined;
+    if (viewer.permissions.includes('organization.manage')) {
+      return undefined;
+    }
+
+    const defaultWorkspaceId = viewer.workspaceIds?.[0];
+    if (!defaultWorkspaceId) {
+      throw new ForbiddenException('Workspace access is required');
+    }
+
+    return defaultWorkspaceId;
   }
 
   async getHealth() {
