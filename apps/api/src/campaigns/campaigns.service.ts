@@ -152,7 +152,7 @@ export class CampaignsService {
     };
   }
 
-  async findAssignees() {
+  async findAssignees(viewer?: CampaignViewer) {
     if (!process.env.DATABASE_URL) {
       return [
         {
@@ -172,11 +172,23 @@ export class CampaignsService {
       ];
     }
 
+    const workspaceId = this.resolveWorkspaceScope(viewer);
+
     return this.prisma.user.findMany({
       where: {
         status: {
           not: 'DISABLED',
         },
+        ...(workspaceId
+          ? {
+              workspaceMemberships: {
+                some: {
+                  workspaceId,
+                  isActive: true,
+                },
+              },
+            }
+          : {}),
       },
       orderBy: [{ name: 'asc' }, { email: 'asc' }],
       select: {
@@ -403,7 +415,45 @@ export class CampaignsService {
     };
   }
 
-  async create(input: CreateCampaignInput) {
+  private async assertAssigneeInWorkspace(
+    assigneeUserId: string | null | undefined,
+    workspaceId: string | null | undefined,
+  ) {
+    if (!assigneeUserId) {
+      return;
+    }
+
+    const assignee = await this.prisma.user.findUnique({
+      where: { id: assigneeUserId },
+      select: {
+        id: true,
+        status: true,
+        workspaceMemberships: workspaceId
+          ? {
+              where: {
+                workspaceId,
+                isActive: true,
+              },
+              select: { id: true },
+            }
+          : false,
+      },
+    });
+
+    if (!assignee || assignee.status === 'DISABLED') {
+      throw new BadRequestException(
+        'Người phụ trách không hợp lệ hoặc đã bị khóa.',
+      );
+    }
+
+    if (workspaceId && assignee.workspaceMemberships.length === 0) {
+      throw new BadRequestException(
+        'Người phụ trách không thuộc workspace của campaign.',
+      );
+    }
+  }
+
+  async create(input: CreateCampaignInput, viewer?: CampaignViewer) {
     if (!process.env.DATABASE_URL) {
       return {
         id: 'fallback-created',
@@ -432,26 +482,17 @@ export class CampaignsService {
     const status = input.status
       ? statusToDb[input.status]
       : CampaignStatus.ACTIVE;
-    const telegramGroup = await this.prisma.telegramGroup.findUnique({
-      where: { id: input.telegramGroupId },
+    const scopedWorkspaceId = this.resolveWorkspaceScope(viewer);
+    const telegramGroup = await this.prisma.telegramGroup.findFirst({
+      where: {
+        id: input.telegramGroupId,
+        ...(scopedWorkspaceId ? { workspaceId: scopedWorkspaceId } : {}),
+      },
     });
     if (!telegramGroup) {
       throw new BadRequestException(
         'Campaign phải gắn với một group Telegram đã được đồng bộ trong CRM.',
       );
-    }
-
-    if (input.assigneeUserId) {
-      const assignee = await this.prisma.user.findUnique({
-        where: { id: input.assigneeUserId },
-        select: { id: true, status: true },
-      });
-
-      if (!assignee || assignee.status === 'DISABLED') {
-        throw new BadRequestException(
-          'Người phụ trách không hợp lệ hoặc đã bị khóa.',
-        );
-      }
     }
 
     const defaultBot =
@@ -460,6 +501,7 @@ export class CampaignsService {
       telegramGroup.organizationId ?? defaultBot.organizationId;
     const workspaceId = telegramGroup.workspaceId ?? defaultBot.workspaceId;
     const telegramBotId = telegramGroup.telegramBotId ?? defaultBot.id;
+    await this.assertAssigneeInWorkspace(input.assigneeUserId, workspaceId);
 
     const campaign = await this.prisma.campaign.create({
       data: {
@@ -477,18 +519,21 @@ export class CampaignsService {
       },
     });
 
-    const inviteLinkResult = await this.telegramService.createInviteLink({
-      campaignId: campaign.id,
-      groupExternalId: telegramGroup.externalId,
-      groupTitle: telegramGroup.title,
-      name: input.name,
-      memberLimit:
-        input.inviteRequiresApproval || !input.inviteMemberLimit
-          ? undefined
-          : Math.max(1, Math.min(99999, Math.round(input.inviteMemberLimit))),
-      createsJoinRequest: Boolean(input.inviteRequiresApproval),
-      expireHours: 24 * 30,
-    });
+    const inviteLinkResult = await this.telegramService.createInviteLink(
+      {
+        campaignId: campaign.id,
+        groupExternalId: telegramGroup.externalId,
+        groupTitle: telegramGroup.title,
+        name: input.name,
+        memberLimit:
+          input.inviteRequiresApproval || !input.inviteMemberLimit
+            ? undefined
+            : Math.max(1, Math.min(99999, Math.round(input.inviteMemberLimit))),
+        createsJoinRequest: Boolean(input.inviteRequiresApproval),
+        expireHours: 24 * 30,
+      },
+      workspaceId,
+    );
 
     if (!inviteLinkResult.ok || !inviteLinkResult.inviteLink?.url) {
       await this.prisma.campaign.delete({
@@ -561,7 +606,11 @@ export class CampaignsService {
     };
   }
 
-  async update(campaignId: string, input: UpdateCampaignInput) {
+  async update(
+    campaignId: string,
+    input: UpdateCampaignInput,
+    viewer?: CampaignViewer,
+  ) {
     if (!process.env.DATABASE_URL) {
       return {
         updated: true,
@@ -574,26 +623,21 @@ export class CampaignsService {
       };
     }
 
-    const existingCampaign = await this.prisma.campaign.findUnique({
-      where: { id: campaignId },
+    const existingCampaign = await this.prisma.campaign.findFirst({
+      where: {
+        id: campaignId,
+        ...(this.buildCampaignAccessWhere(viewer) || {}),
+      },
     });
 
     if (!existingCampaign) {
       throw new NotFoundException('Không tìm thấy campaign.');
     }
 
-    if (input.assigneeUserId) {
-      const assignee = await this.prisma.user.findUnique({
-        where: { id: input.assigneeUserId },
-        select: { id: true, status: true, name: true },
-      });
-
-      if (!assignee || assignee.status === 'DISABLED') {
-        throw new BadRequestException(
-          'Người phụ trách không hợp lệ hoặc đã bị khóa.',
-        );
-      }
-    }
+    await this.assertAssigneeInWorkspace(
+      input.assigneeUserId,
+      existingCampaign.workspaceId,
+    );
 
     const updatedCampaign = await this.prisma.campaign.update({
       where: { id: campaignId },
@@ -627,7 +671,7 @@ export class CampaignsService {
     };
   }
 
-  async delete(campaignId: string) {
+  async delete(campaignId: string, viewer?: CampaignViewer) {
     if (!process.env.DATABASE_URL) {
       return {
         deleted: true,
@@ -635,8 +679,11 @@ export class CampaignsService {
       };
     }
 
-    const existingCampaign = await this.prisma.campaign.findUnique({
-      where: { id: campaignId },
+    const existingCampaign = await this.prisma.campaign.findFirst({
+      where: {
+        id: campaignId,
+        ...(this.buildCampaignAccessWhere(viewer) || {}),
+      },
     });
 
     if (!existingCampaign) {

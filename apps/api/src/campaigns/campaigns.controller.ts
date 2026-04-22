@@ -48,6 +48,18 @@ type AuthenticatedRequest = Request & {
 export class CampaignsController {
   constructor(private readonly campaignsService: CampaignsService) {}
 
+  private buildViewer(
+    request: AuthenticatedRequest,
+    workspaceId?: string,
+  ) {
+    return {
+      userId: request.user.sub,
+      permissions: request.user.permissions,
+      workspaceIds: request.user.workspaceIds ?? [],
+      workspaceId: workspaceId || undefined,
+    };
+  }
+
   private assertCampaignReadAccess(request: AuthenticatedRequest) {
     const permissions = request.user.permissions ?? [];
     return (
@@ -76,8 +88,13 @@ export class CampaignsController {
   @Get('assignees')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('campaign.manage')
-  getAssignees() {
-    return this.campaignsService.findAssignees();
+  getAssignees(
+    @Req() request: AuthenticatedRequest,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
+    return this.campaignsService.findAssignees(
+      this.buildViewer(request, workspaceId),
+    );
   }
 
   @Get(':campaignId/invite-links')
@@ -137,24 +154,44 @@ export class CampaignsController {
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('campaign.manage')
-  createCampaign(@Body() body: CreateCampaignBody) {
-    return this.campaignsService.create(body);
+  createCampaign(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: CreateCampaignBody,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
+    return this.campaignsService.create(
+      body,
+      this.buildViewer(request, workspaceId),
+    );
   }
 
   @Put(':campaignId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('campaign.manage')
   updateCampaign(
+    @Req() request: AuthenticatedRequest,
     @Param('campaignId') campaignId: string,
     @Body() body: UpdateCampaignBody,
+    @Headers('x-workspace-id') workspaceId?: string,
   ) {
-    return this.campaignsService.update(campaignId, body);
+    return this.campaignsService.update(
+      campaignId,
+      body,
+      this.buildViewer(request, workspaceId),
+    );
   }
 
   @Delete(':campaignId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('campaign.manage')
-  deleteCampaign(@Param('campaignId') campaignId: string) {
-    return this.campaignsService.delete(campaignId);
+  deleteCampaign(
+    @Req() request: AuthenticatedRequest,
+    @Param('campaignId') campaignId: string,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
+    return this.campaignsService.delete(
+      campaignId,
+      this.buildViewer(request, workspaceId),
+    );
   }
 }

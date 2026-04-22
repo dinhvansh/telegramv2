@@ -345,14 +345,39 @@ export class ModerationService {
   private buildMemberAccessWhere(
     viewer?: ModerationViewer,
   ): Prisma.CommunityMemberWhereInput | undefined {
-    if (!viewer || this.canViewAllMembers(viewer)) {
+    if (!viewer) {
       return undefined;
     }
 
+    const workspaceId = this.resolveWorkspaceScope(viewer);
+    const clauses: Prisma.CommunityMemberWhereInput[] = [];
+
+    if (workspaceId) {
+      clauses.push({
+        campaign: {
+          workspaceId,
+        },
+      });
+    }
+
+    if (!this.canViewAllMembers(viewer)) {
+      clauses.push({
+        campaign: {
+          assigneeUserId: viewer.userId,
+        },
+      });
+    }
+
+    if (!clauses.length) {
+      return undefined;
+    }
+
+    if (clauses.length === 1) {
+      return clauses[0];
+    }
+
     return {
-      campaign: {
-        assigneeUserId: viewer.userId,
-      },
+      AND: clauses,
     };
   }
 

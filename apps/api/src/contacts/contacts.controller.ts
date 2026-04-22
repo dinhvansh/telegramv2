@@ -2,7 +2,9 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
+  Headers,
   HttpCode,
   NotFoundException,
   Param,
@@ -139,6 +141,56 @@ export class ContactsController {
     private readonly contactsService: ContactsService,
   ) {}
 
+  private resolveWorkspaceId(
+    request: AuthenticatedRequest,
+    requestedWorkspaceId?: string,
+  ) {
+    const canManageOrganization = request.user.permissions.includes(
+      'organization.manage',
+    );
+    const workspaceIds = request.user.workspaceIds ?? [];
+
+    if (requestedWorkspaceId) {
+      if (canManageOrganization || workspaceIds.includes(requestedWorkspaceId)) {
+        return requestedWorkspaceId;
+      }
+
+      throw new ForbiddenException('Workspace is outside your scope');
+    }
+
+    if (canManageOrganization) {
+      return undefined;
+    }
+
+    const defaultWorkspaceId = workspaceIds[0];
+    if (!defaultWorkspaceId) {
+      throw new ForbiddenException('Workspace access is required');
+    }
+
+    return defaultWorkspaceId;
+  }
+
+  private buildAccessArgs(
+    request: AuthenticatedRequest,
+    requestedWorkspaceId?: string,
+  ) {
+    const canManageOrganization = request.user.permissions.includes(
+      'organization.manage',
+    );
+    const resolvedWorkspaceId = this.resolveWorkspaceId(
+      request,
+      requestedWorkspaceId,
+    );
+
+    return {
+      workspaceIds: resolvedWorkspaceId
+        ? [resolvedWorkspaceId]
+        : (request.user.workspaceIds ?? []),
+      canManageOrganization:
+        canManageOrganization && requestedWorkspaceId === undefined,
+    };
+  }
+
   @Post('auth/qr/start')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -224,6 +276,7 @@ export class ContactsController {
   )
   async createImportBatch(
     @Req() request: AuthenticatedRequest,
+    @Headers('x-workspace-id') workspaceId: string | undefined,
     @UploadedFile() file: UploadedJsonFile | undefined,
     @Body() body: unknown,
   ) {
@@ -244,16 +297,10 @@ export class ContactsController {
       };
     }
 
-    const canManageOrganization = request.user.permissions.includes(
-      'organization.manage',
+    const allowedWorkspaceId = this.resolveWorkspaceId(
+      request,
+      extracted.workspaceId || workspaceId,
     );
-    const requestedWorkspaceId = extracted.workspaceId;
-    const allowedWorkspaceId = requestedWorkspaceId
-      ? canManageOrganization ||
-        (request.user.workspaceIds ?? []).includes(requestedWorkspaceId)
-        ? requestedWorkspaceId
-        : null
-      : ((request.user.workspaceIds ?? [])[0] ?? null);
 
     const batch = await this.contactsService.createImportBatch({
       workspaceId: allowedWorkspaceId ?? undefined,
@@ -272,13 +319,13 @@ export class ContactsController {
   @Get('import-batches')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('contacts.manage', 'workspace.manage')
-  getImportBatches(@Req() request: AuthenticatedRequest) {
-    return this.contactsService.listImportBatches({
-      workspaceIds: request.user.workspaceIds ?? [],
-      canManageOrganization: request.user.permissions.includes(
-        'organization.manage',
-      ),
-    });
+  getImportBatches(
+    @Req() request: AuthenticatedRequest,
+    @Headers('x-workspace-id') workspaceId?: string,
+  ) {
+    return this.contactsService.listImportBatches(
+      this.buildAccessArgs(request, workspaceId),
+    );
   }
 
   @Get('import-batches/:batchId')
@@ -287,13 +334,12 @@ export class ContactsController {
   getImportBatch(
     @Req() request: AuthenticatedRequest,
     @Param('batchId') batchId: string,
+    @Headers('x-workspace-id') workspaceId?: string,
   ) {
-    return this.contactsService.getImportBatch(batchId, {
-      workspaceIds: request.user.workspaceIds ?? [],
-      canManageOrganization: request.user.permissions.includes(
-        'organization.manage',
-      ),
-    });
+    return this.contactsService.getImportBatch(
+      batchId,
+      this.buildAccessArgs(request, workspaceId),
+    );
   }
 
   @Post('import-batches/:batchId/retry')
@@ -302,13 +348,12 @@ export class ContactsController {
   async retryFailedBatchItems(
     @Req() request: AuthenticatedRequest,
     @Param('batchId') batchId: string,
+    @Headers('x-workspace-id') workspaceId?: string,
   ) {
-    const result = await this.contactsService.retryFailedItems(batchId, {
-      workspaceIds: request.user.workspaceIds ?? [],
-      canManageOrganization: request.user.permissions.includes(
-        'organization.manage',
-      ),
-    });
+    const result = await this.contactsService.retryFailedItems(
+      batchId,
+      this.buildAccessArgs(request, workspaceId),
+    );
 
     if (!result) {
       throw new NotFoundException('Contact import batch not found');
@@ -326,13 +371,12 @@ export class ContactsController {
   async cancelImportBatch(
     @Req() request: AuthenticatedRequest,
     @Param('batchId') batchId: string,
+    @Headers('x-workspace-id') workspaceId?: string,
   ) {
-    const result = await this.contactsService.cancelImportBatch(batchId, {
-      workspaceIds: request.user.workspaceIds ?? [],
-      canManageOrganization: request.user.permissions.includes(
-        'organization.manage',
-      ),
-    });
+    const result = await this.contactsService.cancelImportBatch(
+      batchId,
+      this.buildAccessArgs(request, workspaceId),
+    );
 
     if (!result) {
       throw new NotFoundException('Contact import batch not found');
@@ -352,12 +396,10 @@ export class ContactsController {
     @Param('batchId') batchId: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Headers('x-workspace-id') workspaceId?: string,
   ) {
     return this.contactsService.getImportBatchItems(batchId, {
-      workspaceIds: request.user.workspaceIds ?? [],
-      canManageOrganization: request.user.permissions.includes(
-        'organization.manage',
-      ),
+      ...this.buildAccessArgs(request, workspaceId),
       page: Number.parseInt(page ?? '1', 10),
       pageSize: Number.parseInt(pageSize ?? '25', 10),
     });
@@ -370,14 +412,13 @@ export class ContactsController {
     @Req() request: AuthenticatedRequest,
     @Param('batchId') batchId: string,
     @Query('format') format?: string,
+    @Headers('x-workspace-id') workspaceId?: string,
     @Res({ passthrough: true }) response?: Response,
   ) {
-    const result = await this.contactsService.exportImportBatch(batchId, {
-      workspaceIds: request.user.workspaceIds ?? [],
-      canManageOrganization: request.user.permissions.includes(
-        'organization.manage',
-      ),
-    });
+    const result = await this.contactsService.exportImportBatch(
+      batchId,
+      this.buildAccessArgs(request, workspaceId),
+    );
 
     if (!result) {
       throw new NotFoundException('Contact import batch not found');

@@ -800,7 +800,9 @@ export function DashboardShell({
             <SettingsWorkbench telegramBotId={selectedBotId} />
           ) : null}
           {page === "workspaces" ? <WorkspacesWorkbench /> : null}
-          {page === "contacts" ? <ContactsWorkbench /> : null}
+          {page === "contacts" ? (
+            <ContactsWorkbench workspaceId={selectedWorkspaceId} />
+          ) : null}
         </div>
       </main>
     </div>

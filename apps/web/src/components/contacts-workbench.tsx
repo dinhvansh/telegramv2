@@ -117,7 +117,11 @@ function progressPercent(batch: ContactImportBatch) {
   return Math.min(100, Math.round((batch.processedCount / batch.totalCount) * 100));
 }
 
-export function ContactsWorkbench() {
+export function ContactsWorkbench({
+  workspaceId = null,
+}: {
+  workspaceId?: string | null;
+}) {
   const { toast } = useToast();
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [tab, setTab] = useState<"auth" | "import">("auth");
@@ -148,8 +152,12 @@ export function ContactsWorkbench() {
   const itemsPageRef = useRef(1);
 
   const getHeaders = useCallback(
-    () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem(authStorageKey) || ""}` }),
-    [],
+    () => ({
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${localStorage.getItem(authStorageKey) || ""}`,
+      ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
+    }),
+    [workspaceId],
   );
 
   const selectedBatch = useMemo(() => batches.find((batch) => batch.id === selectedBatchId) ?? null, [batches, selectedBatchId]);
