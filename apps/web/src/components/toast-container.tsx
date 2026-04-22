@@ -63,7 +63,7 @@ export function ToastContainer() {
     <div
       aria-live="polite"
       aria-label="Thông báo"
-      className="fixed right-5 top-24 z-[9999] flex flex-col gap-2"
+      className="fixed right-5 top-28 z-[9999] flex flex-col gap-2"
       style={{ pointerEvents: "none" }}
     >
       {toasts.map((t) => (

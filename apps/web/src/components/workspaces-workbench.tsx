@@ -233,7 +233,7 @@ export function OrganizationTab({
       await fetchJson(`${apiBaseUrl}/workspaces/organizations/${id}`, token, { method: "DELETE" });
       onDeleted();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Xóa thất bại");
+      toast({ message: err instanceof Error ? err.message : "Xóa thất bại", type: "error" });
     } finally {
       setDeletingId(null);
     }
@@ -436,7 +436,7 @@ function WorkspaceTab({
       await fetchJson(`${apiBaseUrl}/workspaces/${id}/permanent`, token, { method: "DELETE" });
       onDeleted();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Xóa thất bại");
+      toast({ message: err instanceof Error ? err.message : "Xóa thất bại", type: "error" });
     } finally {
       setDeletingId(null);
     }
@@ -925,7 +925,7 @@ export function MembershipsTab({
       });
       onCreated();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Cập nhật thất bại");
+      toast({ message: err instanceof Error ? err.message : "Cập nhật thất bại", type: "error" });
     } finally {
       setToggleLoading(null);
     }

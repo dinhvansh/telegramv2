@@ -98,7 +98,7 @@ export function SettingsWorkbench({
       });
     } catch (error) {
       toast({
-        message: error instanceof Error ? error.message : "Khong the tai cai dat.",
+        message: error instanceof Error ? error.message : "Không thể tải cài đặt.",
         type: "error",
       });
     }
@@ -135,11 +135,11 @@ export function SettingsWorkbench({
           ],
         }),
       });
-      toast({ message: "Da luu cai dat.", type: "success" });
+      toast({ message: "Đã lưu cài đặt.", type: "success" });
       await loadSettings();
     } catch (error) {
       toast({
-        message: error instanceof Error ? error.message : "Khong the luu cai dat.",
+        message: error instanceof Error ? error.message : "Không thể lưu cài đặt.",
         type: "error",
       });
     } finally {
@@ -171,13 +171,13 @@ export function SettingsWorkbench({
       }
       toast({
         message: payload.error
-          ? `Fallback model list. ${payload.error}`
-          : `Da tai ${payload.models.length} model tu ${payload.source}.`,
-        type: "info",
+          ? `Đang dùng danh sách model dự phòng. ${payload.error}`
+          : `Đã tải ${payload.models.length} model từ ${payload.source}.`,
+        type: payload.error ? "warning" : "success",
       });
     } catch (error) {
       toast({
-        message: error instanceof Error ? error.message : "Khong the tai model.",
+        message: error instanceof Error ? error.message : "Không thể tải model.",
         type: "error",
       });
     } finally {
@@ -189,7 +189,7 @@ export function SettingsWorkbench({
     return (
       <div className="flex h-48 items-center justify-center">
         <p className="text-sm font-semibold text-[color:var(--warning)]">
-          Can dang nhap.
+          Cần đăng nhập.
         </p>
       </div>
     );
@@ -212,7 +212,7 @@ export function SettingsWorkbench({
         >
           <path d="M15 18l-6-6 6-6" />
         </svg>
-        Quay lai Dashboard
+        Quay lại Dashboard
       </a>
 
       <TelegramControlCenter embedded telegramBotId={telegramBotId} />
@@ -224,7 +224,7 @@ export function SettingsWorkbench({
               AI Moderation
             </p>
             <h3 className="mt-1 text-xl font-black tracking-tight">
-              Cau hinh AI provider
+              Cấu hình AI provider
             </h3>
           </div>
           <button
@@ -233,7 +233,7 @@ export function SettingsWorkbench({
             disabled={isSaving}
             className="rounded-[16px] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-dim)_100%)] px-6 py-3 text-sm font-bold text-white disabled:opacity-50"
           >
-            {isSaving ? "Dang luu..." : "Luu cai dat"}
+            {isSaving ? "Đang lưu..." : "Lưu cài đặt"}
           </button>
         </div>
 
@@ -292,7 +292,7 @@ export function SettingsWorkbench({
               </div>
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
-                  Ten he thong
+                  Tên hệ thống
                 </label>
                 <input
                   value={form.systemName}
@@ -337,15 +337,15 @@ export function SettingsWorkbench({
                   setForm((current) => ({ ...current, aiPrompt: event.target.value }))
                 }
                 rows={6}
-                placeholder="Ban la AI moderation assistant..."
+                placeholder="Bạn là AI moderation assistant..."
                 className="w-full resize-none rounded-[14px] bg-white px-4 py-3 text-sm leading-6 outline-none"
               />
             </div>
             <div className="flex items-center justify-between rounded-[14px] bg-white px-4 py-3">
               <div>
-                <p className="text-sm font-semibold">Yeu cau 2FA</p>
+                <p className="text-sm font-semibold">Yêu cầu 2FA</p>
                 <p className="mt-0.5 text-xs text-[color:var(--on-surface-variant)]">
-                  Bat xac thuc hai buoc cho admin
+                  Bật xác thực hai bước cho admin
                 </p>
               </div>
               <button

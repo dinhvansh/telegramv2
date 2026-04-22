@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useToast } from "@/context/toast-context";
 
 const apiBaseUrl = "/api";
 const authStorageKey = "telegram-ops-access-token";
@@ -35,6 +36,9 @@ type TelegramGroupItem = {
   title: string;
   slug: string;
   externalId: string;
+  workspaceId: string | null;
+  workspaceName: string | null;
+  workspaceSlug: string | null;
   username: string | null;
   type: string;
   isActive: boolean;
@@ -52,11 +56,6 @@ type TelegramGroupItem = {
 
 type GroupsResponse = {
   items: TelegramGroupItem[];
-};
-
-type ActionNotice = {
-  tone: "success" | "danger" | "neutral";
-  message: string;
 };
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -116,6 +115,7 @@ export function TelegramControlCenter({
   workspaceId?: string | null;
   telegramBotId?: string | null;
 }) {
+  const { toast } = useToast();
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [status, setStatus] = useState<TelegramStatus | null>(null);
@@ -123,7 +123,6 @@ export function TelegramControlCenter({
   const [email, setEmail] = useState("admin@nexus.local");
   const [password, setPassword] = useState("admin123");
   const [authError, setAuthError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<ActionNotice | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isActionRunning, setIsActionRunning] = useState<string | null>(null);
@@ -248,7 +247,6 @@ export function TelegramControlCenter({
     setUser(null);
     setStatus(null);
     setGroups([]);
-    setNotice(null);
     setIsLoading(false);
   }
 
@@ -262,21 +260,20 @@ export function TelegramControlCenter({
     }
 
     setIsActionRunning(actionKey);
-    setNotice(null);
 
     try {
       const result = await callback();
       await refreshData(token);
-      setNotice({
-        tone: result && result.ok === false ? "danger" : "success",
+      toast({
+        type: result && result.ok === false ? "error" : "success",
         message:
           result && result.ok === false
             ? result.description || "Thao tác thất bại."
             : successMessage,
       });
     } catch (error) {
-      setNotice({
-        tone: "danger",
+      toast({
+        type: "error",
         message: error instanceof Error ? error.message : "Thao tác thất bại.",
       });
     } finally {
@@ -557,20 +554,6 @@ export function TelegramControlCenter({
           </div>
         </header>
 
-        {notice ? (
-          <div
-            className={`rounded-[24px] px-5 py-4 text-sm font-semibold shadow-[0_8px_24px_rgba(42,52,57,0.06)] ${
-              notice.tone === "success"
-                ? "bg-[color:var(--success-soft)] text-[color:var(--success)]"
-                : notice.tone === "danger"
-                  ? "bg-[color:var(--danger-soft)] text-[color:var(--danger)]"
-                  : "bg-[color:var(--surface-card)] text-[color:var(--on-surface)]"
-            }`}
-          >
-            {notice.message}
-          </div>
-        ) : null}
-
         <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
           <form
             onSubmit={handleSaveConfig}
@@ -790,10 +773,11 @@ export function TelegramControlCenter({
           </div>
 
           <div className="mt-6 overflow-x-auto rounded-[24px] bg-[color:var(--surface-low)]">
-            <table className="min-w-[980px] w-full border-collapse text-left">
+            <table className="min-w-[1080px] w-full border-collapse text-left">
               <thead>
                 <tr className="text-xs uppercase tracking-[0.16em] text-[color:var(--on-surface-variant)]">
                   <th className="px-5 py-4 font-semibold">Group</th>
+                  <th className="px-5 py-4 font-semibold">WP</th>
                   <th className="px-5 py-4 font-semibold">Chat ID</th>
                   <th className="px-5 py-4 font-semibold">Trạng thái</th>
                   <th className="px-5 py-4 font-semibold">Quyền bot</th>
@@ -810,6 +794,18 @@ export function TelegramControlCenter({
                       <p className="mt-1 text-sm text-[color:var(--on-surface-variant)]">
                         {group.username ?? group.type}
                       </p>
+                    </td>
+                    <td className="px-5 py-4 align-top text-sm">
+                      <span className="inline-flex max-w-[180px] rounded-full bg-[color:var(--surface-card)] px-3 py-1 text-xs font-bold text-[color:var(--on-surface)] shadow-[0_4px_14px_rgba(42,52,57,0.06)]">
+                        <span className="truncate">
+                          {group.workspaceName ?? "Chưa gắn WP"}
+                        </span>
+                      </span>
+                      {group.workspaceSlug ? (
+                        <p className="mt-1 text-xs text-[color:var(--on-surface-variant)]">
+                          {group.workspaceSlug}
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-5 py-4 align-top text-sm font-mono text-[color:var(--primary)]">
                       {group.externalId}
@@ -893,7 +889,7 @@ export function TelegramControlCenter({
                 {!groups.length ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-5 py-10 text-center text-sm text-[color:var(--on-surface-variant)]"
                     >
                       Chưa có group nào được đồng bộ. Hãy lưu và kích hoạt bot rồi bấm Đồng bộ group khi cần.

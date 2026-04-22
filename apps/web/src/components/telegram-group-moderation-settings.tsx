@@ -297,7 +297,7 @@ export function TelegramGroupModerationSettings({
       };
     });
     setError(null);
-    setNotice("Da ap bo mac dinh moderation cho group nay. Bam luu de cap nhat he thong.");
+    setNotice("Đã áp bộ mặc định moderation cho group này. Bấm lưu để cập nhật hệ thống.");
   }
 
   async function refreshRuleScope(currentToken: string) {

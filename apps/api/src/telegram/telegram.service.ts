@@ -388,6 +388,13 @@ export class TelegramService {
       where: workspaceId ? { workspaceId } : undefined,
       include: {
         moderationSettings: true,
+        workspace: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
       },
       orderBy: { title: 'asc' },
     });
@@ -400,6 +407,9 @@ export class TelegramService {
         title: group.title,
         slug: group.slug,
         externalId: group.externalId,
+        workspaceId: group.workspaceId || null,
+        workspaceName: group.workspace?.name || null,
+        workspaceSlug: group.workspace?.slug || null,
         username: group.username
           ? `@${group.username.replace(/^@/, '')}`
           : null,
