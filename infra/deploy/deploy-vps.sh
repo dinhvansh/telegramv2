@@ -9,6 +9,7 @@ ENV_FILE="$SHARED_DIR/.env.production"
 LAST_DEPLOYED_SHA_FILE="$SHARED_DIR/.last_deployed_sha"
 PRISMA_SCHEMA_PATH="apps/api/prisma/schema.prisma"
 API_HEALTH_URL="${API_HEALTH_URL:-http://127.0.0.1:${API_HOST_PORT:-4001}/api/health}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-telegramv3}"
 should_push_prisma_schema=false
 current_deploy_sha=""
 
@@ -60,14 +61,14 @@ else
   should_push_prisma_schema=true
 fi
 
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d postgres redis
-docker compose --env-file .env.production -f docker-compose.prod.yml build api web
+docker compose -p "$COMPOSE_PROJECT_NAME" --env-file .env.production -f docker-compose.prod.yml up -d postgres redis
+docker compose -p "$COMPOSE_PROJECT_NAME" --env-file .env.production -f docker-compose.prod.yml build api web
 
 if [[ "$should_push_prisma_schema" == true ]]; then
-  docker compose --env-file .env.production -f docker-compose.prod.yml run --rm --no-deps api npx prisma db push
+  docker compose -p "$COMPOSE_PROJECT_NAME" --env-file .env.production -f docker-compose.prod.yml run --rm --no-deps api npx prisma db push
 fi
 
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d api web
+docker compose -p "$COMPOSE_PROJECT_NAME" --env-file .env.production -f docker-compose.prod.yml up -d api web
 
 for _ in $(seq 1 30); do
   if curl -fsS "$API_HEALTH_URL" >/dev/null; then
