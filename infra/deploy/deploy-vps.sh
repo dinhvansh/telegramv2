@@ -33,6 +33,14 @@ cp "$ENV_FILE" "$APP_DIR/.env.production"
 
 cd "$APP_DIR"
 
+# Docker Compose gives shell environment variables precedence over --env-file.
+# The VPS shared env is the source of truth for runtime secrets.
+unset POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD
+unset JWT_SECRET SETTINGS_ENCRYPTION_KEY
+unset AI_DEFAULT_BASE_URL AI_DEFAULT_MODEL AI_DEFAULT_API_TOKEN AI_DEFAULT_PROMPT
+unset TELEGRAM_BOT_TOKEN TELEGRAM_BOT_USERNAME TELEGRAM_WEBHOOK_SECRET TELEGRAM_PUBLIC_BASE_URL
+unset TELEGRAM_API_ID TELEGRAM_API_HASH NEXT_PUBLIC_API_URL WEB_HOST_PORT
+
 if [[ -d "$APP_DIR/.git" ]]; then
   current_deploy_sha="$(git rev-parse HEAD)"
 

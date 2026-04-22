@@ -122,26 +122,11 @@ jobs:
           DEPLOY_DOMAIN: ${{ env.DEPLOY_DOMAIN }}
           API_HOST_PORT: ${{ env.API_HOST_PORT }}
           WEB_HOST_PORT: ${{ env.WEB_HOST_PORT }}
-          POSTGRES_DB: ${{ vars.POSTGRES_DB || 'telegram_ops' }}
-          POSTGRES_USER: ${{ vars.POSTGRES_USER || 'postgres' }}
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          SETTINGS_ENCRYPTION_KEY: ${{ secrets.SETTINGS_ENCRYPTION_KEY }}
-          AI_DEFAULT_BASE_URL: ${{ vars.AI_DEFAULT_BASE_URL || 'https://v98store.com/v1' }}
-          AI_DEFAULT_MODEL: ${{ vars.AI_DEFAULT_MODEL || 'nexus-guard-mini' }}
-          AI_DEFAULT_API_TOKEN: ${{ secrets.AI_DEFAULT_API_TOKEN }}
-          AI_DEFAULT_PROMPT: ${{ vars.AI_DEFAULT_PROMPT || 'Ban la AI moderation assistant. Tra ve JSON ngan gon voi risk_score va action_goi_y.' }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_BOT_USERNAME: ${{ vars.TELEGRAM_BOT_USERNAME }}
-          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
-          TELEGRAM_PUBLIC_BASE_URL: https://${{ env.DEPLOY_DOMAIN }}
-          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
         with:
           host: ${{ secrets.TELEGRAM_VPS_HOST }}
           username: ${{ secrets.TELEGRAM_VPS_USER }}
           key: ${{ secrets.TELEGRAM_VPS_SSH_KEY }}
-          envs: APP_ROOT,APP_DIR,SHARED_DIR,DEPLOY_DOMAIN,API_HOST_PORT,WEB_HOST_PORT,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,JWT_SECRET,SETTINGS_ENCRYPTION_KEY,AI_DEFAULT_BASE_URL,AI_DEFAULT_MODEL,AI_DEFAULT_API_TOKEN,AI_DEFAULT_PROMPT,TELEGRAM_BOT_TOKEN,TELEGRAM_BOT_USERNAME,TELEGRAM_WEBHOOK_SECRET,TELEGRAM_PUBLIC_BASE_URL,TELEGRAM_API_ID,TELEGRAM_API_HASH
+          envs: APP_ROOT,APP_DIR,SHARED_DIR,DEPLOY_DOMAIN,API_HOST_PORT,WEB_HOST_PORT
           script: |
             set -eu
             mkdir -p "$APP_ROOT" "$SHARED_DIR"
@@ -153,34 +138,12 @@ jobs:
             cd "$APP_DIR"
 
             if [ ! -f "$SHARED_DIR/.env.production" ]; then
-              test -n "$POSTGRES_PASSWORD"
-              test -n "$JWT_SECRET"
-              test -n "$SETTINGS_ENCRYPTION_KEY"
-              cat > "$SHARED_DIR/.env.production" <<EOF
-            POSTGRES_DB=$POSTGRES_DB
-            POSTGRES_USER=$POSTGRES_USER
-            POSTGRES_PASSWORD=$POSTGRES_PASSWORD
-            API_HOST_PORT=$API_HOST_PORT
-            WEB_HOST_PORT=$WEB_HOST_PORT
-            JWT_SECRET=$JWT_SECRET
-            SETTINGS_ENCRYPTION_KEY=$SETTINGS_ENCRYPTION_KEY
-            AI_DEFAULT_BASE_URL=$AI_DEFAULT_BASE_URL
-            AI_DEFAULT_MODEL=$AI_DEFAULT_MODEL
-            AI_DEFAULT_API_TOKEN=$AI_DEFAULT_API_TOKEN
-            AI_DEFAULT_PROMPT=$AI_DEFAULT_PROMPT
-            TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
-            TELEGRAM_BOT_USERNAME=$TELEGRAM_BOT_USERNAME
-            TELEGRAM_WEBHOOK_SECRET=$TELEGRAM_WEBHOOK_SECRET
-            TELEGRAM_PUBLIC_BASE_URL=$TELEGRAM_PUBLIC_BASE_URL
-            TELEGRAM_API_ID=$TELEGRAM_API_ID
-            TELEGRAM_API_HASH=$TELEGRAM_API_HASH
-            NEXT_PUBLIC_API_URL=/api
-            EOF
-            else
-              grep -q '^API_HOST_PORT=' "$SHARED_DIR/.env.production" || printf '\nAPI_HOST_PORT=%s\n' "$API_HOST_PORT" >> "$SHARED_DIR/.env.production"
-              grep -q '^WEB_HOST_PORT=' "$SHARED_DIR/.env.production" || printf 'WEB_HOST_PORT=%s\n' "$WEB_HOST_PORT" >> "$SHARED_DIR/.env.production"
-              grep -q '^TELEGRAM_PUBLIC_BASE_URL=' "$SHARED_DIR/.env.production" || printf 'TELEGRAM_PUBLIC_BASE_URL=%s\n' "$TELEGRAM_PUBLIC_BASE_URL" >> "$SHARED_DIR/.env.production"
+              echo "Missing $SHARED_DIR/.env.production on VPS. Create it before CI deploy." >&2
+              exit 1
             fi
+            grep -q '^API_HOST_PORT=' "$SHARED_DIR/.env.production" || printf '\nAPI_HOST_PORT=%s\n' "$API_HOST_PORT" >> "$SHARED_DIR/.env.production"
+            grep -q '^WEB_HOST_PORT=' "$SHARED_DIR/.env.production" || printf 'WEB_HOST_PORT=%s\n' "$WEB_HOST_PORT" >> "$SHARED_DIR/.env.production"
+            grep -q '^TELEGRAM_PUBLIC_BASE_URL=' "$SHARED_DIR/.env.production" || printf 'TELEGRAM_PUBLIC_BASE_URL=https://%s\n' "$DEPLOY_DOMAIN" >> "$SHARED_DIR/.env.production"
 
             if command -v nginx >/dev/null 2>&1; then
               mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
